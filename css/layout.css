@@ -133,10 +133,8 @@
   background: var(--bg-0);
 }
 
-#roll-area.auto-open { grid-template-rows: 20px 28px 1fr 84px; }
-
 /* canvas attribute sizes must not become the row's min-content size —
-   otherwise the 1fr roll row can't shrink when the automation lane opens */
+   otherwise the 1fr roll row can't shrink when the automation lanes open */
 #roll-viewport, #keys-canvas, #auto-canvas { min-height: 0; }
 #roll-area.mono-mode { grid-template-rows: 20px 28px 1fr 0px; }
 #roll-area.mono-mode #auto-corner,
@@ -149,19 +147,25 @@
   border-right: 1px solid var(--line);
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 1px 3px;
   overflow: hidden;
 }
-#auto-corner button {
+.auto-lane-btn {
   color: var(--text-dim);
-  font-size: 10px;
+  font-size: 9px;
   text-align: left;
-  padding: 1px 2px;
+  padding: 0 4px;
   flex: none;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+  white-space: nowrap;
 }
-#auto-corner button:hover { color: var(--text); }
-#auto-corner select { font-size: 10px; padding: 0 2px; }
+.auto-lane-btn:hover { color: var(--text); background: var(--bg-2); }
+.auto-lane-btn.expanded { color: var(--text); align-items: flex-start; padding-top: 3px; }
+.auto-master-btn { font-weight: 600; font-size: 10px; }
+.auto-dot { color: var(--accent); font-size: 7px; }
 
 #auto-canvas {
   grid-area: auto;

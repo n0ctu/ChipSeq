@@ -5,11 +5,21 @@
 // step-only instrument lane. Points are sorted by tick, one per tick.
 
 // Single source of truth for parameter ranges/formatting (core + UI).
+// def null = resolved from the effective instrument (adsrKey / duty).
+const pct = (v) => Math.round(v * 100) + '%';
+const secs = (v) => (v >= 0.1 ? v.toFixed(2) + ' s' : Math.round(v * 1000) + ' ms');
+
 export const AUTOMATION_PARAMS = {
-  gain: { min: 0, max: 1, def: 1, fmt: (v) => Math.round(v * 100) + '%' },
-  duty: { min: 0.05, max: 0.5, def: null, fmt: (v) => Math.round(v * 100) + '%' },
-  instrument: { step: true },
+  gain: { label: 'Gain', min: 0, max: 1, def: 1, fmt: pct },
+  attack: { label: 'Attack', min: 0, max: 0.3, def: null, adsrKey: 'a', fmt: secs },
+  decay: { label: 'Decay', min: 0, max: 0.5, def: null, adsrKey: 'd', fmt: secs },
+  sustain: { label: 'Sustain', min: 0, max: 1, def: null, adsrKey: 's', fmt: pct },
+  release: { label: 'Release', min: 0, max: 0.8, def: null, adsrKey: 'r', fmt: secs },
+  duty: { label: 'Duty', min: 0.05, max: 0.5, def: null, fmt: pct },
 };
+
+// Lane stacking order in the UI; duty only applies to PWM instruments.
+export const LANE_ORDER = ['gain', 'attack', 'decay', 'sustain', 'release', 'duty'];
 
 const smoothstep = (t) => t * t * (3 - 2 * t);
 

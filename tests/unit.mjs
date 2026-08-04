@@ -776,26 +776,33 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   const hev = flattenSong(hdoc2).events[0];
   assert(hev.gainCurve && hev.gainCurve.length >= 3 && !('gainMul' in hev), 'held note gets gainCurve');
 
-  // instrument switch rewrites ids; unknown id falls back
-  const idoc2 = createProject({ name: 'autoinst', mode: 'poly' });
+  // ADSR lanes: absolute overrides sampled per note
+  const idoc2 = createProject({ name: 'autoadsr', mode: 'poly' });
   const itid2 = idoc2.tracks[0].id;
   addNote(idoc2, itid2, createNote({ pitch: 60, startTick: 0, durationTicks: 96 }));
   addNote(idoc2, itid2, createNote({ pitch: 62, startTick: 192, durationTicks: 96 }));
-  setAutomationPoint(idoc2, itid2, 'instrument', { tick: 100, instrumentId: 'sine' });
-  setAutomationPoint(idoc2, itid2, 'instrument', { tick: 400, instrumentId: 'nope' });
+  setAutomationPoint(idoc2, itid2, 'attack', { tick: 100, value: 0.2, curve: 'step' });
+  setAutomationPoint(idoc2, itid2, 'sustain', { tick: 0, value: 0.5, curve: 'linear' });
+  setAutomationPoint(idoc2, itid2, 'sustain', { tick: 384, value: 1, curve: 'step' });
   const iev = flattenSong(idoc2).events;
-  assert(iev[0].instrumentId === 'badge', 'before switch: track default');
-  assert(iev[1].instrumentId === 'sine', 'after switch: new instrument');
-  addNote(idoc2, itid2, createNote({ pitch: 64, startTick: 480, durationTicks: 96 }));
-  const iev2 = flattenSong(idoc2).events;
-  assert(iev2[2].instrumentId === 'badge', 'unknown instrumentId falls back to track default');
+  assert(!('a' in (iev[0].adsr || {})), 'before first attack point: no attack override');
+  assert(iev[0].adsr && iev[0].adsr.s === 0.5, 'sustain override sampled at note start');
+  assert(iev[1].adsr.a === 0.2 && Math.abs(iev[1].adsr.s - 0.75) < 1e-9, 'second note samples both lanes (linear sustain midpoint)');
 
   // duty lane quantized; mono ignores automation entirely
   setAutomationPoint(idoc2, itid2, 'duty', { tick: 0, value: 0.333, curve: 'step' });
   assert(flattenSong(idoc2).events[0].duty === 0.33, 'duty sampled + quantized');
   idoc2.mode = 'mono';
   const mev = flattenSong(idoc2).events[0];
-  assert(!('duty' in mev) && !('gainMul' in mev) && mev.instrumentId === 'badge', 'mono ignores automation');
+  assert(!('duty' in mev) && !('gainMul' in mev) && !('adsr' in mev) && mev.instrumentId === 'badge', 'mono ignores automation');
+
+  // legacy instrument-switch lanes are dropped on load
+  const { migrate: migrate2 } = await import('../js/core/doc.js');
+  const legacy = createProject({ name: 'legacy', mode: 'poly' });
+  legacy.tracks[0].automation = { instrument: [{ tick: 0, instrumentId: 'sine' }], gain: [{ tick: 0, value: 0.5, curve: 'step' }] };
+  migrate2(legacy);
+  assert(!('instrument' in legacy.tracks[0].automation), 'migrate drops legacy instrument lanes');
+  assert(legacy.tracks[0].automation.gain.length === 1, 'other lanes survive the cleanup');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
