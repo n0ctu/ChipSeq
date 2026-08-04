@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ChipSeq - n0ctus chiptune sequencer for Arduino, Flipper Zero, MCUs and more</title>
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+  <link rel="stylesheet" href="css/components.css" />
+</head>
+<body>
+
+  <!-- ============ START SCREEN ============ -->
+  <section id="screen-start">
+    <div class="start-col">
+      <h1 class="app-title">chipseq</h1>
+      <p class="app-subtitle">n0ctus chiptune sequencer for Arduino, Flipper Zero, MCUs and more</p>
+      <div class="start-actions">
+        <button id="btn-new-project" class="btn btn-primary">New project</button>
+        <button id="btn-import-midi" class="btn">Import MIDI…</button>
+        <button id="btn-open-tune" class="btn">Open .tune.json…</button>
+      </div>
+      <h2 class="start-recent-title">Recent projects</h2>
+      <ul id="recent-list" class="recent-list"></ul>
+      <p class="start-hint">Drop a .mid or .tune.json file anywhere to import it.</p>
+    </div>
+  </section>
+
+  <!-- ============ EDITOR SCREEN ============ -->
+  <section id="screen-editor" hidden>
+    <header id="toolbar">
+      <button id="btn-home" class="btn btn-icon" title="Back to projects">&#8962;</button>
+      <input id="inp-name" class="inp-name" title="Project name" />
+      <span class="tb-sep"></span>
+      <label class="tb-field">BPM <input id="inp-bpm" type="number" min="20" max="400" step="1" /></label>
+      <label class="tb-field">Sig
+        <select id="sel-timesig"></select>
+      </label>
+      <label class="tb-field">Key
+        <select id="sel-key-tonic"></select><select id="sel-key-mode">
+          <option value="major">major</option>
+          <option value="minor">minor</option>
+        </select>
+      </label>
+      <button id="btn-detect-key" class="btn btn-icon" title="Detect key from the notes in the song">&#119558;?</button>
+      <div class="seg" id="seg-mode" role="group" aria-label="Mode">
+        <button data-mode="mono" class="seg-btn">Mono</button>
+        <button data-mode="poly" class="seg-btn">Poly</button>
+      </div>
+      <span class="tb-sep"></span>
+      <label class="tb-field">Snap <select id="sel-snap"></select></label>
+      <button id="btn-quantize" class="btn" title="Quantize selection (Q)">Q</button>
+      <span class="tb-sep"></span>
+      <button id="btn-play" class="btn btn-primary" title="Play/Stop from cursor (Space) · Pause/Resume (Shift+Space)">&#9654;</button>
+      <button id="btn-loop" class="btn btn-toggle" title="Loop (L)">&#8635;</button>
+      <button id="btn-metro" class="btn btn-toggle" title="Metronome (M)">&#9878;</button>
+      <span class="tb-sep"></span>
+      <button id="btn-undo" class="btn" title="Undo (Ctrl+Z)">&#8630;</button>
+      <button id="btn-redo" class="btn" title="Redo (Ctrl+Shift+Z)">&#8631;</button>
+      <span class="tb-sep"></span>
+      <div class="dropdown">
+        <button id="btn-trim" class="btn" title="Trim song at cursor">&#9986;</button>
+        <div class="dropdown-menu" id="menu-trim" hidden>
+          <button id="btn-trim-before">Trim before cursor</button>
+          <button id="btn-trim-after">Trim after cursor</button>
+        </div>
+      </div>
+      <button id="btn-export" class="btn" title="Export (Ctrl+E)">Export</button>
+      <span id="save-dot" class="save-dot" title="All changes saved">&#9679;</span>
+    </header>
+
+    <aside id="tracks-panel">
+      <div class="panel-head">
+        <span>Tracks</span>
+        <button id="btn-add-track" class="btn btn-icon" title="Add track">+</button>
+      </div>
+      <ul id="track-list" class="track-list"></ul>
+    </aside>
+
+    <div id="roll-area">
+      <div id="chords-corner" title="Chords analyzed from the chords track (right-click a track to set it)">chords</div>
+      <canvas id="chords-canvas"></canvas>
+      <div id="ruler-corner"></div>
+      <canvas id="ruler-canvas"></canvas>
+      <canvas id="keys-canvas"></canvas>
+      <div id="roll-viewport">
+        <canvas id="grid-canvas"></canvas>
+        <canvas id="notes-canvas"></canvas>
+        <canvas id="overlay-canvas" tabindex="0" aria-label="Piano roll editor"></canvas>
+      </div>
+      <div id="hscroll" class="scrollbar scrollbar-h"><div class="thumb"></div></div>
+      <div id="vscroll" class="scrollbar scrollbar-v"><div class="thumb"></div></div>
+    </div>
+
+    <aside id="harmonics-panel">
+      <div class="panel-head"><span>Harmonics</span></div>
+      <div id="harmonics-body" class="harm-body"></div>
+    </aside>
+
+    <footer id="status-bar">
+      <span id="st-pos" class="st-item mono-font"></span>
+      <span id="st-sel" class="st-item"></span>
+      <span id="st-conflicts" class="st-item"></span>
+      <span class="st-spacer"></span>
+      <span id="st-zoom" class="st-item mono-font"></span>
+      <span id="st-save" class="st-item"></span>
+      <span id="st-brand" class="st-item mono-font"></span>
+    </footer>
+  </section>
+
+  <!-- ============ DIALOGS ============ -->
+  <dialog id="dlg-midi-import">
+    <form method="dialog" class="dlg-form">
+      <h2>MIDI import — assign tracks</h2>
+      <p class="dlg-hint">Pick which track is the melody and which one holds the chords
+        (used by the arpeggiator's “Auto (song chords)” mode).</p>
+      <div id="midi-track-table"></div>
+      <div id="midi-import-meta" class="dlg-hint"></div>
+      <menu class="dlg-actions">
+        <button value="cancel" class="btn">Cancel</button>
+        <button value="ok" class="btn btn-primary" id="btn-midi-ok">Import</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-export">
+    <form method="dialog" class="dlg-form">
+      <h2>Export</h2>
+      <div class="seg" id="seg-export" role="group">
+        <button type="button" data-tab="h" class="seg-btn">.h (badge)</button>
+        <button type="button" data-tab="fmf" class="seg-btn">.fmf (Flipper)</button>
+        <button type="button" data-tab="wav" class="seg-btn">.wav</button>
+        <button type="button" data-tab="json" class="seg-btn">.tune.json</button>
+      </div>
+      <label class="tb-field" id="export-region-row">
+        <input type="checkbox" id="chk-export-region" />
+        <span id="export-region-label">Only export the loop region</span>
+      </label>
+      <div id="export-h-pane">
+        <label class="tb-field">Array name <input id="inp-symbol" type="text" spellcheck="false" /></label>
+        <div id="export-warnings" class="dlg-warnings"></div>
+        <pre id="export-preview" class="export-preview mono-font"></pre>
+      </div>
+      <div id="export-fmf-pane" hidden>
+        <p class="dlg-hint">Flipper Zero Music Player file. Note lengths are quantized to
+          FMF durations (1/1 … 1/128, dotted) — check the warnings for anything that had
+          to be rounded.</p>
+        <div id="export-fmf-warnings" class="dlg-warnings"></div>
+        <pre id="export-fmf-preview" class="export-preview mono-font"></pre>
+      </div>
+      <div id="export-wav-pane" hidden>
+        <p class="dlg-hint">Renders the current song (mono mix, 44.1 kHz, 16-bit) using the same
+          engine as playback.</p>
+      </div>
+      <div id="export-json-pane" hidden>
+        <p class="dlg-hint">Full project file, loadable via “Open .tune.json” — nothing is lost,
+          arpeggios stay editable.</p>
+      </div>
+      <menu class="dlg-actions">
+        <button value="cancel" class="btn">Close</button>
+        <button value="copy" type="button" id="btn-export-copy" class="btn">Copy</button>
+        <button value="download" type="button" id="btn-export-download" class="btn btn-primary">Download</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-confirm">
+    <form method="dialog" class="dlg-form">
+      <h2 id="confirm-title">Confirm</h2>
+      <p id="confirm-text"></p>
+      <menu class="dlg-actions">
+        <button value="cancel" class="btn">Cancel</button>
+        <button value="ok" class="btn btn-danger" id="btn-confirm-ok">OK</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-prompt">
+    <form method="dialog" class="dlg-form">
+      <h2 id="prompt-title">Input</h2>
+      <input id="prompt-input" type="text" spellcheck="false" />
+      <menu class="dlg-actions">
+        <button value="cancel" class="btn">Cancel</button>
+        <button value="ok" class="btn btn-primary">OK</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <input type="file" id="file-input" accept=".mid,.midi,.json,.tune.json" hidden />
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
