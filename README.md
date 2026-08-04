@@ -32,6 +32,15 @@ deploy from the repository root).
 - **Poly** — multiple tracks with instruments (square / sine / sawtooth,
   plus custom PWM-style waves in the project file), exports `.wav`.
 
+## The tools sidebar
+
+The right sidebar is context-sensitive: with notes selected it offers
+**Harmonics** (below) and **Transpose**; with no selection, Transpose targets
+the whole active track. Transpose moves notes in bulk — ±1 octave, ±1
+semitone, ±1 *scale degree* (stays in the song key), and "snap chromatic
+notes to key" for cleanup after imports or key changes. Sections fold and
+remember their state.
+
 ## Arpeggios (the fun part)
 
 Select a note → right panel. The arpeggio is stored **on** the note

@@ -7,6 +7,7 @@ import { explainNoteChord, flattenNote, makeArpContext } from '../core/flatten.j
 import { loadPresets, savePresets } from '../core/persist.js';
 import { chordName, PITCH_NAMES } from '../core/music.js';
 import { promptDialog, confirmDialog } from './dialogs.js';
+import { initSectionFold, updateEmptyHint } from './sections.js';
 import { icon } from './icons.js';
 
 const PATTERNS = [
@@ -54,6 +55,8 @@ function pcsEqual(a, b) {
 
 export function initHarmonicsPanel({ store, uiStore, roll, engine }) {
   const body = document.getElementById('harmonics-body');
+  const section = document.getElementById('sec-harmonics');
+  const ctxLabel = section.querySelector('.tool-ctx');
   const ui = uiStore.state;
 
   function selectedNotes() {
@@ -102,10 +105,11 @@ export function initHarmonicsPanel({ store, uiStore, roll, engine }) {
     const doc = store.getDoc();
     const notes = selectedNotes();
 
-    if (!notes.length) {
-      body.innerHTML = '<div class="harm-empty">Select a note to add an arpeggio.<br><br>An arpeggio sweeps the note through a chord — the main trick for lively mono square-wave tunes. It stays attached to the note and can be removed anytime.</div>';
-      return;
-    }
+    // Context-sensitive section: only shown while notes are selected.
+    section.hidden = !notes.length;
+    updateEmptyHint();
+    if (!notes.length) return;
+    ctxLabel.textContent = `${notes.length} note${notes.length === 1 ? '' : 's'}`;
 
     const arp = commonArp(notes);
     const has = !!arp;
@@ -200,7 +204,6 @@ export function initHarmonicsPanel({ store, uiStore, roll, engine }) {
 
     body.innerHTML = `
       <div class="harm-row">
-        <strong>${notes.length} note${notes.length === 1 ? '' : 's'}</strong>
         <span style="flex:1"></span>
         ${has ? `<button class="btn btn-icon" id="harm-audition" title="Audition this arpeggio">${icon('player-play')}</button>` : ''}
         <label class="tb-field"><input type="checkbox" id="harm-on" ${has ? 'checked' : ''}/> On</label>
@@ -406,5 +409,6 @@ export function initHarmonicsPanel({ store, uiStore, roll, engine }) {
 
   store.subscribe(['notes', 'tracks', 'arp', 'song', 'doc'], render);
   uiStore.subscribe(['selection'], render);
+  initSectionFold(section, 'harmonics');
   render();
 }

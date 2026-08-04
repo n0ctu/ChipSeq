@@ -11,6 +11,7 @@ const modules = [
   'ui/piano-roll/piano-roll.js', 'ui/keymap.js', 'ui/toolbar.js', 'ui/status-bar.js',
   'ui/start-screen.js', 'ui/tracks-panel.js', 'ui/harmonics-panel.js',
   'ui/midi-import-dialog.js', 'ui/export-dialog.js',
+  'ui/icons.js', 'ui/sections.js', 'ui/transpose-panel.js', 'ui/panel-resize.js', 'ui/trimmer.js',
 ];
 let failed = 0;
 for (const m of modules) {

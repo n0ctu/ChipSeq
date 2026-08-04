@@ -48,6 +48,39 @@ export function diatonicTriadIntervals(pitch, key) {
   return [0, third, fifth];
 }
 
+// Diatonic transpose: move by scale degrees within the key, so melodies stay
+// in key ("up a third" C->E, D->F in C major). Chromatic notes join the
+// scale ladder in the direction of movement.
+export function transposeDiatonic(pitch, key, steps) {
+  const scale = SCALES[key.mode];
+  const rel = pitch - key.tonic;
+  const oct = Math.floor(rel / 12);
+  const pc = ((rel % 12) + 12) % 12;
+  let deg = scale.indexOf(pc);
+  let adjust = 0;
+  if (deg < 0) {
+    // chromatic: anchor at the nearest scale degree below; moving down needs
+    // +1 so a single step lands on that lower neighbor
+    deg = 0;
+    for (let i = 0; i < 7; i++) if (scale[i] < pc) deg = i;
+    if (steps < 0) adjust = 1;
+  }
+  const ladder = oct * 7 + deg + steps + adjust;
+  const newOct = Math.floor(ladder / 7);
+  const newDeg = ((ladder % 7) + 7) % 7;
+  return key.tonic + newOct * 12 + scale[newDeg];
+}
+
+// Nearest in-key pitch (ties resolve downward). In-key pitches pass through.
+export function snapToKey(pitch, key) {
+  if (isInKey(pitch, key)) return pitch;
+  for (let d = 1; d <= 6; d++) {
+    if (isInKey(pitch - d, key)) return pitch - d;
+    if (isInKey(pitch + d, key)) return pitch + d;
+  }
+  return pitch;
+}
+
 export function snapTick(tick, gridTicks) {
   if (!gridTicks || gridTicks <= 1) return Math.round(tick);
   return Math.round(tick / gridTicks) * gridTicks;

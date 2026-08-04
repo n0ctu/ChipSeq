@@ -307,6 +307,73 @@ await sleep(100);
 await evaluate(`document.querySelector('#harmonics-body #harm-shift-inc').click()`);
 await sleep(150);
 
+// ---- tools sidebar: sections + transpose ----
+await check('both tool sections visible with a selection', `(() => {
+  const h = !document.getElementById('sec-harmonics').hidden;
+  const t = !document.getElementById('sec-transpose').hidden;
+  const hint = document.getElementById('tools-empty').hidden;
+  return h && t && hint || 'harm=' + h + ' trans=' + t;
+})()`);
+await check('transpose section shows selection scope', `document.querySelector('#sec-transpose .tool-ctx').textContent === '1 note'`);
+await check('+1 octave button transposes the selection', `(() => {
+  const d = () => window.__chipseq.store.getDoc();
+  const before = d().tracks[0].notes.find((n) => window.__chipseq.uiStore.state.selection.has(n.id)).pitch;
+  document.querySelector('#transpose-body #tp-oct-up').click();
+  const after = d().tracks[0].notes.find((n) => window.__chipseq.uiStore.state.selection.has(n.id)).pitch;
+  window.__chipseq.store.undo();
+  return after === before + 12 || before + '->' + after;
+})()`);
+await check('no selection: harmonics hides, transpose targets whole track', `(() => {
+  window.__chipseq.uiStore.update('selection', (st) => st.selection.clear());
+  const h = document.getElementById('sec-harmonics').hidden;
+  const label = document.querySelector('#sec-transpose .tool-ctx').textContent;
+  return h && label.startsWith('whole') || 'hidden=' + h + ' label=' + label;
+})()`);
+await check('diatonic +1 degree keeps notes in key', `(async () => {
+  const { isInKey } = await import('/js/core/music.js');
+  const d = () => window.__chipseq.store.getDoc();
+  const key = d().song.key;
+  const before = d().tracks[0].notes.map((n) => n.pitch);
+  document.querySelector('#transpose-body #tp-deg-up').click();
+  const after = d().tracks[0].notes.map((n) => n.pitch);
+  window.__chipseq.store.undo();
+  return after.every((p) => isInKey(p, key)) && after.every((p, i) => p > before[i])
+    || before.join() + ' -> ' + after.join();
+})()`);
+await check('snap-to-key conforms chromatic notes', `(async () => {
+  const { isInKey } = await import('/js/core/music.js');
+  const { createNote, addNote } = await import('/js/core/doc.js');
+  const s = window.__chipseq.store;
+  s.commit('chromatic seed', ['notes'], (d) => {
+    addNote(d, d.tracks[0].id, createNote({ pitch: 61, startTick: 96 * 30, durationTicks: 48 }));
+  });
+  document.querySelector('#transpose-body #tp-snap').click();
+  const key = s.getDoc().song.key;
+  const allInKey = s.getDoc().tracks[0].notes.every((n) => isInKey(n.pitch, key));
+  s.undo();
+  s.undo();
+  return allInKey;
+})()`);
+await check('section fold persists to localStorage', `(() => {
+  const sec = document.getElementById('sec-transpose');
+  sec.querySelector('.tool-head').click();
+  const folded = sec.classList.contains('folded');
+  const saved = JSON.parse(localStorage.getItem('chipseq.v1.sections') || '{}');
+  sec.querySelector('.tool-head').click();
+  return folded && saved.transpose === false && !sec.classList.contains('folded')
+    || 'folded=' + folded + ' saved=' + JSON.stringify(saved);
+})()`);
+// restore the selection for the following harmonics tests
+await evaluate(`(() => {
+  const s = window.__chipseq.store;
+  const note = s.getDoc().tracks[0].notes.find((n) => n.harmonics);
+  window.__chipseq.uiStore.update('selection', (st) => {
+    st.selection = new Set([note.id]);
+    st.selectionTrackId = s.getDoc().tracks[0].id;
+  });
+})()`);
+await sleep(150);
+
 // ---- chord source menu (autoSong) ----
 await evaluate(`(() => {
   const sel = document.querySelector('#harmonics-body #harm-chord');

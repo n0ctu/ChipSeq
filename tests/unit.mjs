@@ -498,6 +498,26 @@ function createTrackHelper(doc, name) {
   assert(i4.detail && i4.detail.includes('missing or empty'), 'fallback is explained');
 }
 
+// ---- diatonic transpose + snap to key ----
+{
+  const { transposeDiatonic, snapToKey } = await import('../js/core/music.js');
+  const C = { tonic: 0, mode: 'major' };
+  assert(transposeDiatonic(60, C, 1) === 62, 'C4 +1 degree -> D4');
+  assert(transposeDiatonic(64, C, 1) === 65, 'E4 +1 degree -> F4 (half step in scale)');
+  assert(transposeDiatonic(59, C, 1) === 60, 'B3 +1 degree -> C4 (octave wrap)');
+  assert(transposeDiatonic(60, C, -1) === 59, 'C4 -1 degree -> B3');
+  assert(transposeDiatonic(60, C, 7) === 72, '+7 degrees = +1 octave');
+  assert(transposeDiatonic(60, C, 2) === 64, 'C4 +2 degrees -> E4 (up a third)');
+  assert(transposeDiatonic(66, C, 1) === 67, 'chromatic F#4 +1 -> G4');
+  assert(transposeDiatonic(66, C, -1) === 65, 'chromatic F#4 -1 -> F4');
+  const Am = { tonic: 9, mode: 'minor' };
+  assert(transposeDiatonic(69, Am, 1) === 71, 'A4 +1 degree in A minor -> B4');
+  assert(transposeDiatonic(71, Am, 1) === 72, 'B4 +1 degree in A minor -> C5');
+  assert(snapToKey(66, C) === 65, 'F# snaps down to F (tie prefers down)');
+  assert(snapToKey(61, C) === 60, 'C# snaps down to C');
+  assert(snapToKey(64, C) === 64, 'in-key pitch passes through');
+}
+
 // ---- key detection from note content ----
 {
   const N = (pitch, dur) => ({ pitch, startTick: 0, durationTicks: dur });
