@@ -687,5 +687,116 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(flattenSong(idoc).events[0].instrumentId === 'badge', 'mono still forces the badge square');
 }
 
+// ---- automation: sampling math ----
+{
+  const { sampleAutomation, sampleStep, sampleGainCurve, quantizeDuty } = await import('../js/core/automation.js');
+  const lane = [
+    { tick: 96, value: 0.2, curve: 'linear' },
+    { tick: 192, value: 1.0, curve: 'step' },
+    { tick: 288, value: 0.5, curve: 'ease' },
+    { tick: 384, value: 0.9, curve: 'linear' },
+  ];
+  assert(sampleAutomation([], 50, 1) === 1, 'empty lane -> default');
+  assert(sampleAutomation(lane, 0, 1) === 1, 'before first point -> default');
+  assert(sampleAutomation(lane, 96, 1) === 0.2, 'exactly at a point -> point value');
+  assert(Math.abs(sampleAutomation(lane, 144, 1) - 0.6) < 1e-9, 'linear midpoint = mean');
+  assert(sampleAutomation(lane, 240, 1) === 1.0, 'step holds until next point');
+  assert(Math.abs(sampleAutomation(lane, 336, 1) - 0.7) < 1e-9, 'ease at t=0.5 = mean');
+  const t25 = sampleAutomation(lane, 312, 1); // t=0.25 into ease segment 0.5->0.9
+  assert(Math.abs(t25 - (0.5 + 0.4 * 0.15625)) < 1e-9, 'ease at t=0.25 = smoothstep');
+  assert(sampleAutomation(lane, 9999, 1) === 0.9, 'after last point -> hold');
+  const inst = [{ tick: 96, instrumentId: 'sine' }, { tick: 192, instrumentId: 'saw' }];
+  assert(sampleStep(inst, 95) === null, 'sampleStep null before first');
+  assert(sampleStep(inst, 96).instrumentId === 'sine', 'sampleStep inclusive at tick');
+  assert(sampleStep(inst, 500).instrumentId === 'saw', 'sampleStep holds last');
+  assert(quantizeDuty(0.3333) === 0.33, 'duty quantized to 1%');
+  // gain curve: flat span -> scalar; ramped span -> Float32Array
+  const flat = sampleGainCurve(lane, 200, 240, 1); // inside step-hold segment
+  assert(flat.gainMul === 1.0 && !flat.gainCurve, 'constant span -> scalar');
+  const ramp = sampleGainCurve(lane, 96, 192, 1);
+  assert(ramp.gainCurve && ramp.gainCurve.length >= 3, 'ramped span -> curve array');
+  assert(Math.abs(ramp.gainCurve[0] - 0.2) < 1e-6, 'curve starts at lane value');
+  const huge = sampleGainCurve([{tick:0,value:0,curve:'linear'},{tick:100000,value:1,curve:'linear'}], 0, 100000, 1);
+  assert(huge.gainCurve.length <= 256, 'curve length capped');
+}
+
+// ---- automation: doc helpers + trim ----
+{
+  const { setAutomationPoint, deleteAutomationPoint, moveAutomationPoint, getLane } =
+    await import('../js/core/doc.js');
+  const adoc2 = createProject({ name: 'auto', mode: 'poly' });
+  const tid = adoc2.tracks[0].id;
+  setAutomationPoint(adoc2, tid, 'gain', { tick: 192, value: 0.5, curve: 'linear' });
+  setAutomationPoint(adoc2, tid, 'gain', { tick: 96, value: 1, curve: 'step' });
+  eq(getLane(adoc2.tracks[0], 'gain').map((p) => p.tick), [96, 192], 'points kept sorted');
+  setAutomationPoint(adoc2, tid, 'gain', { tick: 96, value: 0.8, curve: 'ease' });
+  assert(getLane(adoc2.tracks[0], 'gain').length === 2 && getLane(adoc2.tracks[0], 'gain')[0].value === 0.8, 'same-tick replaces');
+  moveAutomationPoint(adoc2, tid, 'gain', 96, { tick: 192, value: 0.3, curve: 'linear' });
+  assert(getLane(adoc2.tracks[0], 'gain').length === 1 && getLane(adoc2.tracks[0], 'gain')[0].value === 0.3, 'move onto occupied tick replaces');
+  deleteAutomationPoint(adoc2, tid, 'gain', 192);
+  assert(getLane(adoc2.tracks[0], 'gain').length === 0, 'delete removes point');
+
+  // trim: seeds held value at 0 and shifts
+  const tdoc2 = createProject({ name: 'autotrim', mode: 'poly' });
+  const ttid2 = tdoc2.tracks[0].id;
+  addNote(tdoc2, ttid2, createNote({ pitch: 60, startTick: 0, durationTicks: 960 }));
+  setAutomationPoint(tdoc2, ttid2, 'gain', { tick: 0, value: 0.2, curve: 'linear' });
+  setAutomationPoint(tdoc2, ttid2, 'gain', { tick: 384, value: 1, curve: 'step' });
+  trimBefore(tdoc2, 192); // halfway through the linear ramp -> value 0.6
+  const lane2 = getLane(tdoc2.tracks[0], 'gain');
+  assert(lane2.length === 2 && lane2[0].tick === 0 && Math.abs(lane2[0].value - 0.6) < 1e-9, 'trimBefore seeds held value at 0');
+  assert(lane2[1].tick === 192, 'surviving point shifted');
+  trimAfter(tdoc2, 100);
+  assert(getLane(tdoc2.tracks[0], 'gain').length === 1, 'trimAfter drops tail points');
+}
+
+// ---- automation: flatten integration ----
+{
+  const { setAutomationPoint } = await import('../js/core/doc.js');
+  const fdoc2 = createProject({ name: 'autoflat', mode: 'poly' });
+  const ftid2 = fdoc2.tracks[0].id;
+  // arp note under a linear gain ramp: every arp step samples independently
+  addNote(fdoc2, ftid2, createNote({
+    pitch: 60, startTick: 0, durationTicks: 384,
+    harmonics: { mode: 'arp', stepsPerBeat: 4, pattern: 'up', octaves: 1, gate: 1, chordType: 'major' },
+  }));
+  setAutomationPoint(fdoc2, ftid2, 'gain', { tick: 0, value: 0.1, curve: 'linear' });
+  setAutomationPoint(fdoc2, ftid2, 'gain', { tick: 384, value: 1, curve: 'step' });
+  const evs = flattenSong(fdoc2).events;
+  assert(evs.length === 16, '16 arp steps');
+  assert(evs.every((e) => typeof e.gainMul === 'number'), 'short steps get scalar gainMul');
+  assert(evs[0].gainMul < evs[8].gainMul && evs[8].gainMul < evs[15].gainMul, 'per-step gainMul ramps up');
+
+  // held note under the same ramp gets a curve array
+  const hdoc2 = createProject({ name: 'autohold', mode: 'poly' });
+  const htid2 = hdoc2.tracks[0].id;
+  addNote(hdoc2, htid2, createNote({ pitch: 60, startTick: 0, durationTicks: 384 }));
+  setAutomationPoint(hdoc2, htid2, 'gain', { tick: 0, value: 0.1, curve: 'linear' });
+  setAutomationPoint(hdoc2, htid2, 'gain', { tick: 384, value: 1, curve: 'step' });
+  const hev = flattenSong(hdoc2).events[0];
+  assert(hev.gainCurve && hev.gainCurve.length >= 3 && !('gainMul' in hev), 'held note gets gainCurve');
+
+  // instrument switch rewrites ids; unknown id falls back
+  const idoc2 = createProject({ name: 'autoinst', mode: 'poly' });
+  const itid2 = idoc2.tracks[0].id;
+  addNote(idoc2, itid2, createNote({ pitch: 60, startTick: 0, durationTicks: 96 }));
+  addNote(idoc2, itid2, createNote({ pitch: 62, startTick: 192, durationTicks: 96 }));
+  setAutomationPoint(idoc2, itid2, 'instrument', { tick: 100, instrumentId: 'sine' });
+  setAutomationPoint(idoc2, itid2, 'instrument', { tick: 400, instrumentId: 'nope' });
+  const iev = flattenSong(idoc2).events;
+  assert(iev[0].instrumentId === 'badge', 'before switch: track default');
+  assert(iev[1].instrumentId === 'sine', 'after switch: new instrument');
+  addNote(idoc2, itid2, createNote({ pitch: 64, startTick: 480, durationTicks: 96 }));
+  const iev2 = flattenSong(idoc2).events;
+  assert(iev2[2].instrumentId === 'badge', 'unknown instrumentId falls back to track default');
+
+  // duty lane quantized; mono ignores automation entirely
+  setAutomationPoint(idoc2, itid2, 'duty', { tick: 0, value: 0.333, curve: 'step' });
+  assert(flattenSong(idoc2).events[0].duty === 0.33, 'duty sampled + quantized');
+  idoc2.mode = 'mono';
+  const mev = flattenSong(idoc2).events[0];
+  assert(!('duty' in mev) && !('gainMul' in mev) && mev.instrumentId === 'badge', 'mono ignores automation');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

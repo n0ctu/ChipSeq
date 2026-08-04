@@ -3,6 +3,7 @@
 
 import { PPQ } from './music.js';
 import { SCHEMA_VERSION } from './version.js';
+import { sampleAutomation, sampleStep, AUTOMATION_PARAMS } from './automation.js';
 
 export { PPQ };
 
@@ -177,6 +178,68 @@ export function updateNotes(doc, trackId, noteIds, fn) {
   sortNotes(track);
 }
 
+// ---- automation lanes (poly): track.automation = {gain, duty, instrument} ----
+
+export function getLane(track, param) {
+  return (track.automation && track.automation[param]) || [];
+}
+
+function ensureLane(track, param) {
+  if (!track.automation) track.automation = {};
+  if (!track.automation[param]) track.automation[param] = [];
+  return track.automation[param];
+}
+
+// Insert or replace the point at point.tick; lanes stay sorted by tick.
+export function setAutomationPoint(doc, trackId, param, point) {
+  const track = getTrack(doc, trackId);
+  if (!track) return;
+  const lane = ensureLane(track, param);
+  const existing = lane.findIndex((p) => p.tick === point.tick);
+  if (existing >= 0) lane[existing] = point;
+  else lane.push(point);
+  lane.sort((a, b) => a.tick - b.tick);
+}
+
+export function deleteAutomationPoint(doc, trackId, param, tick) {
+  const track = getTrack(doc, trackId);
+  if (!track || !track.automation || !track.automation[param]) return;
+  track.automation[param] = track.automation[param].filter((p) => p.tick !== tick);
+}
+
+export function moveAutomationPoint(doc, trackId, param, fromTick, newPoint) {
+  deleteAutomationPoint(doc, trackId, param, fromTick);
+  setAutomationPoint(doc, trackId, param, newPoint);
+}
+
+// Keep lanes consistent when the song is trimmed. mode 'before': drop points
+// left of the cut, shift survivors, and seed the value held at the cut so
+// the sound doesn't change; mode 'after': drop points at/after the cut.
+export function trimAutomation(track, tick, mode) {
+  if (!track.automation) return;
+  for (const param of Object.keys(track.automation)) {
+    const lane = track.automation[param];
+    if (!lane || !lane.length) continue;
+    if (mode === 'after') {
+      track.automation[param] = lane.filter((p) => p.tick < tick);
+      continue;
+    }
+    const step = !!(AUTOMATION_PARAMS[param] && AUTOMATION_PARAMS[param].step);
+    const dropped = lane.some((p) => p.tick < tick);
+    const kept = lane.filter((p) => p.tick >= tick).map((p) => ({ ...p, tick: p.tick - tick }));
+    if (dropped && (!kept.length || kept[0].tick > 0)) {
+      if (step) {
+        const held = sampleStep(lane, tick);
+        if (held) kept.unshift({ tick: 0, instrumentId: held.instrumentId });
+      } else {
+        const held = sampleAutomation(lane, tick, NaN);
+        if (!Number.isNaN(held)) kept.unshift({ tick: 0, value: held, curve: 'step' });
+      }
+    }
+    track.automation[param] = kept;
+  }
+}
+
 // ---- mono validation ----
 
 // Returns Set of note ids participating in time overlaps within a track.
@@ -250,6 +313,7 @@ export function trimBefore(doc, tick) {
       n.startTick -= tick;
     }
     sortNotes(t);
+    trimAutomation(t, tick, 'before');
   }
   if (doc.loop) {
     doc.loop.startTick = Math.max(0, doc.loop.startTick - tick);
@@ -265,6 +329,7 @@ export function trimAfter(doc, tick) {
     for (const n of t.notes) {
       if (n.startTick + n.durationTicks > tick) n.durationTicks = tick - n.startTick;
     }
+    trimAutomation(t, tick, 'after');
   }
   if (doc.loop) {
     doc.loop.endTick = Math.min(doc.loop.endTick, tick);

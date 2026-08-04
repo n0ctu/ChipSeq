@@ -125,11 +125,48 @@
   grid-template-areas:
     "ccorner chords"
     "corner  ruler"
-    "keys    roll";
-  grid-template-rows: 20px 28px 1fr;
+    "keys    roll"
+    "acorner auto";
+  grid-template-rows: 20px 28px 1fr 20px;
   grid-template-columns: 64px 1fr;
   overflow: hidden;
   background: var(--bg-0);
+}
+
+#roll-area.auto-open { grid-template-rows: 20px 28px 1fr 84px; }
+
+/* canvas attribute sizes must not become the row's min-content size —
+   otherwise the 1fr roll row can't shrink when the automation lane opens */
+#roll-viewport, #keys-canvas, #auto-canvas { min-height: 0; }
+#roll-area.mono-mode { grid-template-rows: 20px 28px 1fr 0px; }
+#roll-area.mono-mode #auto-corner,
+#roll-area.mono-mode #auto-canvas { display: none; }
+
+#auto-corner {
+  grid-area: acorner;
+  background: var(--bg-1);
+  border-top: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 1px 3px;
+  overflow: hidden;
+}
+#auto-corner button {
+  color: var(--text-dim);
+  font-size: 10px;
+  text-align: left;
+  padding: 1px 2px;
+  flex: none;
+}
+#auto-corner button:hover { color: var(--text); }
+#auto-corner select { font-size: 10px; padding: 0 2px; }
+
+#auto-canvas {
+  grid-area: auto;
+  width: 100%;
+  height: 100%;
 }
 
 #chords-corner {

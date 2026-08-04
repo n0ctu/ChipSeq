@@ -99,14 +99,14 @@ export function createStore(doc) {
       if (!undoStack.length) return;
       redoStack.push(JSON.stringify(current));
       current = JSON.parse(undoStack.pop());
-      emitChange(['doc', 'song', 'notes', 'tracks', 'history'], 'undo');
+      emitChange(['doc', 'song', 'notes', 'tracks', 'automation', 'history'], 'undo');
     },
 
     redo() {
       if (!redoStack.length) return;
       undoStack.push(JSON.stringify(current));
       current = JSON.parse(redoStack.pop());
-      emitChange(['doc', 'song', 'notes', 'tracks', 'history'], 'redo');
+      emitChange(['doc', 'song', 'notes', 'tracks', 'automation', 'history'], 'redo');
     },
 
     // subscribe(scopes, cb): cb({scopes,label,doc}) when any scope matches.

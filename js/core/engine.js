@@ -93,6 +93,9 @@ export function createEngine(store) {
             startTime: start,
             stopTime: stop,
             velocity: ev.velocity,
+            gainMul: ev.gainMul ?? 1,
+            gainCurve: ev.gainCurve ?? null,
+            duty: ev.duty ?? null,
           });
           liveNodes.add(node);
           node.onended = () => liveNodes.delete(node);
@@ -170,7 +173,7 @@ export function createEngine(store) {
   }
 
   // Re-flatten mid-playback when the document changes (edit while playing).
-  store.subscribe(['notes', 'tracks', 'song', 'harmonics', 'doc'], () => {
+  store.subscribe(['notes', 'tracks', 'song', 'harmonics', 'automation', 'doc'], () => {
     if (!playing) return;
     const tickNow = getPlayheadTick();
     stop();
