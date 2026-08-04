@@ -29,6 +29,10 @@
 
 .start-recent-title { font-size: 14px; color: var(--text-dim); margin-top: 12px; }
 
+/* the demos wrapper must reproduce the column's own gap, otherwise its
+   heading sits tighter to its list than "Recent projects" does */
+#demo-section { display: flex; flex-direction: column; gap: 12px; }
+
 .start-hint { color: var(--text-dim); font-size: 12px; margin-top: 16px; }
 
 /* ---- editor ---- */
