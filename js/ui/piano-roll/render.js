@@ -24,6 +24,7 @@ export function readTheme() {
     accent: v('--accent'),
     playhead: v('--playhead'),
     danger: v('--danger'),
+    noteBorder: v('--note-border'),
     trackColors: [1, 2, 3, 4, 5, 6, 7, 8].map((i) => v('--track-' + i)),
   };
 }
@@ -134,9 +135,9 @@ export function drawNotes(ctx, ui, doc, w, h, theme, items, selection, conflictI
     roundRect(ctx, r.x, r.y, r.w, r.h, 2);
     ctx.fill();
 
-    // dark contrast border so note boundaries stay visible (e.g. repeated
-    // same-pitch notes in a row)
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.65)';
+    // contrast border (themable) so note boundaries stay visible, e.g.
+    // repeated same-pitch notes in a row
+    ctx.strokeStyle = theme.noteBorder;
     ctx.lineWidth = 1;
     roundRect(ctx, r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1, 2);
     ctx.stroke();
