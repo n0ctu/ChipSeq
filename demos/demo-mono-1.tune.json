@@ -2,7 +2,7 @@
   "schema": "chipseq-tune",
   "version": 2,
   "id": "516d0895-2347-42b8-8aba-6948ef9e5e08",
-  "name": "Demo Mono 1",
+  "name": "Demo Mono",
   "mode": "mono",
   "ppq": 96,
   "song": {

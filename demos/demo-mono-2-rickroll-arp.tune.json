@@ -2,7 +2,7 @@
   "schema": "chipseq-tune",
   "version": 3,
   "id": "4b281855-35ad-45b6-a388-88f466318cb8",
-  "name": "Demo Mono 2 - Rickroll Arp",
+  "name": "Rickroll",
   "mode": "mono",
   "ppq": 96,
   "song": {

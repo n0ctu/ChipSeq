@@ -2,9 +2,11 @@
 
 import { listProjects, loadProject, deleteProject } from '../core/persist.js';
 import { confirmDialog } from './dialogs.js';
+import { icon } from './icons.js';
 
-export function initStartScreen({ onOpenProject, onNewProject, onFilePicked }) {
+export function initStartScreen({ onOpenProject, onNewProject, onFilePicked, onOpenDemo, getDemos }) {
   const list = document.getElementById('recent-list');
+  const demoList = document.getElementById('demo-list');
 
   function fmtDate(iso) {
     try {
@@ -46,6 +48,28 @@ export function initStartScreen({ onOpenProject, onNewProject, onFilePicked }) {
     }
   }
 
+  // Demos are read-only templates loaded fresh from demos/ on every visit -
+  // opening one and editing it forks a personal copy.
+  function renderDemos() {
+    const demos = getDemos ? getDemos() : [];
+    document.getElementById('demo-section').hidden = !demos.length;
+    demoList.innerHTML = '';
+    for (const demo of demos) {
+      const li = document.createElement('li');
+      li.className = 'recent-item demo-item';
+      li.innerHTML = `
+        <span class="mode-chip">${demo.mode === 'mono' ? 'MONO' : 'POLY'}</span>
+        <span class="recent-name"></span>
+        <span class="demo-chip">demo</span>
+        <span class="recent-meta">${demo.tracks.length} track${demo.tracks.length === 1 ? '' : 's'}</span>
+        <span class="recent-meta demo-open">${icon('player-play')}</span>`;
+      li.querySelector('.recent-name').textContent = demo.name;
+      li.title = 'Open the demo - editing it creates your own copy';
+      li.addEventListener('click', () => onOpenDemo(demo));
+      demoList.appendChild(li);
+    }
+  }
+
   document.getElementById('btn-new-project').addEventListener('click', onNewProject);
 
   const fileInput = document.getElementById('file-input');
@@ -83,5 +107,5 @@ export function initStartScreen({ onOpenProject, onNewProject, onFilePicked }) {
     if (e.dataTransfer.files.length) onFilePicked(e.dataTransfer.files[0]);
   });
 
-  return { render };
+  return { render: () => { render(); renderDemos(); } };
 }
