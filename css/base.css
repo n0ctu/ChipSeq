@@ -1,0 +1,76 @@
+/* chipseq theme — dark tracker/DAW. All colors live here; canvas code reads
+   these custom properties via getComputedStyle, so restyling = edit this file. */
+
+:root {
+  --bg-0: #101214;
+  --bg-1: #17191d;
+  --bg-2: #1f2228;
+  --bg-3: #262a31;
+  --line: #2a2e35;
+  --line-strong: #3a4048;
+  --text: #d5d9de;
+  --text-dim: #7d8590;
+  --accent: #4ade80;
+  --accent-dim: #2c8a52;
+  --playhead: #f5a623;
+  --danger: #ef4444;
+  --warn: #facc15;
+  --row-inkey: #1c2026;
+  --row-outkey: #17191d;
+  --row-root: #20262e;
+  --grid-beat: #2e333b;
+  --grid-bar: #444b55;
+  --grid-sub: #22262c;
+  --note-ghost-alpha: 0.25;
+  --track-1: #4ade80;
+  --track-2: #60a5fa;
+  --track-3: #f472b6;
+  --track-4: #facc15;
+  --track-5: #34d399;
+  --track-6: #a78bfa;
+  --track-7: #fb923c;
+  --track-8: #22d3ee;
+  --font-ui: system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", "Cascadia Mono", monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+[hidden] { display: none !important; }
+
+html, body {
+  height: 100%;
+  background: var(--bg-0);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.mono-font { font-family: var(--font-mono); }
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+input, select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+
+input:focus, select:focus, button:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+::selection { background: var(--accent-dim); }
+
+canvas { display: block; }
