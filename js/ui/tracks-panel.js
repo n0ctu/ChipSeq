@@ -5,7 +5,7 @@ import { promptDialog, confirmDialog } from './dialogs.js';
 import { icon } from './icons.js';
 import { readTheme, trackColor } from './piano-roll/render.js';
 
-export function initTracksPanel({ store, uiStore, onInstrumentPicker }) {
+export function initTracksPanel({ store, uiStore, onInstrumentPicker, onImportTracks }) {
   const list = document.getElementById('track-list');
   const theme = readTheme();
 
@@ -154,6 +154,10 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker }) {
       d.tracks.push(track);
       d.activeTrackId = track.id;
     });
+  });
+
+  document.getElementById('btn-import-track').addEventListener('click', () => {
+    if (onImportTracks) onImportTracks();
   });
 
   store.subscribe(['tracks', 'song', 'doc'], render);
