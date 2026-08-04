@@ -17,6 +17,7 @@ import { initToolbar } from './ui/toolbar.js';
 import { initStatusBar } from './ui/status-bar.js';
 import { initTracksPanel } from './ui/tracks-panel.js';
 import { initHarmonicsPanel } from './ui/harmonics-panel.js';
+import { initTransposePanel } from './ui/transpose-panel.js';
 import { initKeymap } from './ui/keymap.js';
 import { initExportDialog } from './ui/export-dialog.js';
 import { midiImportDialog } from './ui/midi-import-dialog.js';
@@ -118,6 +119,7 @@ const actions = initToolbar({
 initStatusBar({ store, uiStore, conflicts, roll });
 initTracksPanel({ store, uiStore });
 initHarmonicsPanel({ store, uiStore, roll, engine });
+initTransposePanel({ store, uiStore, engine });
 initKeymap({ store, uiStore, engine, roll, conflicts, actions });
 initPanelResizers();
 

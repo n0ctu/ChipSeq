@@ -93,8 +93,18 @@
     </div>
 
     <aside id="harmonics-panel">
-      <div class="panel-head"><span>Harmonics</span></div>
-      <div id="harmonics-body" class="harm-body"></div>
+      <div class="panel-head"><span>Tools</span></div>
+      <div class="tool-scroll">
+      <div id="tools-empty" class="tools-empty">Add notes to a track — tools for the selection appear here.</div>
+      <section class="tool-section" id="sec-harmonics" hidden>
+        <button type="button" class="tool-head"><span class="tool-caret">▾</span>Harmonics<span class="tool-ctx"></span></button>
+        <div id="harmonics-body" class="harm-body"></div>
+      </section>
+      <section class="tool-section" id="sec-transpose" hidden>
+        <button type="button" class="tool-head"><span class="tool-caret">▾</span>Transpose<span class="tool-ctx"></span></button>
+        <div id="transpose-body" class="harm-body"></div>
+      </section>
+      </div>
     </aside>
 
     <footer id="status-bar">

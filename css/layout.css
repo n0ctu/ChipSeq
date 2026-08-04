@@ -83,7 +83,7 @@
   position: relative;
 }
 
-#harmonics-panel .harm-body { overflow-y: auto; flex: 1; }
+#harmonics-panel .tool-scroll { overflow-y: auto; flex: 1; }
 
 #harmonics-panel.collapsed { width: 0 !important; border: none; }
 
