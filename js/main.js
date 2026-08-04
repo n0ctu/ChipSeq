@@ -5,7 +5,7 @@ import { createProject, applyImport, PPQ } from './core/doc.js';
 import { createStore } from './core/store.js';
 import {
   attachAutosave, saveProject, importTuneJson, listProjects, loadProject,
-  seededDemoFiles, markDemoSeeded,
+  lastOpenId, seededDemoFiles, markDemoSeeded,
 } from './core/persist.js';
 import { createEngine } from './core/engine.js';
 import { parseMidi } from './core/midi-import.js';
@@ -145,17 +145,18 @@ async function seedDemos() {
 }
 
 async function boot() {
-  // Snapshot the user's most recent project BEFORE seeding - a freshly
-  // seeded demo must never hijack the auto-open, and brand-new users are
-  // greeted with the start page.
-  const previousRecent = listProjects()[0] || null;
+  // Resume the LAST-OPENED project (not just the last-edited one - viewing
+  // a project without editing must still count as "where I left off").
+  // Snapshot before seeding so a freshly seeded demo can never hijack boot;
+  // brand-new users are greeted with the start page.
+  const resumeId = lastOpenId() || (listProjects()[0] || {}).id || null;
   try {
     await seedDemos();
   } catch (err) {
     console.warn('demo projects unavailable:', err);
   }
-  if (previousRecent) {
-    const doc = loadProject(previousRecent.id);
+  if (resumeId) {
+    const doc = loadProject(resumeId);
     if (doc) {
       openProject(doc);
       return;
