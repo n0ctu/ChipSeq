@@ -91,6 +91,7 @@ store.subscribe(EDIT_SCOPES, (ev) => {
 });
 
 // Demos: fetched fresh on every visit so updates reach everyone.
+// The manifest order in demos/index.json is the display order.
 let demos = [];
 async function loadDemos() {
   const files = await (await fetch('demos/index.json')).json();

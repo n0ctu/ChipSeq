@@ -129,7 +129,7 @@ current song at any time.
   copied into your storage. Open one to explore it; the moment you edit, a
   personal copy with the same name is created and the demo stays pristine.
   Add your own by dropping a `.tune.json` into `demos/` and listing it in
-  `demos/index.json`. Shipped: "Demo Mono" (arpeggios), "Demo Poly"
+  `demos/index.json` - that list is also the display order. Shipped: "Demo Mono" (arpeggios), "Demo Poly"
   (automation lanes: PWM duty sweep, intra-note gain swell, stepped-gain
   echoes, release change), "Rickroll", "Tetris" and "Bad Apple".
 - The export dialog can restrict `.h`/`.wav` output to the **loop region**
