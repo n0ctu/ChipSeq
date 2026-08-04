@@ -115,7 +115,10 @@ current song at any time.
 - Opening the app resumes the most recently edited project directly.
   First-time visitors land on the start page with the bundled demo projects
   waiting under "Recent projects" — demos live in `demos/` (add `.tune.json`
-  files there and list them in `demos/index.json`).
+  files there and list them in `demos/index.json`; newly shipped demos are
+  seeded once per browser, so they also reach returning users). "Demo Poly 1"
+  shows off the automation lanes: PWM duty sweep, an intra-note gain swell,
+  stepped-gain echoes and a release change.
 - The export dialog can restrict `.h`/`.wav` output to the **loop region**
   (checkbox, shown with its bar range). Region exports keep leading/trailing
   rests and are cut to the exact region length, so they loop seamlessly on

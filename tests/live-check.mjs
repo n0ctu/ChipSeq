@@ -75,11 +75,11 @@ await sleep(3000);
 
 await check('live app boots to the start page', `!document.getElementById('screen-start').hidden && !!window.__chipseq`);
 await check('title is correct', `document.title.startsWith('ChipSeq - n0ctus chiptune sequencer')`);
-await check('demo fetched from subpath and seeded', `(() => {
+await check('both demos fetched from subpath and seeded', `(() => {
   const text = document.getElementById('recent-list').textContent;
-  return text.includes('Demo Mono 1') || text.slice(0, 60);
+  return text.includes('Demo Mono 1') && text.includes('Demo Poly 1') || text.slice(0, 80);
 })()`);
-await evaluate(`document.querySelector('.recent-item').click()`);
+await evaluate(`[...document.querySelectorAll('.recent-item')].find((i) => i.textContent.includes('Demo Mono 1')).click()`);
 await sleep(500);
 await check('demo project opens in the editor', `(() => {
   const doc = window.__chipseq.store.getDoc();

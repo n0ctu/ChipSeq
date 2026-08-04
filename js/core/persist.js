@@ -54,11 +54,24 @@ export function lastOpenId() {
   return localStorage.getItem(KEY_LAST);
 }
 
-// One-shot flag: demos are seeded only for brand-new users, not re-imposed
-// on users who deliberately deleted everything.
+// Per-file seed tracking: each demo is imported at most once, so newly
+// shipped demos reach existing users while deleted ones never respawn.
 const KEY_SEEDED = PREFIX + 'demosSeeded';
-export const demosSeeded = () => localStorage.getItem(KEY_SEEDED) === '1';
-export const markDemosSeeded = () => localStorage.setItem(KEY_SEEDED, '1');
+export function seededDemoFiles() {
+  const raw = localStorage.getItem(KEY_SEEDED);
+  if (!raw) return [];
+  if (raw === '1') return ['demo-mono-1.tune.json']; // legacy one-shot flag
+  try {
+    return JSON.parse(raw) || [];
+  } catch {
+    return [];
+  }
+}
+export function markDemoSeeded(file) {
+  const list = seededDemoFiles();
+  if (!list.includes(file)) list.push(file);
+  localStorage.setItem(KEY_SEEDED, JSON.stringify(list));
+}
 
 // Debounced autosave wired to store changes. Emits 'storage-error' on the
 // store if the quota is hit — never deletes other projects silently.
