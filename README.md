@@ -120,6 +120,20 @@ In the grid: plain drag marquee-selects, a plain click just moves the cursor.
 (drag to sweep-erase); `Alt+drag` duplicates. Wheel scrolls through time,
 `Shift+wheel` scrolls pitch, `Ctrl+wheel` zooms, middle-drag pans.
 
+## Tests
+
+No frameworks here either — plain Node scripts in `tests/` (Node 22+):
+
+```sh
+node tests/unit.mjs        # 150 core-logic tests (arps, chords, exporters, MIDI, migrations)
+node tests/check.mjs       # imports every ES module to catch syntax errors
+node tests/smoke.mjs       # 90 browser tests driving the real UI headlessly
+node tests/live-check.mjs  # verifies a deployed instance (defaults to the GitHub Pages URL)
+```
+
+The browser suites need a Chromium binary — they auto-detect Playwright's
+cache and common system paths, or set `CHROME_BIN=/path/to/chrome`.
+
 ## Hacking
 
 - `js/core/` — engine, no DOM: document model (`doc.js`), snapshot undo
