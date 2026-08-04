@@ -387,8 +387,14 @@ export function drawKeys(ctx, ui, doc, w, h, theme) {
     const y = pitchToY(ui, p);
     const pc = p % 12;
     const black = BLACK_KEYS.has(pc);
-    ctx.fillStyle = black ? '#0c0d0f' : '#e8eaed';
+    // white key body always spans the full width; black keys sit on top at
+    // 75% width, like on a real keyboard
+    ctx.fillStyle = '#e8eaed';
     ctx.fillRect(0, y + 0.5, w - 4, ui.rowHeight - 1);
+    if (black) {
+      ctx.fillStyle = '#0c0d0f';
+      ctx.fillRect(0, y, (w - 4) * 0.75, ui.rowHeight);
+    }
     if (pc === 0) {
       ctx.fillStyle = black ? theme.textDim : '#555';
       ctx.fillText(noteName(p), w - 26, y + ui.rowHeight / 2);
