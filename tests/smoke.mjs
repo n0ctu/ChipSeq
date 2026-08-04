@@ -1052,10 +1052,12 @@ await sleep(700); // let autosave debounce flush
 const projName = await evaluate(`window.__chipseq.store.getDoc().name`);
 await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
 await sleep(1500);
-await check('reload auto-opens the most recently edited project', `(() => {
+await check('reload resumes the LAST-OPENED project (incl. its mode)', `(() => {
   const doc = window.__chipseq && window.__chipseq.store.getDoc();
-  return !document.getElementById('screen-editor').hidden && doc && doc.name === 'clubtune'
-    && doc.tracks[0].notes.length >= 1 || (doc ? doc.name : 'no app');
+  const activeSeg = document.querySelector('#seg-mode .seg-btn.active');
+  return !document.getElementById('screen-editor').hidden && doc && doc.name === ${JSON.stringify('Untitled')}
+    && activeSeg && activeSeg.dataset.mode === doc.mode
+    && doc.tracks[0].notes.length >= 1 || (doc ? doc.name + '/' + doc.mode : 'no app');
 })()`);
 await evaluate(`document.getElementById('btn-home').click()`);
 await sleep(300);

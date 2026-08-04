@@ -115,7 +115,7 @@ current song at any time.
 - Projects autosave to localStorage on every change (recent list on the start
   screen). `Export → .tune.json` gives a portable project file; everything in
   it stays editable, including applied arpeggios.
-- Opening the app resumes the most recently edited project directly.
+- Opening the app resumes the project you last had open.
   First-time visitors land on the start page with the bundled demo projects
   waiting under "Recent projects" - demos live in `demos/` (add `.tune.json`
   files there and list them in `demos/index.json`; newly shipped demos are
