@@ -74,3 +74,11 @@ input:focus, select:focus, button:focus-visible, [tabindex]:focus-visible {
 ::selection { background: var(--accent-dim); }
 
 canvas { display: block; }
+
+/* vendored icon sprite (Tabler Icons) */
+.icon {
+  width: 15px;
+  height: 15px;
+  vertical-align: -3px;
+  pointer-events: none;
+}

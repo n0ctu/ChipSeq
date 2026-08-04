@@ -5,6 +5,7 @@ import { PPQ, PITCH_NAMES, snapTick, detectKey, keyName } from '../core/music.js
 import { activeTrack, updateNotes } from '../core/doc.js';
 import { effectiveSnap } from './piano-roll/coords.js';
 import { contextMenu } from './dialogs.js';
+import { icon } from './icons.js';
 import { trimBeforeAction, trimAfterAction } from './trimmer.js';
 
 const TIME_SIGS = ['2/4', '3/4', '4/4', '5/4', '6/4', '3/8', '6/8', '7/8', '9/8', '12/8'];
@@ -46,7 +47,7 @@ export function initToolbar({ store, uiStore, engine, roll, openExport, goHome, 
     }
     $('btn-undo').disabled = !store.canUndo();
     $('btn-redo').disabled = !store.canRedo();
-    $('btn-play').innerHTML = engine.isPlaying() ? '&#9646;&#9646;' : '&#9654;';
+    $('btn-play').innerHTML = icon(engine.isPlaying() ? 'player-stop' : 'player-play');
     $('btn-loop').classList.toggle('active', !!(store.getLoop() && store.getLoop().enabled));
     $('btn-metro').classList.toggle('active', store.session.metronome);
     const snapIdx = SNAP_OPTIONS.findIndex((o) => o.ticks === ui.snapTicks && o.triplet === ui.triplet);

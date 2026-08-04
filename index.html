@@ -29,7 +29,7 @@
   <!-- ============ EDITOR SCREEN ============ -->
   <section id="screen-editor" hidden>
     <header id="toolbar">
-      <button id="btn-home" class="btn btn-icon" title="Back to projects">&#8962;</button>
+      <button id="btn-home" class="btn btn-icon" title="Back to projects"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-home"/></svg></button>
       <input id="inp-name" class="inp-name" title="Project name" />
       <span class="tb-sep"></span>
       <label class="tb-field">BPM <input id="inp-bpm" type="number" min="20" max="400" step="1" /></label>
@@ -42,7 +42,7 @@
           <option value="minor">minor</option>
         </select>
       </label>
-      <button id="btn-detect-key" class="btn btn-icon" title="Detect key from the notes in the song">&#119558;?</button>
+      <button id="btn-detect-key" class="btn btn-icon" title="Detect key from the notes in the song"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-wand"/></svg></button>
       <div class="seg" id="seg-mode" role="group" aria-label="Mode">
         <button data-mode="mono" class="seg-btn">Mono</button>
         <button data-mode="poly" class="seg-btn">Poly</button>
@@ -51,15 +51,15 @@
       <label class="tb-field">Snap <select id="sel-snap"></select></label>
       <button id="btn-quantize" class="btn" title="Quantize selection (Q)">Q</button>
       <span class="tb-sep"></span>
-      <button id="btn-play" class="btn btn-primary" title="Play/Stop from cursor (Space) · Pause/Resume (Shift+Space)">&#9654;</button>
-      <button id="btn-loop" class="btn btn-toggle" title="Loop (L)">&#8635;</button>
-      <button id="btn-metro" class="btn btn-toggle" title="Metronome (M)">&#9878;</button>
+      <button id="btn-play" class="btn btn-primary" title="Play/Stop from cursor (Space) · Pause/Resume (Shift+Space)"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-player-play"/></svg></button>
+      <button id="btn-loop" class="btn btn-toggle" title="Loop (L)"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-repeat"/></svg></button>
+      <button id="btn-metro" class="btn btn-toggle" title="Metronome (M)"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-metronome"/></svg></button>
       <span class="tb-sep"></span>
-      <button id="btn-undo" class="btn" title="Undo (Ctrl+Z)">&#8630;</button>
-      <button id="btn-redo" class="btn" title="Redo (Ctrl+Shift+Z)">&#8631;</button>
+      <button id="btn-undo" class="btn" title="Undo (Ctrl+Z)"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-arrow-back-up"/></svg></button>
+      <button id="btn-redo" class="btn" title="Redo (Ctrl+Shift+Z)"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-arrow-forward-up"/></svg></button>
       <span class="tb-sep"></span>
       <div class="dropdown">
-        <button id="btn-trim" class="btn" title="Trim song at cursor">&#9986;</button>
+        <button id="btn-trim" class="btn" title="Trim song at cursor"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-scissors"/></svg></button>
         <div class="dropdown-menu" id="menu-trim" hidden>
           <button id="btn-trim-before">Trim before cursor</button>
           <button id="btn-trim-after">Trim after cursor</button>
@@ -72,7 +72,7 @@
     <aside id="tracks-panel">
       <div class="panel-head">
         <span>Tracks</span>
-        <button id="btn-add-track" class="btn btn-icon" title="Add track">+</button>
+        <button id="btn-add-track" class="btn btn-icon" title="Add track"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-plus"/></svg></button>
       </div>
       <ul id="track-list" class="track-list"></ul>
     </aside>
