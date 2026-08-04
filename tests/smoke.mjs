@@ -811,6 +811,31 @@ await check('custom instrument flows into playback events', `(async () => {
   const ev = flattenSong(d).events.find((e) => e.instrumentId === 'track:' + d.tracks[0].id);
   return !!ev || 'no track: event';
 })()`);
+// audition toggle: live loop, input = live-only, change = commit
+await evaluate(`document.querySelector('#instrument-body #in-audition').click()`);
+await sleep(200);
+await check('audition toggle starts the loop', `(() => {
+  const btn = document.querySelector('#instrument-body #in-audition');
+  return window.__chipseq.engine.isAuditioning() && btn.classList.contains('active') || 'looping=' + window.__chipseq.engine.isAuditioning();
+})()`);
+await check('slider drag (input) updates label but not the doc', `(() => {
+  const d = () => window.__chipseq.store.getDoc();
+  const before = d().tracks[0].instrument.gain;
+  const el = document.querySelector('#instrument-body #in-gain');
+  el.value = '80';
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  const label = document.querySelector('#instrument-body #in-gain-label').textContent;
+  return d().tracks[0].instrument.gain === before && label === '80%' || 'gain=' + d().tracks[0].instrument.gain + ' label=' + label;
+})()`);
+await check('slider release (change) commits the value', `(() => {
+  const el = document.querySelector('#instrument-body #in-gain');
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  return window.__chipseq.store.getDoc().tracks[0].instrument.gain === 0.8 || window.__chipseq.store.getDoc().tracks[0].instrument.gain;
+})()`);
+await evaluate(`document.querySelector('#instrument-body #in-audition').click()`);
+await sleep(100);
+await check('audition toggle stops the loop', `!window.__chipseq.engine.isAuditioning()`);
+
 // save as preset via the prompt dialog
 await evaluate(`document.querySelector('#instrument-body #in-save').click()`);
 await sleep(300);
