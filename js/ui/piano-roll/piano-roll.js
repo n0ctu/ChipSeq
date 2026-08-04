@@ -1,12 +1,14 @@
 // Piano roll orchestrator: canvas layers, DPR sizing, dirty-flag rAF loop,
 // scroll/zoom, scrollbars. Mouse handling lives in interactions.js.
 
-import { readTheme, drawGrid, drawNotes, drawOverlay, drawRuler, drawKeys, drawChordLane } from './render.js';
+import { readTheme, drawGrid, drawNotes, drawOverlay, drawRuler, drawKeys, drawChordLane, drawAutomationLane } from './render.js';
 import { clampScroll, effectiveSnap, tickToX, PITCH_MIN, PITCH_MAX } from './coords.js';
 import { flattenNote, buildChordEvents } from '../../core/flatten.js';
-import { songEndTick } from '../../core/doc.js';
+import { songEndTick, activeTrack, getLane } from '../../core/doc.js';
+import { getInstrument } from '../../core/instruments.js';
 import { chordName } from '../../core/music.js';
 import { attachInteractions } from './interactions.js';
+import { initAutomationLane } from './automation-lane.js';
 
 export function initPianoRoll(store, uiStore, engine, conflicts) {
   const viewport = document.getElementById('roll-viewport');
@@ -17,13 +19,14 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
     ruler: document.getElementById('ruler-canvas'),
     keys: document.getElementById('keys-canvas'),
     chords: document.getElementById('chords-canvas'),
+    auto: document.getElementById('auto-canvas'),
   };
   const ctxs = Object.fromEntries(Object.entries(canvases).map(([k, c]) => [k, c.getContext('2d')]));
 
   let theme = readTheme();
   let W = 0;
   let H = 0;
-  const dirty = { grid: true, notes: true, overlay: true, ruler: true, keys: true, chords: true };
+  const dirty = { grid: true, notes: true, overlay: true, ruler: true, keys: true, chords: true, auto: true };
 
   // Chord events are rebuilt lazily on data changes, not per frame.
   let chordCache = null;
@@ -42,7 +45,7 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
     for (const l of layers) dirty[l] = true;
   }
   function markAll() {
-    markDirty('grid', 'notes', 'overlay', 'ruler', 'keys', 'chords');
+    markDirty('grid', 'notes', 'overlay', 'ruler', 'keys', 'chords', 'auto');
   }
 
   function sizeCanvas(canvas, ctx) {
@@ -108,6 +111,7 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
     if (playing) {
       dirty.overlay = true;
       dirty.ruler = true;
+      dirty.auto = true;
       // follow the playhead
       const x = tickToX(ui, playheadTick);
       if (x > W - 60 || x < 0) {
@@ -153,6 +157,39 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
     if (dirty.chords) {
       drawChordLane(ctxs.chords, ui, doc, canvases.chords.clientWidth, canvases.chords.clientHeight, theme, chordEvents());
       dirty.chords = false;
+    }
+    if (dirty.auto) {
+      const track = doc.mode === 'poly' ? activeTrack(doc) : null;
+      const param = ui.autoParam;
+      let defaultValue = null;
+      let hint = null;
+      let instrumentName = () => '';
+      if (track) {
+        const eff = getInstrument(doc, track.instrument ? 'track:' + track.id : track.instrumentId);
+        if (param === 'gain') defaultValue = 1;
+        if (param === 'duty') {
+          defaultValue = eff.duty ?? 0.25;
+          if (eff.wave !== 'custom' && !getLane(track, 'instrument').length) {
+            hint = 'PWM instruments only — no effect on this instrument';
+          }
+        }
+        instrumentName = (id) => {
+          if (id == null) return track.instrument ? 'Custom' : (doc.instruments.find((i) => i.id === track.instrumentId) || {}).name || '?';
+          return (doc.instruments.find((i) => i.id === id) || {}).name || '?';
+        };
+      }
+      drawAutomationLane(ctxs.auto, ui, doc, canvases.auto.clientWidth, canvases.auto.clientHeight, theme, {
+        param,
+        track,
+        drag: ui.autoDrag ? ui.autoDrag.points : null,
+        dragLabel: ui.autoDrag ? ui.autoDrag.label : null,
+        playheadTick,
+        playing,
+        defaultValue,
+        hint,
+        instrumentName,
+      });
+      dirty.auto = false;
     }
     updateScrollbars();
     requestAnimationFrame(frame);
@@ -276,6 +313,8 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
 
   // ---- subscriptions ----
   store.subscribe(['notes', 'tracks', 'harmonics'], () => markDirty('notes', 'ruler'));
+  store.subscribe(['automation', 'tracks', 'doc'], () => markDirty('auto'));
+  uiStore.subscribe(['autolane'], () => markDirty('auto'));
   store.subscribe(['loop'], () => markDirty('overlay', 'ruler'));
   store.subscribe(['song', 'doc'], () => markAll());
   uiStore.subscribe(['view'], () => markAll());
@@ -311,6 +350,7 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
   };
 
   api.interactions = attachInteractions({ store, uiStore, engine, canvases, roll: api });
+  initAutomationLane({ store, uiStore, canvas: canvases.auto });
 
   resizeAll();
   requestAnimationFrame(frame);

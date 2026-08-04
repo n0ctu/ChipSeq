@@ -13,18 +13,19 @@ export function dutyHarmonics(duty, n = 32) {
 
 const waveCache = new WeakMap(); // ctx -> Map<instrumentKey, PeriodicWave>
 
-function getPeriodicWave(ctx, instrument) {
+function getPeriodicWave(ctx, instrument, dutyOverride = null) {
   let byKey = waveCache.get(ctx);
   if (!byKey) {
     byKey = new Map();
     waveCache.set(ctx, byKey);
   }
-  const key = instrument.id + ':' + (instrument.duty ?? '') + ':' + (instrument.harmonics ? instrument.harmonics.join(',') : '');
+  const effDuty = dutyOverride ?? instrument.duty;
+  const key = instrument.id + ':' + (effDuty ?? '') + ':' + (instrument.harmonics ? instrument.harmonics.join(',') : '');
   let wave = byKey.get(key);
   if (!wave) {
     let imag;
-    if (instrument.duty != null) {
-      imag = dutyHarmonics(instrument.duty);
+    if (effDuty != null) {
+      imag = dutyHarmonics(effDuty);
     } else if (instrument.harmonics && instrument.harmonics.length) {
       imag = new Float32Array(instrument.harmonics.length + 1);
       instrument.harmonics.forEach((v, i) => (imag[i + 1] = v));
@@ -39,10 +40,19 @@ function getPeriodicWave(ctx, instrument) {
 }
 
 // Schedule one note into any BaseAudioContext (live or offline).
-export function scheduleNote(ctx, destination, instrument, { pitch, startTime, stopTime, velocity = 100 }) {
+// Automation extras: gainMul scales the whole note; gainCurve morphs the
+// level across the note's span (applied on a SEPARATE gain node — ADSR ramps
+// and setValueCurveAtTime may not share one AudioParam); duty overrides the
+// pulse width for PWM instruments.
+export function scheduleNote(
+  ctx,
+  destination,
+  instrument,
+  { pitch, startTime, stopTime, velocity = 100, gainMul = 1, gainCurve = null, duty = null }
+) {
   const osc = ctx.createOscillator();
   if (instrument.wave === 'custom') {
-    osc.setPeriodicWave(getPeriodicWave(ctx, instrument));
+    osc.setPeriodicWave(getPeriodicWave(ctx, instrument, duty));
   } else {
     osc.type = instrument.wave;
   }
@@ -50,7 +60,7 @@ export function scheduleNote(ctx, destination, instrument, { pitch, startTime, s
 
   const gain = ctx.createGain();
   const { a, d, s, r } = instrument.adsr;
-  const peak = instrument.gain * (velocity / 127);
+  const peak = instrument.gain * gainMul * (velocity / 127);
   const dur = stopTime - startTime;
 
   gain.gain.setValueAtTime(0, startTime);
@@ -64,7 +74,18 @@ export function scheduleNote(ctx, destination, instrument, { pitch, startTime, s
   gain.gain.setValueAtTime(sustainLevel, stopTime);
   gain.gain.linearRampToValueAtTime(0, stopTime + Math.max(r, 0.001));
 
-  osc.connect(gain).connect(destination);
+  let tail = gain;
+  if (gainCurve && gainCurve.length >= 2 && dur > 0) {
+    const auto = ctx.createGain();
+    // setValueCurveAtTime must not overlap ANY other event on this param —
+    // it defines the start value itself and holds the final value after.
+    auto.gain.setValueCurveAtTime(gainCurve, startTime, dur);
+    gain.connect(auto);
+    tail = auto;
+  }
+
+  osc.connect(gain);
+  tail.connect(destination);
   osc.start(startTime);
   osc.stop(stopTime + Math.max(r, 0.001) + 0.001);
   return osc;

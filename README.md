@@ -36,6 +36,18 @@ deploy from the repository root).
   the track "Custom" until saved as a named preset, which then appears in
   every track's picker and travels in the project file.
 
+## Automation keyframes (poly)
+
+The **auto** lane below the piano roll (fold with the corner button) automates
+the active track over time, FamiTracker-meets-DAW style: pick **Gain**,
+**Duty** (PWM) or **Instr** and click to place keyframes — drag to move,
+double-click cycles the curve (step / linear / ease), right-click deletes.
+Values are sampled per note event, so every arp step reads the curve
+independently (fast arps ⇒ smooth sweeps), and held notes get true intra-note
+gain ramps. Instrument keyframes switch the track between the project's
+instruments mid-song. Poly-only; mono and the `.h`/`.fmf` exports ignore
+automation entirely.
+
 ## The tools sidebar
 
 The right sidebar is context-sensitive: with notes selected it offers

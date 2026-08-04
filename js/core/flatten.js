@@ -4,6 +4,7 @@
 
 import { renderHarmonics, resolveChord } from './harmonics.js';
 import { playableTracks, getTrack, getNote, findOverlaps, ticksPerBar } from './doc.js';
+import { sampleAutomation, sampleStep, sampleGainCurve, quantizeDuty } from './automation.js';
 
 // Segment the chords track into a timeline of chord EVENTS that hold until
 // the next change (like a DAW chord track). Sampling "what sounds at exactly
@@ -137,6 +138,14 @@ export function flattenSong(doc) {
   for (const track of playableTracks(doc)) {
     const instrumentId =
       doc.mode === 'mono' ? 'badge' : track.instrument ? 'track:' + track.id : track.instrumentId;
+
+    // Automation lanes (poly only): sampled per rendered event, AFTER
+    // harmonics expansion so every arp step reads the curve independently.
+    const auto = doc.mode === 'poly' ? track.automation : null;
+    const gainLane = auto && auto.gain && auto.gain.length ? auto.gain : null;
+    const dutyLane = auto && auto.duty && auto.duty.length ? auto.duty : null;
+    const instLane = auto && auto.instrument && auto.instrument.length ? auto.instrument : null;
+
     for (const note of track.notes) {
       let rendered;
       if (doc.mode === 'mono' && note.harmonics && note.harmonics.mode === 'chord') {
@@ -145,7 +154,22 @@ export function flattenSong(doc) {
       } else {
         rendered = renderHarmonics(note, ctx);
       }
-      for (const ev of rendered) events.push({ ...ev, instrumentId, noteId: note.id });
+      for (const ev of rendered) {
+        let evInstrumentId = instrumentId;
+        if (instLane) {
+          const p = sampleStep(instLane, ev.startTick);
+          if (p && doc.instruments.some((i) => i.id === p.instrumentId)) evInstrumentId = p.instrumentId;
+        }
+        const extra = {};
+        if (gainLane) {
+          Object.assign(extra, sampleGainCurve(gainLane, ev.startTick, ev.startTick + ev.durationTicks, 1));
+        }
+        if (dutyLane) {
+          const d = sampleAutomation(dutyLane, ev.startTick, NaN);
+          if (!Number.isNaN(d)) extra.duty = quantizeDuty(d);
+        }
+        events.push({ ...ev, instrumentId: evInstrumentId, noteId: note.id, ...extra });
+      }
     }
   }
 

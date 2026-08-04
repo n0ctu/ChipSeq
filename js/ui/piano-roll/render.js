@@ -3,7 +3,8 @@
 
 import { tickToX, pitchToY, visibleTickRange, visiblePitchRange, PITCH_MIN, PITCH_MAX } from './coords.js';
 import { isInKey, noteName, PITCH_NAMES } from '../../core/music.js';
-import { ticksPerBeat, ticksPerBar } from '../../core/doc.js';
+import { ticksPerBeat, ticksPerBar, getLane } from '../../core/doc.js';
+import { AUTOMATION_PARAMS, sampleAutomation } from '../../core/automation.js';
 
 export function readTheme() {
   const cs = getComputedStyle(document.documentElement);
@@ -374,6 +375,159 @@ export function drawChordLane(ctx, ui, doc, w, h, theme, chords) {
   }
   ctx.fillStyle = theme.line;
   ctx.fillRect(0, h - 1, w, 1);
+}
+
+// ---- automation lane (strip below the roll, poly mode) ----
+
+const LANE_PAD = 6;
+
+export function valueToY(h, param, v) {
+  const { min, max } = AUTOMATION_PARAMS[param];
+  return LANE_PAD + (1 - (v - min) / (max - min)) * (h - 2 * LANE_PAD);
+}
+
+export function yToValue(h, param, y) {
+  const { min, max } = AUTOMATION_PARAMS[param];
+  const t = 1 - (y - LANE_PAD) / (h - 2 * LANE_PAD);
+  return Math.max(min, Math.min(max, min + t * (max - min)));
+}
+
+// o: { param, track, drag (preview lane|null), playheadTick, playing,
+//      defaultValue, instrumentName(id)->string }
+export function drawAutomationLane(ctx, ui, doc, w, h, theme, o) {
+  ctx.fillStyle = theme.panel;
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = theme.line;
+  ctx.fillRect(0, 0, w, 1);
+  if (!o.track || h < 30) return; // collapsed: header row only
+  const font = getComputedStyle(document.documentElement).getPropertyValue('--font-mono');
+
+  // faint bar lines
+  const { start, end } = visibleTickRange(ui, w);
+  const tpBar = ticksPerBar(doc);
+  ctx.fillStyle = theme.gridSub;
+  for (let t = Math.max(0, Math.floor(start / tpBar) * tpBar); t <= end; t += tpBar) {
+    ctx.fillRect(tickToX(ui, t), 0, 1, h);
+  }
+
+  const points = o.drag || getLane(o.track, o.param);
+  const color = trackColor(theme, doc, o.track.id);
+
+  if (o.param === 'instrument') {
+    // labeled step blocks, chord-lane style
+    ctx.font = 'bold 10px ' + font;
+    ctx.textBaseline = 'middle';
+    if (!points.length) {
+      ctx.fillStyle = theme.textDim;
+      ctx.font = 'italic 10px ' + font;
+      ctx.fillText(`no switches — always “${o.instrumentName(null)}” · click to add`, 8, h / 2);
+    }
+    for (let i = -1; i < points.length; i++) {
+      const from = i < 0 ? 0 : points[i].tick;
+      const to = points[i + 1] ? points[i + 1].tick : Infinity;
+      const x1 = Math.max(-1, tickToX(ui, from));
+      const x2 = to === Infinity ? w + 1 : Math.min(w + 1, tickToX(ui, to));
+      if (x2 < 0 || x1 > w || (i < 0 && !points.length)) continue;
+      const label = i < 0 ? o.instrumentName(null) : o.instrumentName(points[i].instrumentId);
+      ctx.globalAlpha = i < 0 ? 0.06 : i % 2 ? 0.12 : 0.2;
+      ctx.fillStyle = color;
+      ctx.fillRect(x1, 1, x2 - x1, h - 1);
+      ctx.globalAlpha = 1;
+      if (i >= 0) {
+        ctx.fillStyle = color;
+        ctx.fillRect(x1, 1, 1, h - 1);
+      }
+      if (label && x2 - x1 > 16) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x1 + 2, 0, x2 - x1 - 4, h);
+        ctx.clip();
+        ctx.fillStyle = i < 0 ? theme.textDim : theme.text;
+        ctx.fillText(label, x1 + 5, h / 2 + 0.5);
+        ctx.restore();
+      }
+    }
+  } else {
+    // envelope polyline for gain / duty
+    const def = o.defaultValue;
+    if (!points.length) {
+      if (def != null) {
+        const y = valueToY(h, o.param, def);
+        ctx.strokeStyle = theme.textDim;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, y + 0.5);
+        ctx.lineTo(w, y + 0.5);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.fillStyle = theme.textDim;
+      ctx.font = 'italic 10px ' + font;
+      ctx.textBaseline = 'middle';
+      ctx.fillText('click to add a keyframe — double-click a point cycles its curve, right-click deletes', 8, h / 2);
+      if (o.hint) ctx.fillText(o.hint, 8, h / 2 + 13);
+      return;
+    }
+
+    // build the polyline by sampling (handles all curve types uniformly)
+    const startTick = Math.max(0, ui.scrollTick);
+    const endTick = ui.scrollTick + w / ui.pxPerTick;
+    ctx.beginPath();
+    const firstVal = sampleAutomation(points, startTick, def ?? points[0].value);
+    ctx.moveTo(tickToX(ui, startTick), valueToY(h, o.param, firstVal));
+    const stepPx = 4;
+    for (let x = tickToX(ui, startTick) + stepPx; x <= tickToX(ui, Math.min(endTick, 1e9)); x += stepPx) {
+      const tick = ui.scrollTick + x / ui.pxPerTick;
+      const v = sampleAutomation(points, tick, def ?? points[0].value);
+      ctx.lineTo(x, valueToY(h, o.param, v));
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // area fill
+    ctx.lineTo(tickToX(ui, endTick), h);
+    ctx.lineTo(tickToX(ui, startTick), h);
+    ctx.closePath();
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // points
+    for (const p of points) {
+      const x = tickToX(ui, p.tick);
+      if (x < -6 || x > w + 6) continue;
+      const y = valueToY(h, o.param, p.value);
+      ctx.fillStyle = color;
+      ctx.fillRect(x - 3, y - 3, 6, 6);
+      ctx.strokeStyle = theme.noteBorder;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x - 3.5, y - 3.5, 7, 7);
+    }
+
+    // dragged-value label
+    if (o.drag && o.dragLabel) {
+      ctx.fillStyle = theme.text;
+      ctx.font = 'bold 10px ' + font;
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(o.dragLabel.text, o.dragLabel.x + 8, o.dragLabel.y - 4);
+    }
+    if (o.hint) {
+      ctx.fillStyle = theme.textDim;
+      ctx.font = 'italic 10px ' + font;
+      ctx.textBaseline = 'top';
+      ctx.fillText(o.hint, 8, 3);
+    }
+  }
+
+  // playhead
+  if (o.playing) {
+    const phX = tickToX(ui, o.playheadTick);
+    if (phX >= -1 && phX <= w + 1) {
+      ctx.fillStyle = theme.playhead;
+      ctx.fillRect(phX, 0, 2, h);
+    }
+  }
 }
 
 export function drawKeys(ctx, ui, doc, w, h, theme) {

@@ -35,6 +35,9 @@ export async function renderWav(doc, opts = {}) {
       startTime: ev.startTick * secondsPerTick,
       stopTime: (ev.startTick + ev.durationTicks) * secondsPerTick,
       velocity: ev.velocity,
+      gainMul: ev.gainMul ?? 1,
+      gainCurve: ev.gainCurve ?? null,
+      duty: ev.duty ?? null,
     });
   }
   const buffer = await ctx.startRendering();
