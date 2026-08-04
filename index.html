@@ -72,7 +72,8 @@
     <aside id="tracks-panel">
       <div class="panel-head">
         <span>Tracks</span>
-        <button id="btn-add-track" class="btn btn-icon" title="Add track"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-plus"/></svg></button>
+        <button id="btn-import-track" class="btn btn-icon" title="Import tracks from a MIDI file into this project"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-music"/></svg></button>
+        <button id="btn-add-track" class="btn btn-icon" title="Add empty track"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-plus"/></svg></button>
       </div>
       <ul id="track-list" class="track-list"></ul>
     </aside>
@@ -203,6 +204,7 @@
   </dialog>
 
   <input type="file" id="file-input" accept=".mid,.midi,.json,.tune.json" hidden />
+  <input type="file" id="track-import-input" accept=".mid,.midi" hidden />
 
   <script type="module" src="js/main.js"></script>
 </body>

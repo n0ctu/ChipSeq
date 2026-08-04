@@ -96,21 +96,42 @@ function createPreviewPlayer(bpm) {
 }
 
 // Returns assignments [{index, role, name}] or null on cancel.
-export async function midiImportDialog(parsed) {
+// opts.merge: importing INTO an existing project (adds tracks instead of
+// replacing the song); opts.projectBpm enables a tempo-mismatch hint.
+export async function midiImportDialog(parsed, opts = {}) {
   const dlg = document.getElementById('dlg-midi-import');
   const table = document.getElementById('midi-track-table');
   const meta = document.getElementById('midi-import-meta');
-  const suggested = suggestRoles(parsed.tracks);
+  const title = dlg.querySelector('h2');
+  const intro = dlg.querySelector('.dlg-hint');
+  const okBtn = document.getElementById('btn-midi-ok');
+  const suggested = suggestRoles(parsed.tracks).map((r) =>
+    // merging into an existing project: never hijack the chords source
+    opts.merge && r === 'chords' ? 'melody' : r
+  );
   const player = createPreviewPlayer(parsed.song.bpm);
+
+  title.textContent = opts.merge ? 'Import tracks into this project' : 'MIDI import - assign tracks';
+  intro.textContent = opts.merge
+    ? 'Pick the tracks to add. They are appended to the current project - song settings, existing tracks and the melody marker stay as they are.'
+    : 'Pick which track is the melody and which one holds the chords (used by the arpeggiator\u2019s \u201cAuto (song chords)\u201d mode).';
+  okBtn.textContent = opts.merge ? 'Add tracks' : 'Import';
 
   const bits = [];
   if (parsed.song.bpm != null) bits.push(`${parsed.song.bpm} BPM`);
   if (parsed.song.timeSig) bits.push(`${parsed.song.timeSig.num}/${parsed.song.timeSig.den}`);
   if (parsed.song.key) bits.push(keyName(parsed.song.key) + (parsed.song.keyGuessed ? ' (guessed from the notes)' : ''));
+  const tempoMismatch =
+    opts.merge && parsed.song.bpm != null && opts.projectBpm != null &&
+    Math.abs(parsed.song.bpm - opts.projectBpm) > 0.5;
   meta.innerHTML =
     (bits.length ? 'Detected: ' + bits.join(' - ') : 'No tempo/key metadata found - current song settings are kept.') +
-    '<br>Don’t worry about getting it perfect: melody and chords can be exchanged later' +
-    ' with the M/C buttons in the track list.';
+    (opts.merge
+      ? tempoMismatch
+        ? `<br>\u26a0 The file is ${parsed.song.bpm} BPM but this project runs at ${opts.projectBpm} BPM - the notes keep their musical positions and play at the project tempo.`
+        : ''
+      : '<br>Don\u2019t worry about getting it perfect: melody and chords can be exchanged later' +
+        ' with the M/C buttons in the track list.');
 
   const rows = parsed.tracks.map((t, i) => {
     const poly = Math.round(trackStats(t).polyRatio * 100);

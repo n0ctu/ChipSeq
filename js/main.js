@@ -1,7 +1,7 @@
 // Boot: create stores + engine, wire all UI components. The only place the
 // core and UI layers are composed.
 
-import { createProject, applyImport, PPQ } from './core/doc.js';
+import { createProject, applyImport, mergeImport, PPQ } from './core/doc.js';
 import { createStore } from './core/store.js';
 import {
   attachAutosave, saveProject, importTuneJson, listProjects, loadProject,
@@ -66,6 +66,30 @@ function openProject(doc) {
   showScreen('editor');
 }
 
+// Import MIDI tracks INTO the open project (tracks panel button).
+const trackImportInput = document.getElementById('track-import-input');
+trackImportInput.addEventListener('change', async () => {
+  const file = trackImportInput.files[0];
+  if (!file) return;
+  try {
+    const parsed = parseMidi(await file.arrayBuffer());
+    const doc = store.getDoc();
+    const assignments = await midiImportDialog(parsed, { merge: true, projectBpm: doc.song.bpm });
+    if (!assignments) return;
+    let addedIds = [];
+    store.commit('import MIDI tracks', ['tracks', 'notes'], (d) => {
+      addedIds = mergeImport(d, parsed, assignments);
+    });
+    uiStore.update('selection', (s) => {
+      s.selection.clear();
+      s.selectionTrackId = addedIds[0] || s.selectionTrackId;
+    });
+  } catch (err) {
+    console.error(err);
+    alert('Import failed: ' + err.message);
+  }
+});
+
 async function handleFile(file) {
   const name = file.name.toLowerCase();
   try {
@@ -119,7 +143,15 @@ const actions = initToolbar({
 
 initStatusBar({ store, uiStore, conflicts, roll });
 const instrumentPanel = initInstrumentPanel({ store, uiStore, engine });
-initTracksPanel({ store, uiStore, onInstrumentPicker: (trackId) => instrumentPanel.openFor(trackId) });
+initTracksPanel({
+  store,
+  uiStore,
+  onInstrumentPicker: (trackId) => instrumentPanel.openFor(trackId),
+  onImportTracks: () => {
+    trackImportInput.value = '';
+    trackImportInput.click();
+  },
+});
 initHarmonicsPanel({ store, uiStore, roll, engine });
 initTransposePanel({ store, uiStore, engine });
 initKeymap({ store, uiStore, engine, roll, conflicts, actions });

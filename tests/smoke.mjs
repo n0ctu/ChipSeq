@@ -820,6 +820,58 @@ await check('Enter in the rename prompt saves the new name', `(async () => {
   return closed && renamed || 'closed=' + closed + ' renamed=' + renamed;
 })()`);
 
+// ---- import MIDI tracks into the open project ----
+await check('import-track button sits next to the add button', `(() => {
+  const imp = document.getElementById('btn-import-track');
+  const add = document.getElementById('btn-add-track');
+  return !!imp && !!add && imp.nextElementSibling === add || 'imp=' + !!imp;
+})()`);
+await check('merge import adds tracks without touching the song', `(async () => {
+  const s = window.__chipseq.store;
+  const before = {
+    tracks: s.getDoc().tracks.length,
+    bpm: s.getDoc().song.bpm,
+    melody: s.getDoc().melodyTrackId,
+    firstName: s.getDoc().tracks[0].name,
+    notes: s.getDoc().tracks[0].notes.length,
+  };
+  // build a 2-track MIDI (120 BPM) and feed it to the hidden input
+  const bytes = [];
+  const push = (...b) => bytes.push(...b);
+  const str = (t) => push(...[...t].map((c) => c.charCodeAt(0)));
+  const u32 = (v) => push((v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255);
+  const u16 = (v) => push((v >>> 8) & 255, v & 255);
+  str('MThd'); u32(6); u16(1); u16(2); u16(480);
+  const t1 = [0x00,0xff,0x51,0x03,0x07,0xa1,0x20, 0x00,0x90,60,100, 0x83,0x60,0x80,60,0, 0x00,0xff,0x2f,0x00];
+  str('MTrk'); u32(t1.length); push(...t1);
+  const t2 = [0x00,0x90,48,80,0x00,52,80,0x00,55,80, 0x87,0x40,48,0,0x00,52,0,0x00,55,0, 0x00,0xff,0x2f,0x00];
+  str('MTrk'); u32(t2.length); push(...t2);
+  const file = new File([new Uint8Array(bytes)], 'add-me.mid', { type: 'audio/midi' });
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  const input = document.getElementById('track-import-input');
+  input.files = dt.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 600));
+
+  const dlg = document.getElementById('dlg-midi-import');
+  if (!dlg.open) return 'merge dialog did not open';
+  const titleOk = dlg.querySelector('h2').textContent.includes('into this project');
+  const okLabel = document.getElementById('btn-midi-ok').textContent === 'Add tracks';
+  const noChordSuggestion = [...document.querySelectorAll('#midi-track-table .midi-role')].every((s2) => s2.value !== 'chords');
+  document.getElementById('btn-midi-ok').click();
+  await new Promise((r) => setTimeout(r, 400));
+
+  const d = s.getDoc();
+  const grew = d.tracks.length === before.tracks + 2;
+  const songKept = d.song.bpm === before.bpm && d.melodyTrackId === before.melody;
+  const originalKept = d.tracks[0].name === before.firstName && d.tracks[0].notes.length === before.notes;
+  const focused = d.activeTrackId === d.tracks[before.tracks].id;
+  s.undo();
+  return titleOk && okLabel && noChordSuggestion && grew && songKept && originalKept && focused
+    || JSON.stringify({ titleOk, okLabel, noChordSuggestion, grew, songKept, originalKept, focused });
+})()`);
+
 // ---- resizable side panels ----
 await check('both panels have resize handles', `document.querySelectorAll('.panel-resize').length === 2`);
 await check('dragging the handle resizes the tracks panel and persists', `(() => {

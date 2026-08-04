@@ -100,6 +100,14 @@ quality - every fallback is spelled out in the panel.
 
 ## MIDI import
 
+Drop a `.mid` file anywhere to start a **new project** from it. To pull tracks
+**into the project you're working on**, use the music-note button next to "+"
+in the tracks panel: the same assignment dialog appears, but the chosen tracks
+are appended - song settings, existing tracks and the melody marker stay put,
+and colliding names get a numbered suffix. Notes keep their musical positions,
+so a file with a different tempo simply plays at the project's BPM (the dialog
+warns when they differ).
+
 Drop a `.mid` file anywhere. Every MIDI instrument (each channel in each
 chunk) becomes its own track, labeled with its General MIDI program name.
 You then assign each one a role (melody / chords / muted / skip) - the app

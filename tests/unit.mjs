@@ -848,5 +848,43 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(legacy2.melodyTrackId === 'second', 'migration defaults melody marker to the active track');
 }
 
+// ---- mergeImport: add MIDI tracks to an existing project ----
+{
+  const { mergeImport } = await import('../js/core/doc.js');
+  const base = createProject({ name: 'host', mode: 'poly' });
+  base.song.bpm = 90;
+  base.song.key = { tonic: 7, mode: 'major' };
+  const hostTrack = base.tracks[0];
+  hostTrack.name = 'Lead';
+  addNote(base, hostTrack.id, createNote({ pitch: 60, startTick: 0, durationTicks: 96 }));
+  base.melodyTrackId = hostTrack.id;
+  base.chordTrackId = null;
+
+  const parsedFile = parseMidi(buildMidi()); // 120 BPM, 2 tracks
+  const ids = mergeImport(base, parsedFile, [
+    { index: 0, role: 'melody', name: 'Lead' },      // name collides on purpose
+    { index: 1, role: 'chords', name: 'Chords' },
+  ]);
+  assert(base.tracks.length === 3, 'tracks appended, not replaced');
+  assert(base.tracks[0] === hostTrack && hostTrack.notes.length === 1, 'existing track untouched');
+  assert(base.song.bpm === 90 && base.song.key.tonic === 7, 'song settings preserved on merge');
+  assert(base.melodyTrackId === hostTrack.id, 'melody marker not hijacked');
+  assert(base.tracks[1].name === 'Lead 2', 'colliding names get a suffix');
+  assert(base.chordTrackId === ids[1], 'chords role assigns the chord source');
+  assert(base.activeTrackId === ids[0], 'editing focus moves to the import');
+  assert(base.tracks[1].notes.length === parsedFile.tracks[0].notes.length, 'notes copied');
+  assert(base.tracks[1].notes.every((n) => n.id && n.harmonics === null), 'notes are proper documents');
+
+  // skip + offset
+  const base2 = createProject({ name: 'host2', mode: 'poly' });
+  const ids2 = mergeImport(base2, parsedFile, [
+    { index: 0, role: 'skip', name: 'x' },
+    { index: 1, role: 'muted', name: 'Pad' },
+  ], { offsetTick: 384 });
+  assert(ids2.length === 1 && base2.tracks.length === 2, 'skip role is honored');
+  assert(base2.tracks[1].role === 'muted' && base2.chordTrackId === null, 'muted import sets no chord source');
+  assert(Math.min(...base2.tracks[1].notes.map((n) => n.startTick)) === 384, 'offsetTick shifts imported notes');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

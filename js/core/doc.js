@@ -378,3 +378,32 @@ export function applyImport(doc, parsed, assignments) {
   doc.activeTrackId = melody.track.id;
   doc.melodyTrackId = melody.track.id;
 }
+
+// Merge imported MIDI tracks into the CURRENT project: appends tracks and
+// leaves song settings, the melody marker and existing tracks alone. Notes
+// keep their musical positions (both sides are tick-based), so an import
+// with a different tempo simply plays at the project's BPM.
+// Returns the ids of the added tracks.
+export function mergeImport(doc, parsed, assignments, { offsetTick = 0 } = {}) {
+  const added = [];
+  for (const a of assignments) {
+    if (a.role === 'skip') continue;
+    const src = parsed.tracks[a.index];
+    const baseName = a.name || src.name || `Track ${a.index + 1}`;
+    // keep names unique so the tracks panel stays readable
+    let name = baseName;
+    for (let i = 2; doc.tracks.some((t) => t.name === name); i++) name = `${baseName} ${i}`;
+    const track = createTrack({
+      name,
+      role: a.role === 'chords' ? 'chords' : a.role,
+      instrumentId: doc.mode === 'mono' ? 'badge' : 'sine',
+    });
+    track.notes = src.notes.map((n) => createNote({ ...n, startTick: n.startTick + offsetTick }));
+    sortNotes(track);
+    doc.tracks.push(track);
+    added.push(track);
+    if (a.role === 'chords') doc.chordTrackId = track.id;
+  }
+  if (added.length) doc.activeTrackId = added[0].id; // focus the import, don't move the M marker
+  return added.map((t) => t.id);
+}
