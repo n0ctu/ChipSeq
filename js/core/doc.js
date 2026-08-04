@@ -165,6 +165,21 @@ export function songEndTick(doc) {
   return end;
 }
 
+// Where the bulk of a track's notes live: duration-weighted median pitch.
+// Used to centre the piano roll when a project opens (mono badge tunes tend
+// to sit high, so the default view would cut them off).
+export function trackPitchCenter(track) {
+  if (!track || !track.notes.length) return null;
+  const sorted = [...track.notes].sort((a, b) => a.pitch - b.pitch);
+  const total = sorted.reduce((sum, n) => sum + Math.max(1, n.durationTicks), 0);
+  let acc = 0;
+  for (const n of sorted) {
+    acc += Math.max(1, n.durationTicks);
+    if (acc >= total / 2) return n.pitch;
+  }
+  return sorted[sorted.length - 1].pitch;
+}
+
 // ---- note mutations (keep notes sorted by startTick) ----
 
 export function sortNotes(track) {

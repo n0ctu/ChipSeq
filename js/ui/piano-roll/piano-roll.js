@@ -102,6 +102,7 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
 
   // ---- rAF loop ----
   function frame() {
+    applyPendingCenter();
     const doc = store.getDoc();
     const ui = uiStore.state;
     const playing = engine.isPlaying();
@@ -292,10 +293,29 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
   uiStore.subscribe(['overlay'], () => markDirty('overlay'));
   uiStore.subscribe(['transport'], () => markDirty('overlay', 'ruler'));
 
+  // Centring may be requested before the editor screen has laid out (H = 0),
+  // so it is applied on the first frame that has a real height.
+  let pendingCenterPitch = null;
+  function applyPendingCenter() {
+    if (pendingCenterPitch == null || H <= 0) return;
+    const pitch = pendingCenterPitch;
+    pendingCenterPitch = null;
+    uiStore.update('view', (s) => {
+      s.scrollPitch = Math.round(pitch + H / s.rowHeight / 2);
+      clampScroll(s, W, H, songEndTick(store.getDoc()));
+    });
+  }
+
   const api = {
     markDirty,
     markAll,
     getSize: () => ({ W, H }),
+    // Put `pitch` in the vertical middle of the roll.
+    centerOnPitch(pitch) {
+      if (pitch == null) return;
+      pendingCenterPitch = pitch;
+      applyPendingCenter();
+    },
     // Keep a tick visible (used by keyboard nav + conflict jump).
     scrollTickIntoView(tick) {
       const ui = uiStore.state;

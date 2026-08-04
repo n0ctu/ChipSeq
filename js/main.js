@@ -1,7 +1,7 @@
 // Boot: create stores + engine, wire all UI components. The only place the
 // core and UI layers are composed.
 
-import { createProject, applyImport, mergeImport, uid, PPQ } from './core/doc.js';
+import { createProject, applyImport, mergeImport, uid, activeTrack, trackPitchCenter, PPQ } from './core/doc.js';
 import { createStore } from './core/store.js';
 import {
   attachAutosave, saveProject, importTuneJson, listProjects, loadProject,
@@ -70,6 +70,8 @@ function openProject(doc, { demo = null } = {}) {
   });
   if (!demo) saveProject(doc);
   showScreen('editor');
+  // centre the view where the active track's notes actually are
+  roll.centerOnPitch(trackPitchCenter(activeTrack(doc)));
 }
 
 // Editing a demo creates your own copy (same name, not a demo).

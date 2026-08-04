@@ -123,7 +123,9 @@ current song at any time.
 - Projects autosave to localStorage on every change (recent list on the start
   screen). `Export → .tune.json` gives a portable project file; everything in
   it stays editable, including applied arpeggios.
-- Opening the app resumes the project you last had open.
+- Opening the app resumes the project you last had open, with the piano roll
+  centred on the active track's notes (mono badge tunes sit high, so the
+  default view would cut them off).
 - **Demos** get their own section on the start page and are loaded fresh from
   `demos/` on every visit, so updates always reach everyone - they are never
   copied into your storage. Open one to explore it; the moment you edit, a

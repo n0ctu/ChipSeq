@@ -892,5 +892,24 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(Math.min(...base2.tracks[1].notes.map((n) => n.startTick)) === 384, 'offsetTick shifts imported notes');
 }
 
+// ---- trackPitchCenter: where the bulk of a track sits ----
+{
+  const { trackPitchCenter } = await import('../js/core/doc.js');
+  const T = (pitches) => ({ notes: pitches.map((p, i) => ({ pitch: p, startTick: i * 96, durationTicks: 96 })) });
+  assert(trackPitchCenter(null) === null, 'no track -> null');
+  assert(trackPitchCenter({ notes: [] }) === null, 'empty track -> null');
+  assert(trackPitchCenter(T([84])) === 84, 'single note');
+  assert(trackPitchCenter(T([84, 86, 88])) === 86, 'median of three');
+  // a high mono badge tune with one stray bass note stays high
+  assert(trackPitchCenter(T([36, 84, 86, 88, 90])) === 86, 'outlier does not drag the centre');
+  // weighting: one long low note outweighs several short high ones
+  const weighted = { notes: [
+    { pitch: 48, startTick: 0, durationTicks: 960 },
+    { pitch: 84, startTick: 960, durationTicks: 24 },
+    { pitch: 86, startTick: 984, durationTicks: 24 },
+  ] };
+  assert(trackPitchCenter(weighted) === 48, 'duration-weighted median');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
