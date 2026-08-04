@@ -805,5 +805,24 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(legacy.tracks[0].automation.gain.length === 1, 'other lanes survive the cleanup');
 }
 
+// ---- demo files are valid and showcase what they claim ----
+{
+  const { readFile } = await import('node:fs/promises');
+  const { migrate } = await import('../js/core/doc.js');
+  const index = JSON.parse(await readFile(new URL('../demos/index.json', import.meta.url), 'utf8'));
+  eq(index, ['demo-mono-1.tune.json', 'demo-poly-1.tune.json'], 'demo manifest lists both demos');
+  for (const file of index) {
+    const doc = migrate(JSON.parse(await readFile(new URL('../demos/' + file, import.meta.url), 'utf8')));
+    assert(doc.tracks.every((t) => t.notes.length >= 0), file + ' migrates cleanly');
+  }
+  const poly = migrate(JSON.parse(await readFile(new URL('../demos/demo-poly-1.tune.json', import.meta.url), 'utf8')));
+  assert(poly.mode === 'poly', 'poly demo is poly');
+  const evs = flattenSong(poly).events;
+  assert(evs.some((e) => e.gainCurve), 'poly demo has an intra-note gain curve');
+  assert(evs.some((e) => e.duty != null), 'poly demo has duty automation');
+  assert(evs.some((e) => e.adsr && e.adsr.r != null), 'poly demo has a release override');
+  assert(new Set(evs.filter((e) => typeof e.gainMul === 'number').map((e) => e.gainMul)).size >= 3, 'poly demo has stepped gain echoes');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

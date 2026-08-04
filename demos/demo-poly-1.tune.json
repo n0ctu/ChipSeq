@@ -1,0 +1,717 @@
+{
+  "schema": "chipseq-tune",
+  "version": 3,
+  "id": "47ec2f8a-cdf0-4d3a-9bbc-b7fb5b35e78d",
+  "name": "Demo Poly 1 — Automation",
+  "mode": "poly",
+  "ppq": 96,
+  "song": {
+    "bpm": 112,
+    "timeSig": {
+      "num": 4,
+      "den": 4
+    },
+    "key": {
+      "tonic": 9,
+      "mode": "minor"
+    }
+  },
+  "instruments": [
+    {
+      "id": "badge",
+      "name": "Square",
+      "wave": "square",
+      "harmonics": null,
+      "duty": null,
+      "adsr": {
+        "a": 0.002,
+        "d": 0,
+        "s": 1,
+        "r": 0.002
+      },
+      "gain": 0.35
+    },
+    {
+      "id": "sine",
+      "name": "Sine",
+      "wave": "sine",
+      "harmonics": null,
+      "duty": null,
+      "adsr": {
+        "a": 0.005,
+        "d": 0.03,
+        "s": 0.8,
+        "r": 0.04
+      },
+      "gain": 0.5
+    },
+    {
+      "id": "saw",
+      "name": "Sawtooth",
+      "wave": "sawtooth",
+      "harmonics": null,
+      "duty": null,
+      "adsr": {
+        "a": 0.005,
+        "d": 0.03,
+        "s": 0.8,
+        "r": 0.04
+      },
+      "gain": 0.35
+    },
+    {
+      "id": "pwm-demo",
+      "name": "PWM",
+      "wave": "custom",
+      "harmonics": null,
+      "duty": 0.25,
+      "adsr": {
+        "a": 0.003,
+        "d": 0.04,
+        "s": 0.85,
+        "r": 0.06
+      },
+      "gain": 0.35
+    }
+  ],
+  "tracks": [
+    {
+      "id": "70707a08-baf0-4627-972d-8654d472049c",
+      "name": "PWM Lead",
+      "role": "melody",
+      "instrumentId": "pwm-demo",
+      "notes": [
+        {
+          "id": "9409b563-ba4a-45a9-a587-3cc29a56d09a",
+          "pitch": 69,
+          "startTick": 0,
+          "durationTicks": 48,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "a4e52a18-c876-4be6-8916-f5971a68dfd0",
+          "pitch": 72,
+          "startTick": 48,
+          "durationTicks": 48,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "f3e70cd3-c0e2-40c0-9ca4-6b84aa0e67cb",
+          "pitch": 76,
+          "startTick": 96,
+          "durationTicks": 96,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "d561b306-68a6-4429-9c2b-04b61c3dbb15",
+          "pitch": 74,
+          "startTick": 192,
+          "durationTicks": 48,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "690f8b95-2da1-4656-bc99-d4f299564673",
+          "pitch": 72,
+          "startTick": 240,
+          "durationTicks": 48,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "3bf40c65-6a07-40c1-9728-d0cfec107ca1",
+          "pitch": 69,
+          "startTick": 288,
+          "durationTicks": 96,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "7328a92e-b187-40a3-be80-a885a43c4ec3",
+          "pitch": 67,
+          "startTick": 384,
+          "durationTicks": 48,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "5701cd6d-58fd-4202-ace6-c2869cdb79aa",
+          "pitch": 69,
+          "startTick": 432,
+          "durationTicks": 48,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "cd419169-493e-4136-bc33-9a4c25455796",
+          "pitch": 72,
+          "startTick": 480,
+          "durationTicks": 96,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "7983bc79-1a79-4efa-b62b-38d0fd81cccb",
+          "pitch": 69,
+          "startTick": 576,
+          "durationTicks": 48,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "881c6d48-a366-40af-a14e-124aa1a4f0b6",
+          "pitch": 67,
+          "startTick": 624,
+          "durationTicks": 48,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "b00653eb-3031-4105-99e0-fb0bb3c86bf1",
+          "pitch": 64,
+          "startTick": 672,
+          "durationTicks": 96,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "b9deb3c3-8a38-42c8-a323-6da940582712",
+          "pitch": 69,
+          "startTick": 768,
+          "durationTicks": 768,
+          "velocity": 100,
+          "harmonics": {
+            "mode": "arp",
+            "stepsPerBeat": 8,
+            "pattern": "updown",
+            "octaves": 2,
+            "gate": 0.85,
+            "chordType": "autoKey",
+            "anchor": "above",
+            "octaveShift": 0
+          }
+        },
+        {
+          "id": "9f28b8a0-df05-4638-a5b3-165805bb9f1c",
+          "pitch": 76,
+          "startTick": 1536,
+          "durationTicks": 768,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "d56638ba-b870-4459-913d-48cabf7f35f4",
+          "pitch": 74,
+          "startTick": 2304,
+          "durationTicks": 96,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "47fa2c63-11c1-4286-ade4-99c47da92aea",
+          "pitch": 72,
+          "startTick": 2400,
+          "durationTicks": 96,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "3e724e5a-a2fd-4e0c-aca7-81ac8feafabe",
+          "pitch": 69,
+          "startTick": 2496,
+          "durationTicks": 576,
+          "velocity": 100,
+          "harmonics": null
+        }
+      ],
+      "automation": {
+        "duty": [
+          {
+            "tick": 0,
+            "value": 0.12,
+            "curve": "linear"
+          },
+          {
+            "tick": 1536,
+            "value": 0.45,
+            "curve": "ease"
+          },
+          {
+            "tick": 3072,
+            "value": 0.2,
+            "curve": "step"
+          }
+        ],
+        "gain": [
+          {
+            "tick": 0,
+            "value": 0.95,
+            "curve": "step"
+          },
+          {
+            "tick": 1536,
+            "value": 0.2,
+            "curve": "ease"
+          },
+          {
+            "tick": 2304,
+            "value": 1,
+            "curve": "step"
+          }
+        ]
+      }
+    },
+    {
+      "id": "bd6d97c0-d89a-4813-a83d-cf9acc328b01",
+      "name": "Echo Square",
+      "role": "melody",
+      "instrumentId": "badge",
+      "notes": [
+        {
+          "id": "fd85cffb-7f0a-42df-bdcb-b3bb0ab76836",
+          "pitch": 45,
+          "startTick": 768,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "85ff3860-228b-4e9a-ba82-e2e72df4bf0b",
+          "pitch": 45,
+          "startTick": 816,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "6d335ce2-03c0-400f-ac82-2933c9b25dad",
+          "pitch": 45,
+          "startTick": 864,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "192b8d01-7021-4d6c-953c-bc56c7d8653d",
+          "pitch": 45,
+          "startTick": 912,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "249b9adf-5f2d-49e8-8c61-4be6f9133e8c",
+          "pitch": 45,
+          "startTick": 960,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "60ad32ec-d805-47ee-b416-1aa89356fc54",
+          "pitch": 45,
+          "startTick": 1008,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "997a8b5d-de12-477c-bf7a-0ea9c2582d55",
+          "pitch": 45,
+          "startTick": 1056,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "37ac934a-562d-498b-8be3-3615f1423b5b",
+          "pitch": 45,
+          "startTick": 1104,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "c539d3e3-8866-4066-a7a8-62df11e475a7",
+          "pitch": 45,
+          "startTick": 1152,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "2ced3452-dfb8-4c1b-bb3a-bb6def258424",
+          "pitch": 45,
+          "startTick": 1200,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "781c45f3-9f93-47d7-a46f-fe4382beaf54",
+          "pitch": 45,
+          "startTick": 1248,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "11db5640-b703-4929-8545-78dc151608ea",
+          "pitch": 45,
+          "startTick": 1296,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "0d2f2758-dcc3-408b-9060-59a8cb8195b5",
+          "pitch": 45,
+          "startTick": 1344,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "453a2d34-c5c4-49b4-8e83-bd3379399d72",
+          "pitch": 45,
+          "startTick": 1392,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "cd60d732-f07e-4cf0-94b7-1e72402fc252",
+          "pitch": 45,
+          "startTick": 1440,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "83c7af8c-2b5b-43a0-a26e-1479611a910e",
+          "pitch": 45,
+          "startTick": 1488,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "d04f62f3-7410-41b8-98d5-dca6730f4bb3",
+          "pitch": 45,
+          "startTick": 2304,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "4b2ff453-537f-4d89-9591-1dbadd0abbbc",
+          "pitch": 45,
+          "startTick": 2352,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "74afeb41-382c-430d-8089-c15f9387aad4",
+          "pitch": 45,
+          "startTick": 2400,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "c9974f93-89ee-4731-aaeb-6f8e0454f862",
+          "pitch": 45,
+          "startTick": 2448,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "42ca57b0-3323-417e-9440-2740a7697dbd",
+          "pitch": 45,
+          "startTick": 2496,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "45a19b48-6a91-4092-b40d-61f3afa0e519",
+          "pitch": 45,
+          "startTick": 2544,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "55c1b3f7-cb2b-47e6-91d0-4e17a4b51ca2",
+          "pitch": 45,
+          "startTick": 2592,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "7de83de8-c8d8-4fe4-b9cc-5cdcf91dae2d",
+          "pitch": 45,
+          "startTick": 2640,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "be6e7dbd-ae32-443a-b2fa-d273d4e6a93a",
+          "pitch": 45,
+          "startTick": 2688,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "f122ebea-cb5c-4857-af52-271b74524da3",
+          "pitch": 45,
+          "startTick": 2736,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "42ba0d94-8d1e-4645-bae2-9a29db5cc4d4",
+          "pitch": 45,
+          "startTick": 2784,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "aaa282eb-6638-4287-889e-f9d95730f3f2",
+          "pitch": 45,
+          "startTick": 2832,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "39cf1d3f-3dde-48cc-93e2-2167582a63f3",
+          "pitch": 45,
+          "startTick": 2880,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "b89fec43-71cb-498c-b7c3-207310aef291",
+          "pitch": 45,
+          "startTick": 2928,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "b14290a2-b87a-411c-9c27-9f2478f0c811",
+          "pitch": 45,
+          "startTick": 2976,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "a5e255b3-f159-406e-84ab-e12af08eda59",
+          "pitch": 45,
+          "startTick": 3024,
+          "durationTicks": 36,
+          "velocity": 100,
+          "harmonics": null
+        }
+      ],
+      "automation": {
+        "gain": [
+          {
+            "tick": 768,
+            "value": 1,
+            "curve": "step"
+          },
+          {
+            "tick": 816,
+            "value": 0.55,
+            "curve": "step"
+          },
+          {
+            "tick": 864,
+            "value": 0.3,
+            "curve": "step"
+          },
+          {
+            "tick": 912,
+            "value": 0.15,
+            "curve": "step"
+          },
+          {
+            "tick": 960,
+            "value": 1,
+            "curve": "step"
+          },
+          {
+            "tick": 1008,
+            "value": 0.55,
+            "curve": "step"
+          },
+          {
+            "tick": 1056,
+            "value": 0.3,
+            "curve": "step"
+          },
+          {
+            "tick": 1104,
+            "value": 0.15,
+            "curve": "step"
+          },
+          {
+            "tick": 1152,
+            "value": 1,
+            "curve": "step"
+          },
+          {
+            "tick": 1200,
+            "value": 0.55,
+            "curve": "step"
+          },
+          {
+            "tick": 1248,
+            "value": 0.3,
+            "curve": "step"
+          },
+          {
+            "tick": 1296,
+            "value": 0.15,
+            "curve": "step"
+          },
+          {
+            "tick": 1344,
+            "value": 1,
+            "curve": "step"
+          },
+          {
+            "tick": 1392,
+            "value": 0.55,
+            "curve": "step"
+          },
+          {
+            "tick": 1440,
+            "value": 0.3,
+            "curve": "step"
+          },
+          {
+            "tick": 1488,
+            "value": 0.15,
+            "curve": "step"
+          },
+          {
+            "tick": 2304,
+            "value": 1,
+            "curve": "step"
+          },
+          {
+            "tick": 2352,
+            "value": 0.55,
+            "curve": "step"
+          },
+          {
+            "tick": 2400,
+            "value": 0.3,
+            "curve": "step"
+          },
+          {
+            "tick": 2448,
+            "value": 0.15,
+            "curve": "step"
+          },
+          {
+            "tick": 2496,
+            "value": 1,
+            "curve": "step"
+          },
+          {
+            "tick": 2544,
+            "value": 0.55,
+            "curve": "step"
+          },
+          {
+            "tick": 2592,
+            "value": 0.3,
+            "curve": "step"
+          },
+          {
+            "tick": 2640,
+            "value": 0.15,
+            "curve": "step"
+          },
+          {
+            "tick": 2688,
+            "value": 1,
+            "curve": "step"
+          },
+          {
+            "tick": 2736,
+            "value": 0.55,
+            "curve": "step"
+          },
+          {
+            "tick": 2784,
+            "value": 0.3,
+            "curve": "step"
+          },
+          {
+            "tick": 2832,
+            "value": 0.15,
+            "curve": "step"
+          },
+          {
+            "tick": 2880,
+            "value": 1,
+            "curve": "step"
+          },
+          {
+            "tick": 2928,
+            "value": 0.55,
+            "curve": "step"
+          },
+          {
+            "tick": 2976,
+            "value": 0.3,
+            "curve": "step"
+          },
+          {
+            "tick": 3024,
+            "value": 0.15,
+            "curve": "step"
+          }
+        ],
+        "release": [
+          {
+            "tick": 0,
+            "value": 0.01,
+            "curve": "step"
+          },
+          {
+            "tick": 2304,
+            "value": 0.25,
+            "curve": "step"
+          }
+        ]
+      }
+    }
+  ],
+  "chordTrackId": null,
+  "activeTrackId": "70707a08-baf0-4627-972d-8654d472049c",
+  "loop": null,
+  "grid": {
+    "snapTicks": 48,
+    "triplet": false
+  },
+  "createdAt": "2026-08-04T12:00:00.000Z",
+  "updatedAt": "2026-08-04T12:00:00.000Z"
+}

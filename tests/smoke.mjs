@@ -111,23 +111,46 @@ await sleep(1200);
 
 // ---- fresh boot: start page greets new users with the seeded demo ----
 await check('fresh boot greets with the start page', `!document.getElementById('screen-start').hidden && !!window.__chipseq`);
-await check('demo seeded into Recent projects (not auto-opened)', `(() => {
+await check('both demos seeded into Recent projects (not auto-opened)', `(() => {
   const items = document.querySelectorAll('.recent-item');
   const text = document.getElementById('recent-list').textContent;
-  return items.length === 1 && text.includes('Demo Mono 1') || 'items=' + items.length;
+  return items.length === 2 && text.includes('Demo Mono 1') && text.includes('Demo Poly 1')
+    || 'items=' + items.length + ' text=' + text.slice(0, 80);
 })()`);
 await check('footer shows brand + version', `(() => {
   const t = document.getElementById('st-brand').textContent;
   return /^ChipSeq by n0ctu · v\\d+\\.\\d+\\.\\d+$/.test(t) || t;
 })()`);
-await check('demo seed flag set (no reseed after delete-all)', `localStorage.getItem('chipseq.v1.demosSeeded') === '1'`);
-// open the demo once to verify it loads intact, then back home
-await evaluate(`document.querySelector('.recent-item').click()`);
+await check('per-file seed list set (no reseed after delete-all)', `(() => {
+  const seeded = JSON.parse(localStorage.getItem('chipseq.v1.demosSeeded') || '[]');
+  return Array.isArray(seeded) && seeded.includes('demo-mono-1.tune.json') && seeded.includes('demo-poly-1.tune.json')
+    || localStorage.getItem('chipseq.v1.demosSeeded');
+})()`);
+// open the mono demo once to verify it loads intact
+await evaluate(`[...document.querySelectorAll('.recent-item')].find((i) => i.textContent.includes('Demo Mono 1')).click()`);
 await sleep(300);
-await check('demo opens with all notes intact', `(() => {
+await check('mono demo opens with all notes intact', `(() => {
   const doc = window.__chipseq.store.getDoc();
   return !document.getElementById('screen-editor').hidden && doc.name === 'Demo Mono 1'
     && doc.tracks[0].notes.length === 7 || doc.name + '/' + doc.tracks[0].notes.length;
+})()`);
+await evaluate(`document.getElementById('btn-home').click()`);
+await sleep(300);
+// the poly demo shows off the automation lanes
+await evaluate(`[...document.querySelectorAll('.recent-item')].find((i) => i.textContent.includes('Demo Poly 1')).click()`);
+await sleep(400);
+await check('poly demo opens with automation lanes visible and populated', `(async () => {
+  const { flattenSong } = await import('/js/core/flatten.js');
+  const doc = window.__chipseq.store.getDoc();
+  const lead = doc.tracks[0];
+  const master = document.getElementById('auto-master');
+  const dots = document.querySelectorAll('.auto-lane-btn .auto-dot').length;
+  const evs = flattenSong(doc).events;
+  const hasCurve = evs.some((e) => e.gainCurve);
+  const hasDuty = evs.some((e) => e.duty != null);
+  return doc.mode === 'poly' && !!master && dots >= 2 && (lead.automation.gain || []).length >= 3
+    && hasCurve && hasDuty
+    || JSON.stringify({ mode: doc.mode, dots, curve: hasCurve, duty: hasDuty });
 })()`);
 await evaluate(`document.getElementById('btn-home').click()`);
 await sleep(300);
@@ -987,7 +1010,7 @@ await sleep(150);
 // ---- back home, then check trimmer + autosave + reload ----
 await evaluate(`document.getElementById('btn-home').click()`);
 await sleep(300);
-await check('back on start screen with 3 recents (incl. demo)', `!document.getElementById('screen-start').hidden && document.querySelectorAll('.recent-item').length === 3`);
+await check('back on start screen with 4 recents (incl. demos)', `!document.getElementById('screen-start').hidden && document.querySelectorAll('.recent-item').length === 4`);
 await evaluate(`document.querySelectorAll('.recent-item')[1] ? document.querySelectorAll('.recent-item')[1].click() : document.querySelector('.recent-item').click()`);
 await sleep(300);
 await check('loop region restored from localStorage', `(() => {
@@ -1027,7 +1050,7 @@ await sleep(300);
 await check('home lists all projects incl. the previous one', `(() => {
   const text = document.getElementById('recent-list').textContent;
   return !document.getElementById('screen-start').hidden && text.includes(${JSON.stringify(projName)})
-    && document.querySelectorAll('.recent-item').length === 3 || text;
+    && document.querySelectorAll('.recent-item').length === 4 || text;
 })()`);
 
 // ---- console errors ----

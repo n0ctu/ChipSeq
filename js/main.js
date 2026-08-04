@@ -5,7 +5,7 @@ import { createProject, applyImport, PPQ } from './core/doc.js';
 import { createStore } from './core/store.js';
 import {
   attachAutosave, saveProject, importTuneJson, listProjects, loadProject,
-  demosSeeded, markDemosSeeded,
+  seededDemoFiles, markDemoSeeded,
 } from './core/persist.js';
 import { createEngine } from './core/engine.js';
 import { parseMidi } from './core/midi-import.js';
@@ -131,34 +131,34 @@ initPanelResizers();
 // into "Recent projects" and are greeted with the start page.
 async function seedDemos() {
   const files = await (await fetch('demos/index.json')).json();
-  const docs = [];
+  const seeded = seededDemoFiles();
   for (const file of files) {
+    if (seeded.includes(file)) continue; // each demo seeds at most once
     try {
       const doc = importTuneJson(await (await fetch('demos/' + file)).text());
       saveProject(doc);
-      docs.push(doc);
+      markDemoSeeded(file);
     } catch (err) {
       console.warn('demo import failed:', file, err);
     }
   }
-  return docs;
 }
 
 async function boot() {
-  const recent = listProjects()[0];
-  if (recent) {
-    const doc = loadProject(recent.id);
+  // Snapshot the user's most recent project BEFORE seeding — a freshly
+  // seeded demo must never hijack the auto-open, and brand-new users are
+  // greeted with the start page.
+  const previousRecent = listProjects()[0] || null;
+  try {
+    await seedDemos();
+  } catch (err) {
+    console.warn('demo projects unavailable:', err);
+  }
+  if (previousRecent) {
+    const doc = loadProject(previousRecent.id);
     if (doc) {
       openProject(doc);
       return;
-    }
-  }
-  if (!demosSeeded()) {
-    try {
-      await seedDemos();
-      markDemosSeeded();
-    } catch (err) {
-      console.warn('demo projects unavailable:', err);
     }
   }
   showScreen('start');
