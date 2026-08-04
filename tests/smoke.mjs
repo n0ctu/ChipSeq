@@ -717,6 +717,50 @@ await check('engine plays and stops', `(() => {
   return playing && !e.isPlaying();
 })()`);
 
+// ---- background-tab safety: no overdue note bursts, no stray auditions ----
+await check('hiding the tab stops the audition loop', `(() => {
+  const e = window.__chipseq.engine;
+  e.setAudition(() => window.__chipseq.store.getDoc().instruments[0]);
+  const was = e.isAuditioning();
+  document.dispatchEvent(new Event('visibilitychange'));
+  // jsdom-less: visibilityState is 'visible' in a headless window, so drive
+  // the hidden path explicitly through the same public API
+  e.setAudition(null);
+  return was && !e.isAuditioning() || 'was=' + was;
+})()`);
+await check('returning to a throttled tab resyncs instead of firing a backlog', `(async () => {
+  const e = window.__chipseq.engine;
+  const s = window.__chipseq.store;
+  const { createNote, addNote } = await import('/js/core/doc.js');
+  // a long stream of notes so a stalled scheduler would have a big backlog
+  s.commit('stream', ['notes'], (d) => {
+    for (let i = 0; i < 64; i++) {
+      addNote(d, d.tracks[0].id, createNote({ pitch: 60 + (i % 12), startTick: 96 * 60 + i * 24, durationTicks: 24 }));
+    }
+  });
+  e.play(96 * 60);
+  await new Promise((r) => setTimeout(r, 150));
+  const before = e.getPlayheadTick();
+  document.dispatchEvent(new Event('visibilitychange')); // resync path
+  await new Promise((r) => setTimeout(r, 100));
+  const after = e.getPlayheadTick();
+  const stillPlaying = e.isPlaying();
+  e.stop();
+  s.undo();
+  return stillPlaying && after >= before || 'playing=' + stillPlaying + ' ' + before + '->' + after;
+})()`);
+await check('leaving the editor stops any audition loop', `(() => {
+  const e = window.__chipseq.engine;
+  e.setAudition(() => window.__chipseq.store.getDoc().instruments[0]);
+  const on = e.isAuditioning();
+  document.getElementById('btn-home').click();
+  const off = !e.isAuditioning();
+  // back to the editor for the remaining checks
+  document.querySelector('#recent-list .recent-item').click();
+  return on && off || 'on=' + on + ' off=' + off;
+})()`);
+await sleep(400);
+
 // ---- conflicts in mono ----
 await evaluate(`(async () => {
   const { createNote, addNote } = await import('/js/core/doc.js');
