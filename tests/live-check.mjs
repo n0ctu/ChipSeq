@@ -75,16 +75,18 @@ await sleep(3000);
 
 await check('live app boots to the start page', `!document.getElementById('screen-start').hidden && !!window.__chipseq`);
 await check('title is correct', `document.title.startsWith('ChipSeq - n0ctus chiptune sequencer')`);
-await check('both demos fetched from subpath and seeded', `(() => {
-  const text = document.getElementById('recent-list').textContent;
-  return text.includes('Demo Mono 1') && text.includes('Demo Poly 1') || text.slice(0, 80);
+await check('demos fetched fresh from the subpath', `(() => {
+  const text = document.getElementById('demo-list').textContent;
+  return document.querySelectorAll('#demo-list .demo-item').length === 5
+    && text.includes('Demo Mono') && text.includes('Bad Apple') || text.slice(0, 100);
 })()`);
-await evaluate(`[...document.querySelectorAll('.recent-item')].find((i) => i.textContent.includes('Demo Mono 1')).click()`);
+await evaluate(`[...document.querySelectorAll('#demo-list .demo-item')].find((i) => i.textContent.includes('Demo Mono')).click()`);
 await sleep(500);
-await check('demo project opens in the editor', `(() => {
+await check('demo opens in the editor without being stored', `(() => {
   const doc = window.__chipseq.store.getDoc();
-  return !document.getElementById('screen-editor').hidden && doc.name === 'Demo Mono 1'
-    && doc.tracks[0].notes.length === 7 || doc.name;
+  const stored = JSON.parse(localStorage.getItem('chipseq.v1.index') || '[]').length;
+  return !document.getElementById('screen-editor').hidden && doc.name === 'Demo Mono'
+    && doc.tracks[0].notes.length === 7 && stored === 0 || doc.name + '/stored=' + stored;
 })()`);
 await check('.h export preview works live', `(async () => {
   const { exportHeader } = await import('./js/core/export-h.js');
