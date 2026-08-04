@@ -140,6 +140,20 @@ await check('mono demo opens with all notes intact', `(() => {
 await check('opening a demo stores nothing', `(() => {
   return JSON.parse(localStorage.getItem('chipseq.v1.index') || '[]').length === 0;
 })()`);
+await check('view is centred on the active track (notes visible, not cut off)', `(async () => {
+  const { trackPitchCenter, activeTrack } = await import('/js/core/doc.js');
+  const ui = window.__chipseq.uiStore.state;
+  const doc = window.__chipseq.store.getDoc();
+  const track = activeTrack(doc);
+  const centre = trackPitchCenter(track);
+  const H = document.getElementById('overlay-canvas').clientHeight;
+  const rows = H / ui.rowHeight;
+  const top = ui.scrollPitch;
+  const bottom = ui.scrollPitch - rows;
+  const visible = track.notes.filter((n) => n.pitch <= top && n.pitch >= bottom).length;
+  return visible === track.notes.length && Math.abs(ui.scrollPitch - (centre + rows / 2)) <= 1
+    || 'centre=' + centre + ' scrollPitch=' + ui.scrollPitch + ' visible=' + visible + '/' + track.notes.length;
+})()`);
 await check('editing a demo forks a personal copy with the same name', `(async () => {
   const { createNote, addNote } = await import('/js/core/doc.js');
   const s = window.__chipseq.store;
