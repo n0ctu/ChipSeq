@@ -65,6 +65,10 @@ export function initToolbar({ store, uiStore, engine, roll, openExport, goHome, 
       doc.name = name;
     });
   });
+  // Enter commits the project name immediately (change fires on blur)
+  $('inp-name').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') e.target.blur();
+  });
 
   $('inp-bpm').addEventListener('change', (e) => {
     const bpm = Math.max(20, Math.min(400, Number(e.target.value) || 120));

@@ -803,6 +803,23 @@ await check('row click changes editing focus but NOT the melody marker', `(() =>
   return focusMoved && melodyStayed || 'focus=' + focusMoved + ' melody=' + melodyStayed;
 })()`);
 
+// ---- track rename: ENTER in the prompt saves ----
+await check('Enter in the rename prompt saves the new name', `(async () => {
+  const nameEl = document.querySelector('#track-list .track-row .track-name');
+  nameEl.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 250));
+  const dlg = document.getElementById('dlg-prompt');
+  if (!dlg.open) return 'prompt did not open';
+  const input = document.getElementById('prompt-input');
+  input.value = 'Renamed via Enter';
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 250));
+  const closed = !dlg.open;
+  const renamed = window.__chipseq.store.getDoc().tracks[0].name === 'Renamed via Enter';
+  window.__chipseq.store.undo();
+  return closed && renamed || 'closed=' + closed + ' renamed=' + renamed;
+})()`);
+
 // ---- resizable side panels ----
 await check('both panels have resize handles', `document.querySelectorAll('.panel-resize').length === 2`);
 await check('dragging the handle resizes the tracks panel and persists', `(() => {
