@@ -35,13 +35,13 @@ export function initExportDialog({ store, conflicts }) {
     if (!loop || loop.endTick <= loop.startTick) {
       box.checked = false;
       box.disabled = true;
-      $('export-region-label').textContent = 'Only export the loop region (none set — drag on the ruler)';
+      $('export-region-label').textContent = 'Only export the loop region (none set - drag on the ruler)';
     } else {
       box.disabled = false;
       const tpBar = ticksPerBar(doc);
       const from = Math.floor(loop.startTick / tpBar) + 1;
       const to = Math.ceil(loop.endTick / tpBar);
-      $('export-region-label').textContent = `Only export the loop region (bars ${from}–${to})`;
+      $('export-region-label').textContent = `Only export the loop region (bars ${from}-${to})`;
     }
   }
 

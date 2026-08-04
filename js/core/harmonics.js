@@ -26,7 +26,7 @@ const FIXED_INTERVALS = {
 // octave expansion) plus a transparent explanation of what was chosen and why.
 // Voicing rule (like FamiTracker's 0xy effect): chord tones are stacked
 // upward from the note. The note itself is only included when it IS a chord
-// tone — anchoring a non-chord melody note inside the sweep produces the
+// tone - anchoring a non-chord melody note inside the sweep produces the
 // semitone clusters that made auto modes sound broken.
 //
 // For chordType 'autoSong', arp.chordSource refines where the chord comes
@@ -62,7 +62,7 @@ export function resolveChord(note, arp, ctx) {
         return res;
       }
       const fallback = resolveRecommended(note, ctx);
-      fallback.detail = 'chord source track is missing or empty here — using the recommendation';
+      fallback.detail = 'chord source track is missing or empty here - using the recommendation';
       return fallback;
     }
 
@@ -77,8 +77,8 @@ function resolveRecommended(note, ctx) {
   if (pcs && pcs.length) return chordFromPcs(note, pcs, chordName(pcs), 'song');
   const fromKey = resolveFromKey(note, ctx);
   fromKey.detail = ctx.hasChordTrack
-    ? 'no chord found at this position — using the song key'
-    : 'no chords track set (mark one with its C button) — using the song key';
+    ? 'no chord found at this position - using the song key'
+    : 'no chords track set (mark one with its C button) - using the song key';
   return fromKey;
 }
 
@@ -93,7 +93,7 @@ function chordFromPcs(note, pcs, name, source) {
     intervals,
     name,
     source,
-    detail: set.has(0) ? null : `${noteName(note.pitch)} is not a chord tone — sweeping ${name} above it`,
+    detail: set.has(0) ? null : `${noteName(note.pitch)} is not a chord tone - sweeping ${name} above it`,
   };
 }
 
@@ -108,13 +108,13 @@ function resolveFromKey(note, ctx) {
     };
   }
   // Chromatic note: use the key mode's quality on the note itself (a major
-  // key gets a major triad, a minor key a minor triad) — and say so.
+  // key gets a major triad, a minor key a minor triad) - and say so.
   const intervals = ctx.key.mode === 'minor' ? FIXED_INTERVALS.minor : FIXED_INTERVALS.major;
   return {
     intervals,
     name: chordName(intervals.map((iv) => (note.pitch + iv) % 12)),
     source: 'key-chromatic',
-    detail: `${PITCH_NAMES[note.pitch % 12]} is not in ${keyName(ctx.key)} — using a ${ctx.key.mode} triad on it`,
+    detail: `${PITCH_NAMES[note.pitch % 12]} is not in ${keyName(ctx.key)} - using a ${ctx.key.mode} triad on it`,
   };
 }
 
@@ -125,7 +125,7 @@ export function chordIntervals(note, arp, ctx) {
 
 // Voice the chord relative to the note. 'above' stacks upward from the note
 // (FamiTracker 0xy style); 'below' voices the chord downward so the note is
-// the TOP tone — the classic shape for bass-register accompaniment. Octave
+// the TOP tone - the classic shape for bass-register accompaniment. Octave
 // expansion extends in the anchor direction; octaveShift transposes the
 // whole voicing (e.g. -1 to drop a sweep into the bass register).
 function voicePitches(note, arp, intervals) {

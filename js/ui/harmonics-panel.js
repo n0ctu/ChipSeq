@@ -127,8 +127,8 @@ export function initHarmonicsPanel({ store, uiStore, roll, engine }) {
       : '';
     const infoHtml = info
       ? `<div class="harm-info${info.detail ? ' warn' : ''}">
-           <span class="harm-chord-name">${info.name ?? '—'}</span>
-           <span class="harm-chord-src">${srcLabel}${notes.length > 1 ? ' · first of ' + notes.length : ''}</span>
+           <span class="harm-chord-name">${info.name ?? '-'}</span>
+           <span class="harm-chord-src">${srcLabel}${notes.length > 1 ? ' - first of ' + notes.length : ''}</span>
            ${info.detail ? `<div class="harm-chord-detail">⚠ ${info.detail}</div>` : ''}
          </div>`
       : '';
@@ -145,8 +145,8 @@ export function initHarmonicsPanel({ store, uiStore, roll, engine }) {
       const recTrack = doc.chordTrackId ? doc.tracks.find((t) => t.id === doc.chordTrackId) : null;
       const recPcs = refNote ? ctx.getChordPitchClassesAt(refNote.startTick) : null;
       const recLabel = recTrack
-        ? `Recommended — “${recTrack.name}”${recPcs ? ': ' + chordName(recPcs) : ''}`
-        : 'Recommended — song key (no chords track)';
+        ? `Recommended - “${recTrack.name}”${recPcs ? ': ' + chordName(recPcs) : ''}`
+        : 'Recommended - song key (no chords track)';
 
       let selectValue = 'rec';
       if (srcMixed) selectValue = '';
@@ -167,7 +167,7 @@ export function initHarmonicsPanel({ store, uiStore, roll, engine }) {
         .filter((t) => t.notes.length && t.id !== doc.chordTrackId)
         .map((t) => {
           const pcs = refNote ? ctx.getChordPitchClassesFromTrack(t.id, refNote.startTick) : null;
-          const label = `From “${t.name}”${pcs ? ' — ' + chordName(pcs) : ''}`;
+          const label = `From “${t.name}”${pcs ? ' - ' + chordName(pcs) : ''}`;
           return `<option value="track:${t.id}" ${selectValue === 'track:' + t.id ? 'selected' : ''}>${label}</option>`;
         })
         .join('');
@@ -187,7 +187,7 @@ export function initHarmonicsPanel({ store, uiStore, roll, engine }) {
       sourceHtml = `
         <div class="harm-field">Chord source
           <select id="harm-source">
-            ${srcMixed ? '<option value="" selected>—</option>' : ''}
+            ${srcMixed ? '<option value="" selected>-</option>' : ''}
             <option value="rec" ${selectValue === 'rec' ? 'selected' : ''}>${recLabel}</option>
             ${trackOpts}
             ${qualityGroups}
@@ -219,7 +219,7 @@ export function initHarmonicsPanel({ store, uiStore, roll, engine }) {
         </div>` : ''}
         <div class="harm-field">Chord
           <select id="harm-chord">
-            ${isMixed('chordType') ? '<option value="" selected>—</option>' : ''}
+            ${isMixed('chordType') ? '<option value="" selected>-</option>' : ''}
             ${CHORD_TYPES.map((c) => `<option value="${c.id}" ${val('chordType', '') === c.id ? 'selected' : ''}>${c.label}</option>`).join('')}
           </select>
         </div>
@@ -237,7 +237,7 @@ export function initHarmonicsPanel({ store, uiStore, roll, engine }) {
         <div class="harm-field">Octaves
           <div class="stepper">
             <button class="btn btn-icon" id="harm-oct-dec">−</button>
-            <span class="val">${isMixed('octaves') ? '—' : val('octaves', 1)}</span>
+            <span class="val">${isMixed('octaves') ? '-' : val('octaves', 1)}</span>
             <button class="btn btn-icon" id="harm-oct-inc">+</button>
           </div>
         </div>
@@ -250,11 +250,11 @@ export function initHarmonicsPanel({ store, uiStore, roll, engine }) {
         <div class="harm-field">Octave shift
           <div class="stepper" title="Transpose the whole sweep, e.g. −1 to put it in the bass register">
             <button class="btn btn-icon" id="harm-shift-dec">−</button>
-            <span class="val">${isMixed('octaveShift') ? '—' : (val('octaveShift', 0) > 0 ? '+' : '') + val('octaveShift', 0)}</span>
+            <span class="val">${isMixed('octaveShift') ? '-' : (val('octaveShift', 0) > 0 ? '+' : '') + val('octaveShift', 0)}</span>
             <button class="btn btn-icon" id="harm-shift-inc">+</button>
           </div>
         </div>
-        <div class="harm-field">Step gap <span id="harm-gate-label">${isMixed('gate') ? '—' : Math.round((1 - val('gate', 1)) * 100) + '%'}</span>
+        <div class="harm-field">Step gap <span id="harm-gate-label">${isMixed('gate') ? '-' : Math.round((1 - val('gate', 1)) * 100) + '%'}</span>
           <div class="harm-row">
             <input type="range" id="harm-gate" min="0" max="90" step="5"
               value="${isMixed('gate') ? 0 : Math.round((1 - val('gate', 1)) * 100)}" />
@@ -264,7 +264,7 @@ export function initHarmonicsPanel({ store, uiStore, roll, engine }) {
       </div>
       <div class="harm-field" style="margin-top:8px">Presets
         <div class="harm-presets">
-          <select id="harm-preset"><option value="">— preset —</option></select>
+          <select id="harm-preset"><option value="">- preset -</option></select>
           <button class="btn btn-icon" id="harm-preset-save" title="Save current as preset">${icon('device-floppy')}</button>
           <button class="btn btn-icon" id="harm-preset-del" title="Delete selected preset">${icon('trash')}</button>
         </div>
@@ -382,7 +382,7 @@ export function initHarmonicsPanel({ store, uiStore, roll, engine }) {
       const name = await promptDialog('Preset name', '');
       if (!name) return;
       // Presets carry no chord-source info (track ids are project-specific,
-      // custom chords are note-specific) — applied presets stay "Recommended".
+      // custom chords are note-specific) - applied presets stay "Recommended".
       const { chordSource, ...config } = src.harmonics;
       void chordSource;
       const list = loadPresets();

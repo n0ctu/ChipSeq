@@ -8,7 +8,7 @@ export function initStatusBar({ store, uiStore, conflicts, roll }) {
   const $ = (id) => document.getElementById(id);
   const ui = uiStore.state;
 
-  $('st-brand').textContent = `ChipSeq by n0ctu · v${APP_VERSION}`;
+  $('st-brand').textContent = `ChipSeq by n0ctu - v${APP_VERSION}`;
 
   function render() {
     const doc = store.getDoc();
@@ -18,7 +18,7 @@ export function initStatusBar({ store, uiStore, conflicts, roll }) {
     const bar = Math.floor(t / tpBar) + 1;
     const beat = Math.floor((t % tpBar) / tpb) + 1;
     const sub = Math.round(((t % tpb) / tpb) * 100);
-    $('st-pos').textContent = `${bar}.${beat}${sub ? '+' + sub + '%' : ''} · ${noteName(ui.gridCursor.pitch)}`;
+    $('st-pos').textContent = `${bar}.${beat}${sub ? '+' + sub + '%' : ''} - ${noteName(ui.gridCursor.pitch)}`;
 
     $('st-sel').textContent = ui.selection.size
       ? `${ui.selection.size} note${ui.selection.size === 1 ? '' : 's'} selected`
@@ -27,7 +27,7 @@ export function initStatusBar({ store, uiStore, conflicts, roll }) {
     const n = conflicts.count();
     const chip = $('st-conflicts');
     if (n > 0 && doc.mode === 'mono') {
-      chip.innerHTML = `&#9888; ${n} conflict${n === 1 ? '' : 's'} — press N <span class="stfix">Auto-fix</span>`;
+      chip.innerHTML = `&#9888; ${n} conflict${n === 1 ? '' : 's'} - press N <span class="stfix">Auto-fix</span>`;
     } else {
       chip.textContent = '';
     }
@@ -58,7 +58,7 @@ export function initStatusBar({ store, uiStore, conflicts, roll }) {
     setTimeout(() => (save.textContent = ''), 1500);
   });
   store.on('storage-error', (err) => {
-    save.textContent = '⚠ save failed: ' + (err && err.name === 'QuotaExceededError' ? 'storage full — delete old projects' : 'storage error');
+    save.textContent = '⚠ save failed: ' + (err && err.name === 'QuotaExceededError' ? 'storage full - delete old projects' : 'storage error');
   });
 
   render();

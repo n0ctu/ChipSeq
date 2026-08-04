@@ -41,7 +41,7 @@ function getPeriodicWave(ctx, instrument, dutyOverride = null) {
 
 // Schedule one note into any BaseAudioContext (live or offline).
 // Automation extras: gainMul scales the whole note; gainCurve morphs the
-// level across the note's span (applied on a SEPARATE gain node — ADSR ramps
+// level across the note's span (applied on a SEPARATE gain node - ADSR ramps
 // and setValueCurveAtTime may not share one AudioParam); duty overrides the
 // pulse width for PWM instruments.
 export function scheduleNote(
@@ -77,7 +77,7 @@ export function scheduleNote(
   let tail = gain;
   if (gainCurve && gainCurve.length >= 2 && dur > 0) {
     const auto = ctx.createGain();
-    // setValueCurveAtTime must not overlap ANY other event on this param —
+    // setValueCurveAtTime must not overlap ANY other event on this param -
     // it defines the start value itself and holds the final value after.
     auto.gain.setValueCurveAtTime(gainCurve, startTime, dur);
     gain.connect(auto);

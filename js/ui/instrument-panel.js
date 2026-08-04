@@ -3,7 +3,7 @@
 // config which can be saved as a project-wide preset.
 //
 // The Audition button is a TOGGLE: while on, a reference note repeats and
-// always plays the current values — slider drags are audible live via a
+// always plays the current values - slider drags are audible live via a
 // transient patch that only becomes an undoable commit on release.
 
 import { getTrack, uid } from '../core/doc.js';
@@ -88,7 +88,7 @@ export function initInstrumentPanel({ store, uiStore, engine }) {
 
     const inst = effective(doc, track);
     const isCustom = !!track.instrument;
-    ctxLabel.textContent = `“${track.name}” · ${isCustom ? 'Custom' : inst.name}`;
+    ctxLabel.textContent = `“${track.name}” - ${isCustom ? 'Custom' : inst.name}`;
     const duty = inst.duty ?? 0.25;
 
     body.innerHTML = `
@@ -118,7 +118,7 @@ export function initInstrumentPanel({ store, uiStore, engine }) {
       </div>
       <div class="btn-pair">
         <button class="btn btn-toggle ${engine.isAuditioning() ? 'active' : ''}" id="in-audition"
-          title="Loop a reference note — parameter changes are heard live">Audition</button>
+          title="Loop a reference note - parameter changes are heard live">Audition</button>
         <button class="btn" id="in-save" ${isCustom ? '' : 'disabled'} title="${isCustom ? 'Save as a preset for all tracks of this project' : 'Modify a parameter first'}">Save as preset…</button>
       </div>`;
 

@@ -74,7 +74,7 @@ export function markDemoSeeded(file) {
 }
 
 // Debounced autosave wired to store changes. Emits 'storage-error' on the
-// store if the quota is hit — never deletes other projects silently.
+// store if the quota is hit - never deletes other projects silently.
 export function attachAutosave(store, { debounceMs = 400 } = {}) {
   let timer = null;
 

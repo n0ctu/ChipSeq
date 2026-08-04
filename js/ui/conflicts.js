@@ -1,6 +1,6 @@
 // Mono-mode overlap detection with caching + auto-fix + cycling navigation.
 
-import { activeTrack, findOverlaps, autoFixOverlaps } from '../core/doc.js';
+import { melodyTrack, findOverlaps, autoFixOverlaps } from '../core/doc.js';
 
 export function createConflicts(store) {
   let cached = null;
@@ -17,7 +17,7 @@ export function createConflicts(store) {
       cached = { ids: new Set(), ticks: [] };
       return cached;
     }
-    const track = activeTrack(doc);
+    const track = melodyTrack(doc);
     const ids = track ? findOverlaps(track) : new Set();
     const ticks = [];
     if (track) {
@@ -43,7 +43,7 @@ export function createConflicts(store) {
 
     autoFix() {
       store.commit('auto-fix overlaps', ['notes'], (doc) => {
-        const track = activeTrack(doc);
+        const track = melodyTrack(doc);
         if (track) autoFixOverlaps(track);
       });
     },

@@ -1,4 +1,4 @@
-// Ephemeral UI state — never persisted, never undoable.
+// Ephemeral UI state - never persisted, never undoable.
 
 import { createEmitter } from '../core/store.js';
 import { PPQ } from '../core/music.js';
@@ -25,7 +25,7 @@ export function createUiStore() {
 
   return {
     state,
-    // update(scope, fn) — mutate state, notify subscribers of scope.
+    // update(scope, fn) - mutate state, notify subscribers of scope.
     update(scope, fn) {
       fn(state);
       emitter.emit('ui', { scope });

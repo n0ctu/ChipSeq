@@ -1,5 +1,5 @@
 // Automation lanes (strip below the roll, poly mode): one expandable lane
-// per instrument control of the active track — Gain, Attack, Decay, Sustain,
+// per instrument control of the active track - Gain, Attack, Decay, Sustain,
 // Release (+ Duty for PWM). Gain starts expanded; collapsed lanes show a
 // read-only curve preview and clicking them only expands (never edits).
 
@@ -195,7 +195,7 @@ export function initAutomationLane({ store, uiStore, canvas }) {
           ctx.fillStyle = theme.textDim;
           ctx.font = 'italic 10px ' + font;
           ctx.textBaseline = 'middle';
-          ctx.fillText(`${meta.label} ${meta.fmt(def)} — click to add a keyframe`, 8, lane.y + lane.h / 2);
+          ctx.fillText(`${meta.label} ${meta.fmt(def)} - click to add a keyframe`, 8, lane.y + lane.h / 2);
         }
       } else {
         ctx.beginPath();

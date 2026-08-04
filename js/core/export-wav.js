@@ -6,7 +6,7 @@ import { scheduleNote, getInstrument } from './instruments.js';
 
 const SAMPLE_RATE = 44100;
 
-// opts.region: {startTick, endTick} — render exactly that slice, rebased to
+// opts.region: {startTick, endTick} - render exactly that slice, rebased to
 // 0 and cut to the exact region length so the file loops seamlessly.
 export async function renderWav(doc, opts = {}) {
   let { events } = flattenSong(doc);

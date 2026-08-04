@@ -340,7 +340,7 @@ export function drawChordLane(ctx, ui, doc, w, h, theme, chords) {
     ctx.fillStyle = theme.textDim;
     ctx.font = 'italic 10px ' + font;
     ctx.textBaseline = 'middle';
-    ctx.fillText('no chords track — right-click a track to set one', 8, h / 2);
+    ctx.fillText('no chords track - right-click a track to set one', 8, h / 2);
     ctx.fillStyle = theme.line;
     ctx.fillRect(0, h - 1, w, 1);
     return;

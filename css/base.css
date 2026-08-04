@@ -1,4 +1,4 @@
-/* chipseq theme — dark tracker/DAW. All colors live here; canvas code reads
+/* chipseq theme - dark tracker/DAW. All colors live here; canvas code reads
    these custom properties via getComputedStyle, so restyling = edit this file. */
 
 :root {
