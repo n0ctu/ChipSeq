@@ -8,7 +8,7 @@ import { sampleAutomation, sampleGainCurve, quantizeDuty, AUTOMATION_PARAMS } fr
 
 // Segment the chords track into a timeline of chord EVENTS that hold until
 // the next change (like a DAW chord track). Sampling "what sounds at exactly
-// this tick" breaks on staccato/arpeggiated chord tracks — a melody note
+// this tick" breaks on staccato/arpeggiated chord tracks - a melody note
 // starting in a gap would silently lose its chord.
 export function buildChordEvents(doc, trackId = doc.chordTrackId) {
   const track = trackId ? getTrack(doc, trackId) : null;
@@ -32,7 +32,7 @@ export function buildChordEvents(doc, trackId = doc.chordTrackId) {
     let pcs = stack;
     if (stack.size < 2) {
       // Single note at this change point: the chord is probably played broken
-      // (arpeggiated accompaniment) — gather the whole figure of the bar this
+      // (arpeggiated accompaniment) - gather the whole figure of the bar this
       // point falls in, so A-C-E eighths resolve to Am, not three "chords".
       const barStart = Math.floor(start / tpBar) * tpBar;
       pcs = new Set(stack);
@@ -73,7 +73,7 @@ export function makeChordLookup(doc, trackId = doc.chordTrackId) {
 
 export function makeArpContext(doc) {
   const chordTrack = doc.chordTrackId ? getTrack(doc, doc.chordTrackId) : null;
-  // Per-track chord lookups are built lazily and cached for this context —
+  // Per-track chord lookups are built lazily and cached for this context -
   // notes may reference any track as their chord source.
   const lookups = new Map();
   const lookupFor = (trackId) => {
@@ -93,7 +93,7 @@ export function makeArpContext(doc) {
   };
 }
 
-// Clip flattened events to [startTick, endTick) and rebase them to 0 —
+// Clip flattened events to [startTick, endTick) and rebase them to 0 -
 // used by the exporters' "loop region only" option. Notes crossing a
 // boundary are truncated so the region's total length stays exact.
 export function clipEventsToRegion(events, startTick, endTick) {
@@ -129,7 +129,7 @@ export function flattenNote(doc, trackId, noteId) {
 
 // flattenSong(doc) -> { events: [{pitch,startTick,durationTicks,velocity,instrumentId}], warnings: [] }
 // Mono mode: only the active track, badge instrument forced, overlaps truncated
-// (earlier note cut at the later note's start — matches firmware semantics).
+// (earlier note cut at the later note's start - matches firmware semantics).
 export function flattenSong(doc) {
   const ctx = makeArpContext(doc);
   const warnings = [];

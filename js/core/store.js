@@ -26,7 +26,7 @@ export function createStore(doc) {
   let redoStack = [];
 
   // Ephemeral, non-undoable, non-persisted UI-facing session state.
-  // (the loop region lives in the DOCUMENT — doc.loop — so it is autosaved
+  // (the loop region lives in the DOCUMENT - doc.loop - so it is autosaved
   // and exported with .tune.json)
   const session = {
     cursorTick: 0, // current playhead / pause position
@@ -62,7 +62,7 @@ export function createStore(doc) {
     },
 
     // Grid/snap preference: project data (saved + exported), no undo
-    // snapshots — flipping the snap setting isn't an edit.
+    // snapshots - flipping the snap setting isn't an edit.
     getGrid: () => current.grid || null,
     setGrid(grid) {
       current.grid = { snapTicks: grid.snapTicks ?? 0, triplet: !!grid.triplet };
@@ -71,7 +71,7 @@ export function createStore(doc) {
     },
 
     // Loop region: project data (saved + exported), but edited without undo
-    // snapshots — dragging a loop shouldn't pollute the undo history.
+    // snapshots - dragging a loop shouldn't pollute the undo history.
     getLoop: () => current.loop || null,
     setLoop(loop) {
       current.loop =

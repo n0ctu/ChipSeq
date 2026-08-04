@@ -132,7 +132,10 @@ export function initToolbar({ store, uiStore, engine, roll, openExport, goHome, 
   function switchMode(mode, activeId) {
     store.commit('switch mode', ['song', 'tracks', 'notes'], (doc) => {
       doc.mode = mode;
-      if (activeId) doc.activeTrackId = activeId;
+      if (activeId) {
+        doc.activeTrackId = activeId;
+        doc.melodyTrackId = activeId;
+      }
     });
   }
 

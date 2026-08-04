@@ -37,7 +37,7 @@ export const DEFAULT_HARMONICS = {
   octaves: 1,
   gate: 1,
   chordType: 'autoKey',
-  anchor: 'above', // 'above' | 'below' — which side of the note the chord is voiced on
+  anchor: 'above', // 'above' | 'below' - which side of the note the chord is voiced on
   octaveShift: 0, // whole-sweep transpose in octaves (-3..+3), e.g. bass accompaniment
 };
 
@@ -67,8 +67,9 @@ export function createProject({ name = 'Untitled', mode = 'mono' } = {}) {
     instruments: structuredClone(DEFAULT_INSTRUMENTS),
     tracks: [track],
     chordTrackId: null,
-    activeTrackId: track.id,
-    loop: null, // {startTick, endTick, enabled} | null — saved with the project
+    activeTrackId: track.id, // editing focus (highlighted row)
+    melodyTrackId: track.id, // the M marker: plays and exports in mono mode
+    loop: null, // {startTick, endTick, enabled} | null - saved with the project
     grid: { snapTicks: PPQ / 2, triplet: false }, // snap preference, saved too
     createdAt: now,
     updatedAt: now,
@@ -109,10 +110,12 @@ export function migrate(doc) {
     doc.version = 3;
   }
   // Cleanup (no version bump): instrument-switch automation existed briefly
-  // and was replaced by per-control lanes — drop stray lanes on load.
+  // and was replaced by per-control lanes - drop stray lanes on load.
   for (const t of doc.tracks) {
     if (t.automation && 'instrument' in t.automation) delete t.automation.instrument;
   }
+  // Additive default: melody marker used to be fused with the active track.
+  if (!doc.melodyTrackId) doc.melodyTrackId = doc.activeTrackId;
   return doc;
 }
 
@@ -131,10 +134,15 @@ export function activeTrack(doc) {
   return getTrack(doc, doc.activeTrackId) || doc.tracks[0] || null;
 }
 
+// The mono voice: what plays and exports in mono mode (the M marker).
+export function melodyTrack(doc) {
+  return getTrack(doc, doc.melodyTrackId) || activeTrack(doc);
+}
+
 // Tracks audible in the current mode.
 export function playableTracks(doc) {
   if (doc.mode === 'mono') {
-    const t = activeTrack(doc);
+    const t = melodyTrack(doc);
     return t ? [t] : [];
   }
   return doc.tracks.filter((t) => t.role !== 'muted');
@@ -368,4 +376,5 @@ export function applyImport(doc, parsed, assignments) {
   doc.chordTrackId = chords ? chords.track.id : null;
   const melody = newTracks.find((x) => x.role === 'melody') || newTracks[0];
   doc.activeTrackId = melody.track.id;
+  doc.melodyTrackId = melody.track.id;
 }

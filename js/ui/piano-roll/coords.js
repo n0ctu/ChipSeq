@@ -18,7 +18,7 @@ export function pitchToY(ui, pitch) {
 }
 
 // Row for pitch p spans y in [(scrollPitch - p) * rowHeight, +rowHeight),
-// so the inverse is a plain floor — anything else is off by one for part
+// so the inverse is a plain floor - anything else is off by one for part
 // of the row.
 export function yToPitch(ui, y) {
   return Math.floor(ui.scrollPitch) - Math.floor(y / ui.rowHeight);

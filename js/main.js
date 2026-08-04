@@ -81,7 +81,7 @@ async function handleFile(file) {
       const doc = importTuneJson(await file.text());
       openProject(doc);
     } else {
-      alert('Unsupported file type — drop a .mid or .tune.json file.');
+      alert('Unsupported file type - drop a .mid or .tune.json file.');
     }
   } catch (err) {
     console.error(err);
@@ -145,7 +145,7 @@ async function seedDemos() {
 }
 
 async function boot() {
-  // Snapshot the user's most recent project BEFORE seeding — a freshly
+  // Snapshot the user's most recent project BEFORE seeding - a freshly
   // seeded demo must never hijack the auto-open, and brand-new users are
   // greeted with the start page.
   const previousRecent = listProjects()[0] || null;

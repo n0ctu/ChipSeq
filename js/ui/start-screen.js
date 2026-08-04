@@ -17,7 +17,7 @@ export function initStartScreen({ onOpenProject, onNewProject, onFilePicked }) {
   function render() {
     const projects = listProjects();
     if (!projects.length) {
-      list.innerHTML = '<li class="recent-empty">No projects yet — create one!</li>';
+      list.innerHTML = '<li class="recent-empty">No projects yet - create one!</li>';
       return;
     }
     list.innerHTML = '';

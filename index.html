@@ -51,7 +51,7 @@
       <label class="tb-field">Snap <select id="sel-snap"></select></label>
       <button id="btn-quantize" class="btn" title="Quantize selection (Q)">Q</button>
       <span class="tb-sep"></span>
-      <button id="btn-play" class="btn btn-primary" title="Play/Stop from cursor (Space) · Pause/Resume (Shift+Space)"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-player-play"/></svg></button>
+      <button id="btn-play" class="btn btn-primary" title="Play/Stop from cursor (Space) - Pause/Resume (Shift+Space)"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-player-play"/></svg></button>
       <button id="btn-loop" class="btn btn-toggle" title="Loop (L)"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-repeat"/></svg></button>
       <button id="btn-metro" class="btn btn-toggle" title="Metronome (M)"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-metronome"/></svg></button>
       <span class="tb-sep"></span>
@@ -97,7 +97,7 @@
     <aside id="harmonics-panel">
       <div class="panel-head"><span>Tools</span></div>
       <div class="tool-scroll">
-      <div id="tools-empty" class="tools-empty">Add notes to a track — tools for the selection appear here.</div>
+      <div id="tools-empty" class="tools-empty">Add notes to a track - tools for the selection appear here.</div>
       <section class="tool-section" id="sec-harmonics" hidden>
         <button type="button" class="tool-head"><span class="tool-caret">▾</span>Harmonics<span class="tool-ctx"></span></button>
         <div id="harmonics-body" class="harm-body"></div>
@@ -127,7 +127,7 @@
   <!-- ============ DIALOGS ============ -->
   <dialog id="dlg-midi-import">
     <form method="dialog" class="dlg-form">
-      <h2>MIDI import — assign tracks</h2>
+      <h2>MIDI import - assign tracks</h2>
       <p class="dlg-hint">Pick which track is the melody and which one holds the chords
         (used by the arpeggiator's “Auto (song chords)” mode).</p>
       <div id="midi-track-table"></div>
@@ -159,7 +159,7 @@
       </div>
       <div id="export-fmf-pane" hidden>
         <p class="dlg-hint">Flipper Zero Music Player file. Note lengths are quantized to
-          FMF durations (1/1 … 1/128, dotted) — check the warnings for anything that had
+          FMF durations (1/1 … 1/128, dotted) - check the warnings for anything that had
           to be rounded.</p>
         <div id="export-fmf-warnings" class="dlg-warnings"></div>
         <pre id="export-fmf-preview" class="export-preview mono-font"></pre>
@@ -169,7 +169,7 @@
           engine as playback.</p>
       </div>
       <div id="export-json-pane" hidden>
-        <p class="dlg-hint">Full project file, loadable via “Open .tune.json” — nothing is lost,
+        <p class="dlg-hint">Full project file, loadable via “Open .tune.json” - nothing is lost,
           arpeggios stay editable.</p>
       </div>
       <menu class="dlg-actions">

@@ -119,7 +119,7 @@ await check('both demos seeded into Recent projects (not auto-opened)', `(() => 
 })()`);
 await check('footer shows brand + version', `(() => {
   const t = document.getElementById('st-brand').textContent;
-  return /^ChipSeq by n0ctu · v\\d+\\.\\d+\\.\\d+$/.test(t) || t;
+  return /^ChipSeq by n0ctu - v\\d+\\.\\d+\\.\\d+$/.test(t) || t;
 })()`);
 await check('per-file seed list set (no reseed after delete-all)', `(() => {
   const seeded = JSON.parse(localStorage.getItem('chipseq.v1.demosSeeded') || '[]');
@@ -491,7 +491,7 @@ await check('arp removed, note intact', `(() => {
 // ---- export dialog ----
 await evaluate(`(() => {
   // loop region around the drawn note so region export has content
-  // (enabled: false — region export must work without loop playback on)
+  // (enabled: false - region export must work without loop playback on)
   window.__chipseq.store.setLoop({ startTick: 1536, endTick: 1920, enabled: false });
 })()`);
 await evaluate(`document.getElementById('btn-export').click()`);
@@ -781,13 +781,25 @@ await check('C button reassigns the chords track in mono', `(() => {
   const backToSecond = d().chordTrackId === d().tracks[1].id;
   return movedToFirst && backToSecond || 'moved=' + movedToFirst + ' back=' + backToSecond;
 })()`);
-await check('M button switches the melody/active track in mono', `(() => {
+await check('M button moves ONLY the melody marker (not the editing focus)', `(() => {
   const d = () => window.__chipseq.store.getDoc();
+  const activeBefore = d().activeTrackId;
   document.querySelectorAll('#track-list .track-row')[1].querySelector('.role-btn:not(.chords)').click();
-  const switched = d().activeTrackId === d().tracks[1].id;
+  const melodyMoved = d().melodyTrackId === d().tracks[1].id;
+  const activeUntouched = d().activeTrackId === activeBefore;
   document.querySelectorAll('#track-list .track-row')[0].querySelector('.role-btn:not(.chords)').click();
-  const restored = d().activeTrackId === d().tracks[0].id;
-  return switched && restored || 'switched=' + switched + ' restored=' + restored;
+  const restored = d().melodyTrackId === d().tracks[0].id;
+  return melodyMoved && activeUntouched && restored
+    || 'melody=' + melodyMoved + ' active=' + activeUntouched + ' restored=' + restored;
+})()`);
+await check('row click changes editing focus but NOT the melody marker', `(() => {
+  const d = () => window.__chipseq.store.getDoc();
+  const melodyBefore = d().melodyTrackId;
+  document.querySelectorAll('#track-list .track-row')[1].click();
+  const focusMoved = d().activeTrackId === d().tracks[1].id;
+  const melodyStayed = d().melodyTrackId === melodyBefore;
+  document.querySelectorAll('#track-list .track-row')[0].click();
+  return focusMoved && melodyStayed || 'focus=' + focusMoved + ' melody=' + melodyStayed;
 })()`);
 
 // ---- resizable side panels ----

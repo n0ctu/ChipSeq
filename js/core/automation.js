@@ -1,4 +1,4 @@
-// Automation lane sampling — pure functions, no DOM/audio/store.
+// Automation lane sampling - pure functions, no DOM/audio/store.
 // Lanes live on Track.automation = { gain: [...], duty: [...], instrument: [...] }
 // with points { tick, value, curve } ('step'|'linear'|'ease'; the curve
 // describes the segment LEAVING the point) or { tick, instrumentId } for the
@@ -73,7 +73,7 @@ const CURVE_MAX_POINTS = 256;
 
 export function sampleGainCurve(points, startTick, endTick, defaultValue = 1) {
   const first = sampleAutomation(points, startTick, defaultValue);
-  // Short events (arp steps, staccato) sample once at their start — curves
+  // Short events (arp steps, staccato) sample once at their start - curves
   // are reserved for held notes where an intra-note ramp is audible.
   if (endTick - startTick <= CURVE_STEP_TICKS * 2) return { gainMul: first };
   const last = sampleAutomation(points, Math.max(startTick, endTick - 1), defaultValue);

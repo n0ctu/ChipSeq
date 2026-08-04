@@ -2,7 +2,7 @@
   "schema": "chipseq-tune",
   "version": 3,
   "id": "47ec2f8a-cdf0-4d3a-9bbc-b7fb5b35e78d",
-  "name": "Demo Poly 1 — Automation",
+  "name": "Demo Poly 1 - Automation",
   "mode": "poly",
   "ppq": 96,
   "song": {

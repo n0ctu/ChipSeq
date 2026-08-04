@@ -328,6 +328,7 @@ applyImport(idoc, parsed, [
 assert(idoc.tracks.length === 2, 'imported 2 tracks');
 assert(idoc.chordTrackId === idoc.tracks[1].id, 'chord track designated');
 assert(idoc.activeTrackId === idoc.tracks[0].id, 'melody active');
+assert(idoc.melodyTrackId === idoc.tracks[0].id, 'melody marker set by import');
 assert(idoc.song.bpm === 120 && idoc.song.timeSig.num === 3, 'song meta applied');
 
 // autoSong via real chord track
@@ -822,6 +823,29 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(evs.some((e) => e.duty != null), 'poly demo has duty automation');
   assert(evs.some((e) => e.adsr && e.adsr.r != null), 'poly demo has a release override');
   assert(new Set(evs.filter((e) => typeof e.gainMul === 'number').map((e) => e.gainMul)).size >= 3, 'poly demo has stepped gain echoes');
+}
+
+// ---- melody marker is independent of the editing focus ----
+{
+  const { melodyTrack, migrate: mig } = await import('../js/core/doc.js');
+  const mdoc = createProject({ name: 'melody-split', mode: 'mono' });
+  const t2 = { id: 'second', name: 'Second', role: 'melody', instrumentId: 'badge', notes: [] };
+  mdoc.tracks.push(t2);
+  addNote(mdoc, mdoc.tracks[0].id, createNote({ pitch: 60, startTick: 0, durationTicks: 96 }));
+  addNote(mdoc, 'second', createNote({ pitch: 72, startTick: 0, durationTicks: 96 }));
+  // reviewing the second track must not change what mono plays
+  mdoc.activeTrackId = 'second';
+  assert(melodyTrack(mdoc).id === mdoc.tracks[0].id, 'melody marker unaffected by editing focus');
+  eq(flattenSong(mdoc).events.map((e) => e.pitch), [60], 'mono plays the MELODY track, not the focused one');
+  // moving the marker switches the mono voice
+  mdoc.melodyTrackId = 'second';
+  eq(flattenSong(mdoc).events.map((e) => e.pitch), [72], 'M marker controls mono playback');
+  // old docs get the marker defaulted from the active track
+  const legacy2 = JSON.parse(JSON.stringify(mdoc));
+  delete legacy2.melodyTrackId;
+  legacy2.activeTrackId = 'second';
+  mig(legacy2);
+  assert(legacy2.melodyTrackId === 'second', 'migration defaults melody marker to the active track');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

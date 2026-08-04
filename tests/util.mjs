@@ -30,5 +30,5 @@ export function findChrome() {
   ]) {
     if (existsSync(p)) return p;
   }
-  throw new Error('No Chromium found — set CHROME_BIN to a Chrome/Chromium binary.');
+  throw new Error('No Chromium found - set CHROME_BIN to a Chrome/Chromium binary.');
 }

@@ -3,7 +3,7 @@
 
 import { PPQ, snapTick } from '../core/music.js';
 import {
-  createNote, addNote, deleteNotes, updateNotes, activeTrack, getTrack,
+  createNote, addNote, deleteNotes, updateNotes, activeTrack, melodyTrack, getTrack,
   ticksPerBar, songEndTick,
 } from '../core/doc.js';
 import { effectiveSnap, PITCH_MIN, PITCH_MAX } from './piano-roll/coords.js';
@@ -193,7 +193,7 @@ export function initKeymap({ store, uiStore, engine, roll, conflicts, actions })
     const next = conflicts.nextTick(ui.gridCursor.tick);
     if (next == null) return;
     const doc = store.getDoc();
-    const track = activeTrack(doc);
+    const track = melodyTrack(doc);
     const ids = track.notes.filter((n) => conflicts.ids().has(n.id) && n.startTick === next).map((n) => n.id);
     roll.interactions.setSelection(ids, track.id);
     uiStore.update('cursor', (s) => {

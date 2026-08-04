@@ -22,7 +22,7 @@ const PREVIEW_INSTRUMENT = {
   adsr: { a: 0.002, d: 0, s: 1, r: 0.002 }, gain: 0.3,
 };
 
-// Lightweight standalone player — the import dialog runs before any project
+// Lightweight standalone player - the import dialog runs before any project
 // exists, so it cannot use the transport engine.
 function createPreviewPlayer(bpm) {
   let audioCtx = null;
@@ -108,7 +108,7 @@ export async function midiImportDialog(parsed) {
   if (parsed.song.timeSig) bits.push(`${parsed.song.timeSig.num}/${parsed.song.timeSig.den}`);
   if (parsed.song.key) bits.push(keyName(parsed.song.key) + (parsed.song.keyGuessed ? ' (guessed from the notes)' : ''));
   meta.innerHTML =
-    (bits.length ? 'Detected: ' + bits.join(' · ') : 'No tempo/key metadata found — current song settings are kept.') +
+    (bits.length ? 'Detected: ' + bits.join(' - ') : 'No tempo/key metadata found - current song settings are kept.') +
     '<br>Don’t worry about getting it perfect: melody and chords can be exchanged later' +
     ' with the M/C buttons in the track list.';
 

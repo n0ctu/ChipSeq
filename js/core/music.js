@@ -92,7 +92,7 @@ export function snapTickFloor(tick, gridTicks) {
 }
 
 // Chord naming: match a set of pitch classes against common qualities.
-// Returns e.g. "Am", "C", "G7", "A5", "Dsus4" — or a raw pc list if unknown.
+// Returns e.g. "Am", "C", "G7", "A5", "Dsus4" - or a raw pc list if unknown.
 const CHORD_QUALITIES = [
   { name: '', pcs: [0, 4, 7] },
   { name: 'm', pcs: [0, 3, 7] },
@@ -121,7 +121,7 @@ export function chordName(pcs) {
       }
     }
   }
-  return [...set].sort((a, b) => a - b).map((p) => PITCH_NAMES[p]).join('·');
+  return [...set].sort((a, b) => a - b).map((p) => PITCH_NAMES[p]).join('-');
 }
 
 // Key detection from note content (Krumhansl-Schmuckler profile matching).

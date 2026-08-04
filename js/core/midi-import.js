@@ -1,5 +1,5 @@
 // Hand-rolled Standard MIDI File parser (format 0/1) + track role suggestion.
-// Returns parsed data only — nothing is applied to the store here.
+// Returns parsed data only - nothing is applied to the store here.
 // Notes are split into one output track per (MTrk chunk, MIDI channel), so
 // multi-instrument chunks (typical for format 0) become separate tracks.
 
@@ -170,7 +170,7 @@ export function parseMidi(arrayBuffer) {
       const isDrums = ch === 9;
       const instrument = isDrums ? 'Drums' : c.program != null ? GM_PROGRAMS[c.program] : null;
       const label = name && instrument && name.trim() !== instrument
-        ? `${name.trim()} · ${instrument}`
+        ? `${name.trim()} - ${instrument}`
         : name.trim() || instrument || `Track ${tracks.length + 1}`;
       tracks.push({
         name: label,
@@ -184,7 +184,7 @@ export function parseMidi(arrayBuffer) {
 
   if (!tracks.length) throw new Error('No notes found in this MIDI file');
 
-  // Most files carry no key-signature meta event — fall back to analyzing
+  // Most files carry no key-signature meta event - fall back to analyzing
   // the notes themselves (drums excluded, they are atonal).
   if (!song.key) {
     const tonal = tracks.filter((t) => !t.isDrums).flatMap((t) => t.notes);
@@ -240,7 +240,7 @@ const isLeadFamily = (p) => p != null && ((p >= 40 && p <= 47) || (p >= 56 && p 
 const isBassFamily = (p) => p != null && p >= 32 && p <= 39;
 
 // Suggest roles. Typical pop/game MIDI has several chord-ish layers (pads,
-// fillers, ambience) — the "classic piano chords" track is what we want as
+// fillers, ambience) - the "classic piano chords" track is what we want as
 // the chord source, so piano/organ/guitar comping beats pads.
 export function suggestRoles(tracks) {
   const stats = tracks.map((t, index) => ({ index, track: t, ...trackStats(t) }));

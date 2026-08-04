@@ -61,7 +61,7 @@ export function initTransposePanel({ store, uiStore, engine }) {
           <button class="btn" id="tp-semi-up">+ 1 st</button>
         </div>
       </div>
-      <div class="harm-field">In key — ${keyName(key)}
+      <div class="harm-field">In key - ${keyName(key)}
         <div class="btn-pair">
           <button class="btn" id="tp-deg-down" title="Down one scale degree (stays in key)">− 1 degree</button>
           <button class="btn" id="tp-deg-up" title="Up one scale degree (stays in key)">+ 1 degree</button>

@@ -133,7 +133,7 @@
   background: var(--bg-0);
 }
 
-/* canvas attribute sizes must not become the row's min-content size —
+/* canvas attribute sizes must not become the row's min-content size -
    otherwise the 1fr roll row can't shrink when the automation lanes open */
 #roll-viewport, #keys-canvas, #auto-canvas { min-height: 0; }
 #roll-area.mono-mode { grid-template-rows: 20px 28px 1fr 0px; }

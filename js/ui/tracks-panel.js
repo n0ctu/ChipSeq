@@ -41,19 +41,21 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker }) {
       // Explicit role buttons (the only way to assign roles in mono mode):
       // M = melody/active track (plays + exports in mono), C = chords source.
       const mBtn = document.createElement('button');
-      mBtn.className = 'btn-icon role-btn' + (doc.activeTrackId === track.id ? ' on' : '');
+      mBtn.className = 'btn-icon role-btn' + (doc.melodyTrackId === track.id ? ' on' : '');
       mBtn.textContent = 'M';
-      mBtn.title = 'Melody — the active track (plays and exports in mono mode)';
+      mBtn.title = 'Melody marker - this track plays and exports in mono mode (clicking a row only changes which track you edit)';
       mBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        setActive(track.id);
+        store.commit('set melody track', ['tracks', 'notes'], (d) => {
+          d.melodyTrackId = track.id;
+        });
       });
       li.appendChild(mBtn);
 
       const cBtn = document.createElement('button');
       cBtn.className = 'btn-icon role-btn chords' + (doc.chordTrackId === track.id ? ' on' : '');
       cBtn.textContent = 'C';
-      cBtn.title = 'Chords source — feeds “Auto (song chords)” arpeggios and the chord lane';
+      cBtn.title = 'Chords source - feeds “Auto (song chords)” arpeggios and the chord lane';
       cBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         store.commit('set chord track', ['tracks', 'notes'], (d) => {
@@ -114,6 +116,7 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker }) {
           d.tracks = d.tracks.filter((t) => t.id !== track.id);
           if (d.chordTrackId === track.id) d.chordTrackId = null;
           if (d.activeTrackId === track.id) d.activeTrackId = d.tracks[0].id;
+          if (d.melodyTrackId === track.id) d.melodyTrackId = d.tracks[0].id;
         });
         uiStore.update('selection', (s) => s.selection.clear());
       });

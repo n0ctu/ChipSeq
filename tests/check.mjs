@@ -21,7 +21,7 @@ for (const m of modules) {
     console.log('OK  ', m);
   } catch (err) {
     failed++;
-    console.log('FAIL', m, '—', err.message);
+    console.log('FAIL', m, '-', err.message);
   }
 }
 process.exit(failed ? 1 : 0);

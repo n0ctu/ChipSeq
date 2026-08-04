@@ -1,4 +1,4 @@
-// Flipper Music Format (.fmf) exporter — RTTTL-style mono format used by the
+// Flipper Music Format (.fmf) exporter - RTTTL-style mono format used by the
 // Flipper Zero Music Player. Notes are quantized to the representable
 // durations (1..128 + dotted) with running-drift correction, rests become P.
 
@@ -85,12 +85,12 @@ export function exportFmf(doc, opts = {}) {
     if (regionTicks > prevEndTick) pushTokens(regionTicks - prevEndTick, null);
   }
 
-  if (!tokens.length) throw new Error('Nothing to export — the song (or region) has no notes.');
+  if (!tokens.length) throw new Error('Nothing to export - the song (or region) has no notes.');
   if (tooShort) warnings.push(`${tooShort} note(s) shorter than a 128th were merged into neighbors.`);
   if (splitNotes) warnings.push(`${splitNotes} long note(s) were split into re-attacked tokens (FMF has no ties).`);
 
   // Defaults = the most common plain denominator / octave (keeps the file
-  // compact). Dots are always rendered on their token — the Duration header
+  // compact). Dots are always rendered on their token - the Duration header
   // cannot express them.
   const mode = (arr) => {
     const counts = new Map();
@@ -112,7 +112,7 @@ export function exportFmf(doc, opts = {}) {
 
   const octaves = noteTokens.map((t) => Math.floor(t.pitch / 12) - 1);
   if (octaves.some((o) => o < 0 || o > 8)) {
-    warnings.push('Some notes fall outside octaves 0–8 — the Flipper buzzer may not play them.');
+    warnings.push('Some notes fall outside octaves 0-8 - the Flipper buzzer may not play them.');
   }
 
   const text = [
