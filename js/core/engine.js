@@ -196,6 +196,35 @@ export function createEngine(store) {
     });
   }
 
+  // Continuous audition loop: repeats a reference note, re-resolving the
+  // instrument each cycle so parameter edits are heard live. Pass a getter
+  // returning an instrument object (or null to stop / auto-stop).
+  let auditionTimer = null;
+  function setAudition(getInstrumentFn) {
+    if (auditionTimer) {
+      clearInterval(auditionTimer);
+      auditionTimer = null;
+    }
+    if (!getInstrumentFn) return;
+    ensureCtx();
+    const tickFn = () => {
+      const inst = getInstrumentFn();
+      if (!inst) {
+        setAudition(null);
+        return;
+      }
+      const now = audioCtx.currentTime + 0.02;
+      scheduleNote(audioCtx, masterGain, inst, {
+        pitch: 69,
+        startTime: now,
+        stopTime: now + 0.35,
+        velocity: 100,
+      });
+    };
+    tickFn();
+    auditionTimer = setInterval(tickFn, 600);
+  }
+
   // Audition a list of {pitch,startTick,durationTicks,velocity} events
   // (e.g. one note's rendered arpeggio) relative to now.
   function previewEvents(events, instrumentId) {
@@ -223,6 +252,8 @@ export function createEngine(store) {
     getPlayheadTick,
     previewNote,
     previewEvents,
+    setAudition,
+    isAuditioning: () => !!auditionTimer,
     ensureCtx,
     on: emitter.on,
   };
