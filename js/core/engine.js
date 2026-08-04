@@ -8,6 +8,11 @@ import { createEmitter } from './store.js';
 
 const SCHEDULE_INTERVAL_MS = 25;
 const LOOKAHEAD_S = 0.12;
+// Background tabs throttle timers (and remote sessions can stall the machine
+// entirely). Anything whose start time already passed is dropped instead of
+// being fired retroactively - otherwise the wake-up schedules a burst of
+// overdue notes that all sound at once.
+const STALE_S = 0.05;
 
 export function createEngine(store) {
   const emitter = createEmitter();
@@ -70,8 +75,10 @@ export function createEngine(store) {
       // Metronome beats
       if (store.session.metronome) {
         while (nextBeatTick < endTick && tickToTime(nextBeatTick) < horizon) {
-          const isDownbeat = nextBeatTick % tpBar === 0;
-          scheduleMetroTick(tickToTime(nextBeatTick), isDownbeat);
+          const beatTime = tickToTime(nextBeatTick);
+          if (beatTime >= audioCtx.currentTime - STALE_S) {
+            scheduleMetroTick(beatTime, nextBeatTick % tpBar === 0);
+          }
           nextBeatTick += tpb;
         }
       }
@@ -87,6 +94,10 @@ export function createEngine(store) {
           break;
         }
         const stop = Math.min(tickToTime(ev.startTick + ev.durationTicks), tickToTime(endTick));
+        if (start < audioCtx.currentTime - STALE_S) {
+          eventIndex++; // overdue (tab was throttled/asleep) - never retro-play
+          continue;
+        }
         if (stop > start) {
           const node = scheduleNote(audioCtx, masterGain, getInstrument(doc, ev.instrumentId), {
             pitch: ev.pitch,
@@ -172,6 +183,17 @@ export function createEngine(store) {
     liveNodes.clear();
     emitter.emit('playstate', { playing: false });
   }
+
+  // Returning to a throttled tab: jump the event cursor to the real playhead
+  // so the scheduler doesn't grind through (and drop) a backlog. The audition
+  // loop is silenced while hidden - it must never beep in the background.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      setAudition(null);
+      return;
+    }
+    if (playing) refreshEvents(getPlayheadTick());
+  });
 
   // Re-flatten mid-playback when the document changes (edit while playing).
   store.subscribe(['notes', 'tracks', 'song', 'harmonics', 'automation', 'doc'], () => {

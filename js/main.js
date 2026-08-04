@@ -61,6 +61,7 @@ function showScreen(name) {
 
 function openProject(doc, { demo = null } = {}) {
   engine.stop();
+  engine.setAudition(null); // never carry an audition loop into another project
   openDemoFile = demo;
   store.setDoc(doc);
   uiStore.update('selection', (s) => {
@@ -179,6 +180,7 @@ const actions = initToolbar({
   goHome: () => {
     flushSave();
     engine.stop();
+    engine.setAudition(null);
     showScreen('start');
   },
   forceSave: () => {
