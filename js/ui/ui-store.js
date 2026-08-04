@@ -20,8 +20,7 @@ export function createUiStore() {
     lastNoteLen: PPQ / 2,
     panels: { tracks: true, harmonics: true },
     instrumentTrackId: null, // track whose instrument tool is open (poly)
-    autoParam: 'gain', // automation lane parameter
-    autoDrag: null, // transient lane drag preview {points, label} | null
+    autoDrag: null, // transient lane drag preview {param, points, label} | null
   };
 
   return {

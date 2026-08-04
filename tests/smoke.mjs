@@ -863,88 +863,126 @@ await check('default instrument renamed to plain Square', `(() => {
   return names.includes('Square') && !names.includes('Badge Square') || names.join(',');
 })()`);
 
-// ---- automation lane (poly): keyframes ----
-await evaluate(`document.getElementById('auto-toggle').click()`);
-await sleep(200);
-await check('automation lane expands', `document.getElementById('roll-area').classList.contains('auto-open')`);
-await check('lane click adds a gain keyframe at the snapped tick', `(() => {
+// ---- automation lanes (poly): per-control keyframes ----
+await check('automation stack open by default with gain expanded', `(() => {
+  const master = document.getElementById('auto-master');
+  const btns = [...document.querySelectorAll('.auto-lane-btn')].map((b) => b.textContent.trim());
+  const rows = document.getElementById('roll-area').style.gridTemplateRows;
+  // triangle preset: gain + 4 ADSR lanes, NO duty lane
+  return master && master.textContent.includes('▾') && btns.length === 6
+    && btns.some((t) => t.startsWith('Gain')) && !btns.some((t) => t.startsWith('Duty'))
+    && rows.endsWith('142px') || btns.join(',') + ' rows=' + rows;
+})()`);
+await check('click in expanded gain lane adds a keyframe', `(() => {
   const c = document.getElementById('auto-canvas');
   const r = c.getBoundingClientRect();
+  // gain lane occupies y 18..78; y=48 = mid = 50%
   for (const type of ['mousedown', 'mouseup']) {
-    (type === 'mousedown' ? c : window).dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: r.left + 100, clientY: r.top + r.height / 2, button: 0 }));
+    (type === 'mousedown' ? c : window).dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: r.left + 100, clientY: r.top + 48, button: 0 }));
   }
-  const d = window.__chipseq.store.getDoc();
-  const lane = (d.tracks[0].automation || {}).gain || [];
-  return lane.length === 1 && lane[0].tick === 192 && lane[0].value > 0.3 && lane[0].value < 0.7
+  const lane = (window.__chipseq.store.getDoc().tracks[0].automation || {}).gain || [];
+  return lane.length === 1 && lane[0].tick === 192 && Math.abs(lane[0].value - 0.5) < 0.06
     || JSON.stringify(lane);
 })()`);
-await check('dragging moves the keyframe', `(() => {
+await check('click on a collapsed lane only expands it (no edit)', `(() => {
   const c = document.getElementById('auto-canvas');
   const r = c.getBoundingClientRect();
-  const x = r.left + 96; // point at tick 192 (pxPerTick 0.5)
-  const y = r.top + r.height / 2;
+  // attack lane header: collapsed strip right below gain (y 78..94)
+  for (const type of ['mousedown', 'mouseup']) {
+    (type === 'mousedown' ? c : window).dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: r.left + 300, clientY: r.top + 86, button: 0 }));
+  }
+  const auto = window.__chipseq.store.getDoc().tracks[0].automation || {};
+  const attackBtn = [...document.querySelectorAll('.auto-lane-btn')].find((b) => b.textContent.includes('Attack'));
+  const saved = JSON.parse(localStorage.getItem('chipseq.v1.autolane') || '{}');
+  return !(auto.attack || []).length && attackBtn.classList.contains('expanded') && saved.expanded.attack === true
+    || JSON.stringify({ attack: auto.attack, expanded: attackBtn.className });
+})()`);
+await check('keyframe in the attack lane overrides note envelopes', `(async () => {
+  const { flattenSong } = await import('/js/core/flatten.js');
+  const c = document.getElementById('auto-canvas');
+  const r = c.getBoundingClientRect();
+  // attack lane now expanded at y 78..138; click near the top = long attack
+  for (const type of ['mousedown', 'mouseup']) {
+    (type === 'mousedown' ? c : window).dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: r.left + 10, clientY: r.top + 78 + 10, button: 0 }));
+  }
+  const d = window.__chipseq.store.getDoc();
+  const lane = (d.tracks[0].automation || {}).attack || [];
+  if (lane.length !== 1 || lane[0].value < 0.2) return 'lane=' + JSON.stringify(lane);
+  const ev = flattenSong(d).events.find((e) => d.tracks[0].notes.some((n) => n.id === e.noteId));
+  return ev && ev.adsr && ev.adsr.a === lane[0].value || JSON.stringify(ev && ev.adsr);
+})()`);
+await check('dragging moves a gain keyframe', `(() => {
+  const c = document.getElementById('auto-canvas');
+  const r = c.getBoundingClientRect();
+  const ui = window.__chipseq.uiStore.state;
+  const x = r.left + 192 * ui.pxPerTick;
+  const y = r.top + 48;
   c.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: x, clientY: y, button: 0 }));
   window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: x + 48, clientY: y - 10 }));
   window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: x + 48, clientY: y - 10 }));
   const lane = window.__chipseq.store.getDoc().tracks[0].automation.gain;
   return lane.length === 1 && lane[0].tick === 288 || JSON.stringify(lane);
 })()`);
-await check('double-click cycles the curve type', `(() => {
+await check('double-click cycles curve, undo reverts', `(() => {
   const c = document.getElementById('auto-canvas');
   const r = c.getBoundingClientRect();
+  const ui = window.__chipseq.uiStore.state;
   const lane0 = window.__chipseq.store.getDoc().tracks[0].automation.gain[0];
-  const ui = window.__chipseq.uiStore.state;
-  const x = r.left + 288 * ui.pxPerTick;
-  // y of the point via its value
-  const before = lane0.curve;
-  c.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: x, clientY: r.top + r.height / 2 - 10 }));
+  const x = r.left + lane0.tick * ui.pxPerTick;
+  // recompute point y from its value in the gain lane (y 18..78, pad 6)
+  const y = r.top + 18 + 6 + (1 - lane0.value) * 48;
+  c.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: x, clientY: y }));
   const after = window.__chipseq.store.getDoc().tracks[0].automation.gain[0].curve;
-  return before === 'linear' && after === 'ease' || before + '->' + after;
-})()`);
-await check('undo reverts the curve change', `(() => {
   window.__chipseq.store.undo();
-  return window.__chipseq.store.getDoc().tracks[0].automation.gain[0].curve === 'linear';
+  const reverted = window.__chipseq.store.getDoc().tracks[0].automation.gain[0].curve;
+  return after === 'ease' && reverted === 'linear' || after + '/' + reverted;
 })()`);
-await check('right-click deletes the keyframe', `(() => {
+await check('right-click deletes a keyframe', `(() => {
   const c = document.getElementById('auto-canvas');
   const r = c.getBoundingClientRect();
   const ui = window.__chipseq.uiStore.state;
-  c.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: r.left + 288 * ui.pxPerTick, clientY: r.top + r.height / 2 - 10, button: 2 }));
+  const lane0 = window.__chipseq.store.getDoc().tracks[0].automation.gain[0];
+  const x = r.left + lane0.tick * ui.pxPerTick;
+  const y = r.top + 18 + 6 + (1 - lane0.value) * 48;
+  c.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: x, clientY: y, button: 2 }));
   const lane = window.__chipseq.store.getDoc().tracks[0].automation.gain;
   return lane.length === 0 || JSON.stringify(lane);
 })()`);
-await check('instrument switch keyframe changes flattened events', `(async () => {
-  const { flattenSong } = await import('/js/core/flatten.js');
-  const sel = document.getElementById('auto-param');
-  sel.value = 'instrument';
-  sel.dispatchEvent(new Event('change', { bubbles: true }));
-  const pick = document.getElementById('auto-inst-pick');
-  pick.value = 'sine';
-  const c = document.getElementById('auto-canvas');
-  const r = c.getBoundingClientRect();
-  for (const type of ['mousedown', 'mouseup']) {
-    (type === 'mousedown' ? c : window).dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: r.left + 10, clientY: r.top + r.height / 2, button: 0 }));
-  }
-  const d = window.__chipseq.store.getDoc();
-  const lane = (d.tracks[0].automation || {}).instrument || [];
-  if (lane.length !== 1 || lane[0].instrumentId !== 'sine') return 'lane=' + JSON.stringify(lane);
-  const evs = flattenSong(d).events.filter((e) => e.noteId && d.tracks[0].notes.some((n) => n.id === e.noteId));
-  return evs.every((e) => e.instrumentId === 'sine') || JSON.stringify(evs.map((e) => e.instrumentId));
+await check('duty lane appears only for PWM instruments', `(() => {
+  const s = window.__chipseq.store;
+  const before = [...document.querySelectorAll('.auto-lane-btn')].some((b) => b.textContent.includes('Duty'));
+  s.commit('to pwm', ['tracks'], (d) => {
+    d.tracks[0].instrument = { id: 'track:' + d.tracks[0].id, name: 'Custom', wave: 'custom', duty: 0.25,
+      harmonics: null, adsr: { a: 0.002, d: 0, s: 1, r: 0.002 }, gain: 0.3 };
+  });
+  const after = [...document.querySelectorAll('.auto-lane-btn')].some((b) => b.textContent.includes('Duty'));
+  s.undo();
+  return !before && after || 'before=' + before + ' after=' + after;
 })()`);
-await check('mono mode hides the lane and ignores automation', `(async () => {
+await check('master toggle collapses the whole stack', `(() => {
+  document.getElementById('auto-master').click();
+  const rows = document.getElementById('roll-area').style.gridTemplateRows;
+  const collapsed = rows.endsWith('18px');
+  document.getElementById('auto-master').click();
+  return collapsed || rows;
+})()`);
+await check('mono mode hides the lanes and ignores automation', `(async () => {
   const { flattenSong } = await import('/js/core/flatten.js');
   document.querySelector('#seg-mode [data-mode="mono"]').click();
   await new Promise((r) => setTimeout(r, 200));
   const menu = document.querySelector('.ctx-menu button');
-  if (menu) menu.click(); // pick the mono track when asked
+  if (menu) menu.click();
   await new Promise((r) => setTimeout(r, 200));
   const hidden = document.getElementById('roll-area').classList.contains('mono-mode');
   const d = window.__chipseq.store.getDoc();
-  const ignored = flattenSong(d).events.every((e) => e.instrumentId === 'badge');
+  const ignored = flattenSong(d).events.every((e) => e.instrumentId === 'badge' && !('adsr' in e));
   document.querySelector('#seg-mode [data-mode="poly"]').click();
   await new Promise((r) => setTimeout(r, 200));
   return hidden && ignored || 'hidden=' + hidden + ' ignored=' + ignored;
 })()`);
+// clean up automation for the remaining checks
+await evaluate(`window.__chipseq.store.commit('clear auto', ['automation'], (d) => { delete d.tracks[0].automation; })`);
+await sleep(150);
 
 // ---- back home, then check trimmer + autosave + reload ----
 await evaluate(`document.getElementById('btn-home').click()`);

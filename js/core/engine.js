@@ -96,6 +96,7 @@ export function createEngine(store) {
             gainMul: ev.gainMul ?? 1,
             gainCurve: ev.gainCurve ?? null,
             duty: ev.duty ?? null,
+            adsr: ev.adsr ?? null,
           });
           liveNodes.add(node);
           node.onended = () => liveNodes.delete(node);

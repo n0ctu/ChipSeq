@@ -36,17 +36,20 @@ deploy from the repository root).
   the track "Custom" until saved as a named preset, which then appears in
   every track's picker and travels in the project file.
 
-## Automation keyframes (poly)
+## Automation lanes (poly)
 
-The **auto** lane below the piano roll (fold with the corner button) automates
-the active track over time, FamiTracker-meets-DAW style: pick **Gain**,
-**Duty** (PWM) or **Instr** and click to place keyframes — drag to move,
-double-click cycles the curve (step / linear / ease), right-click deletes.
-Values are sampled per note event, so every arp step reads the curve
-independently (fast arps ⇒ smooth sweeps), and held notes get true intra-note
-gain ramps. Instrument keyframes switch the track between the project's
-instruments mid-song. Poly-only; mono and the `.h`/`.fmf` exports ignore
-automation entirely.
+Below the piano roll, every control of the active track's instrument gets its
+own expandable **Automation** lane: Gain, Attack, Decay, Sustain, Release —
+plus Duty for PWM instruments. Gain starts expanded (baseline 100%); the rest
+sit collapsed as slim read-only previews and expand on click (clicking a
+collapsed lane never edits anything). In an expanded lane: click adds a
+keyframe, drag moves it, double-click cycles the curve (step / linear /
+ease), right-click deletes. ADSR/duty values are absolute overrides of the
+instrument's setting (dashed baseline = the current value); values are
+sampled per note event — every arp step reads the curve independently, so
+fast arps become smooth sweeps — and held notes get true intra-note gain
+ramps. Poly-only; mono and the `.h`/`.fmf` exports ignore automation
+entirely.
 
 ## The tools sidebar
 

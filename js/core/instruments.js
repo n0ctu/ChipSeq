@@ -48,7 +48,7 @@ export function scheduleNote(
   ctx,
   destination,
   instrument,
-  { pitch, startTime, stopTime, velocity = 100, gainMul = 1, gainCurve = null, duty = null }
+  { pitch, startTime, stopTime, velocity = 100, gainMul = 1, gainCurve = null, duty = null, adsr = null }
 ) {
   const osc = ctx.createOscillator();
   if (instrument.wave === 'custom') {
@@ -59,7 +59,7 @@ export function scheduleNote(
   osc.frequency.value = pitchToFreq(pitch);
 
   const gain = ctx.createGain();
-  const { a, d, s, r } = instrument.adsr;
+  const { a, d, s, r } = adsr ? { ...instrument.adsr, ...adsr } : instrument.adsr;
   const peak = instrument.gain * gainMul * (velocity / 127);
   const dur = stopTime - startTime;
 

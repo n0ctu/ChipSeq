@@ -3,7 +3,7 @@
 
 import { PPQ } from './music.js';
 import { SCHEMA_VERSION } from './version.js';
-import { sampleAutomation, sampleStep, AUTOMATION_PARAMS } from './automation.js';
+import { sampleAutomation, AUTOMATION_PARAMS } from './automation.js';
 
 export { PPQ };
 
@@ -107,6 +107,11 @@ export function migrate(doc) {
       if (inst.id === 'badge' && inst.name === 'Badge Square') inst.name = 'Square';
     }
     doc.version = 3;
+  }
+  // Cleanup (no version bump): instrument-switch automation existed briefly
+  // and was replaced by per-control lanes — drop stray lanes on load.
+  for (const t of doc.tracks) {
+    if (t.automation && 'instrument' in t.automation) delete t.automation.instrument;
   }
   return doc;
 }
@@ -224,17 +229,15 @@ export function trimAutomation(track, tick, mode) {
       track.automation[param] = lane.filter((p) => p.tick < tick);
       continue;
     }
-    const step = !!(AUTOMATION_PARAMS[param] && AUTOMATION_PARAMS[param].step);
+    if (!AUTOMATION_PARAMS[param]) {
+      delete track.automation[param];
+      continue;
+    }
     const dropped = lane.some((p) => p.tick < tick);
     const kept = lane.filter((p) => p.tick >= tick).map((p) => ({ ...p, tick: p.tick - tick }));
     if (dropped && (!kept.length || kept[0].tick > 0)) {
-      if (step) {
-        const held = sampleStep(lane, tick);
-        if (held) kept.unshift({ tick: 0, instrumentId: held.instrumentId });
-      } else {
-        const held = sampleAutomation(lane, tick, NaN);
-        if (!Number.isNaN(held)) kept.unshift({ tick: 0, value: held, curve: 'step' });
-      }
+      const held = sampleAutomation(lane, tick, NaN);
+      if (!Number.isNaN(held)) kept.unshift({ tick: 0, value: held, curve: 'step' });
     }
     track.automation[param] = kept;
   }

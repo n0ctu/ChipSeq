@@ -1,11 +1,10 @@
 // Piano roll orchestrator: canvas layers, DPR sizing, dirty-flag rAF loop,
 // scroll/zoom, scrollbars. Mouse handling lives in interactions.js.
 
-import { readTheme, drawGrid, drawNotes, drawOverlay, drawRuler, drawKeys, drawChordLane, drawAutomationLane } from './render.js';
+import { readTheme, drawGrid, drawNotes, drawOverlay, drawRuler, drawKeys, drawChordLane } from './render.js';
 import { clampScroll, effectiveSnap, tickToX, PITCH_MIN, PITCH_MAX } from './coords.js';
 import { flattenNote, buildChordEvents } from '../../core/flatten.js';
-import { songEndTick, activeTrack, getLane } from '../../core/doc.js';
-import { getInstrument } from '../../core/instruments.js';
+import { songEndTick } from '../../core/doc.js';
 import { chordName } from '../../core/music.js';
 import { attachInteractions } from './interactions.js';
 import { initAutomationLane } from './automation-lane.js';
@@ -159,36 +158,7 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
       dirty.chords = false;
     }
     if (dirty.auto) {
-      const track = doc.mode === 'poly' ? activeTrack(doc) : null;
-      const param = ui.autoParam;
-      let defaultValue = null;
-      let hint = null;
-      let instrumentName = () => '';
-      if (track) {
-        const eff = getInstrument(doc, track.instrument ? 'track:' + track.id : track.instrumentId);
-        if (param === 'gain') defaultValue = 1;
-        if (param === 'duty') {
-          defaultValue = eff.duty ?? 0.25;
-          if (eff.wave !== 'custom' && !getLane(track, 'instrument').length) {
-            hint = 'PWM instruments only — no effect on this instrument';
-          }
-        }
-        instrumentName = (id) => {
-          if (id == null) return track.instrument ? 'Custom' : (doc.instruments.find((i) => i.id === track.instrumentId) || {}).name || '?';
-          return (doc.instruments.find((i) => i.id === id) || {}).name || '?';
-        };
-      }
-      drawAutomationLane(ctxs.auto, ui, doc, canvases.auto.clientWidth, canvases.auto.clientHeight, theme, {
-        param,
-        track,
-        drag: ui.autoDrag ? ui.autoDrag.points : null,
-        dragLabel: ui.autoDrag ? ui.autoDrag.label : null,
-        playheadTick,
-        playing,
-        defaultValue,
-        hint,
-        instrumentName,
-      });
+      autoLane.draw(ctxs.auto, canvases.auto.clientWidth, canvases.auto.clientHeight, theme, playheadTick, playing);
       dirty.auto = false;
     }
     updateScrollbars();
@@ -350,7 +320,7 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
   };
 
   api.interactions = attachInteractions({ store, uiStore, engine, canvases, roll: api });
-  initAutomationLane({ store, uiStore, canvas: canvases.auto });
+  const autoLane = initAutomationLane({ store, uiStore, canvas: canvases.auto });
 
   resizeAll();
   requestAnimationFrame(frame);

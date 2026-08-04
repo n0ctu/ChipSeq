@@ -4,7 +4,7 @@
 
 import { renderHarmonics, resolveChord } from './harmonics.js';
 import { playableTracks, getTrack, getNote, findOverlaps, ticksPerBar } from './doc.js';
-import { sampleAutomation, sampleStep, sampleGainCurve, quantizeDuty } from './automation.js';
+import { sampleAutomation, sampleGainCurve, quantizeDuty, AUTOMATION_PARAMS } from './automation.js';
 
 // Segment the chords track into a timeline of chord EVENTS that hold until
 // the next change (like a DAW chord track). Sampling "what sounds at exactly
@@ -144,7 +144,12 @@ export function flattenSong(doc) {
     const auto = doc.mode === 'poly' ? track.automation : null;
     const gainLane = auto && auto.gain && auto.gain.length ? auto.gain : null;
     const dutyLane = auto && auto.duty && auto.duty.length ? auto.duty : null;
-    const instLane = auto && auto.instrument && auto.instrument.length ? auto.instrument : null;
+    const adsrLanes = [];
+    if (auto) {
+      for (const [param, meta] of Object.entries(AUTOMATION_PARAMS)) {
+        if (meta.adsrKey && auto[param] && auto[param].length) adsrLanes.push([meta.adsrKey, auto[param]]);
+      }
+    }
 
     for (const note of track.notes) {
       let rendered;
@@ -155,11 +160,6 @@ export function flattenSong(doc) {
         rendered = renderHarmonics(note, ctx);
       }
       for (const ev of rendered) {
-        let evInstrumentId = instrumentId;
-        if (instLane) {
-          const p = sampleStep(instLane, ev.startTick);
-          if (p && doc.instruments.some((i) => i.id === p.instrumentId)) evInstrumentId = p.instrumentId;
-        }
         const extra = {};
         if (gainLane) {
           Object.assign(extra, sampleGainCurve(gainLane, ev.startTick, ev.startTick + ev.durationTicks, 1));
@@ -168,7 +168,15 @@ export function flattenSong(doc) {
           const d = sampleAutomation(dutyLane, ev.startTick, NaN);
           if (!Number.isNaN(d)) extra.duty = quantizeDuty(d);
         }
-        events.push({ ...ev, instrumentId: evInstrumentId, noteId: note.id, ...extra });
+        if (adsrLanes.length) {
+          const adsr = {};
+          for (const [key, lane] of adsrLanes) {
+            const v = sampleAutomation(lane, ev.startTick, NaN);
+            if (!Number.isNaN(v)) adsr[key] = v;
+          }
+          if (Object.keys(adsr).length) extra.adsr = adsr;
+        }
+        events.push({ ...ev, instrumentId, noteId: note.id, ...extra });
       }
     }
   }
