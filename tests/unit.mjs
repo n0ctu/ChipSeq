@@ -643,17 +643,48 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     }
   }
   const migrated = migrate(v1);
-  assert(migrated.version === 2, 'migration bumps version to 2');
+  assert(migrated.version === 3, 'migration bumps version to 3');
   const withCfg = migrated.tracks[0].notes.find((n) => n.harmonics);
   assert(withCfg && withCfg.harmonics.mode === 'arp' && withCfg.harmonics.stepsPerBeat === 2, 'arp field renamed to harmonics, config intact');
   assert(migrated.tracks[0].notes.every((n) => !('arp' in n)), 'old arp field removed');
   assert(migrated.tracks[0].notes.find((n) => !n.harmonics).harmonics === null, 'plain notes get harmonics: null');
   // v2 files pass through untouched
   const again = migrate(JSON.parse(JSON.stringify(migrated)));
-  assert(again.version === 2 && again.tracks[0].notes.some((n) => n.harmonics), 'migration is idempotent');
+  assert(again.version === 3 && again.tracks[0].notes.some((n) => n.harmonics), 'migration is idempotent');
   // renders identically after migration
   const ev = flattenSong(migrated).events;
   assert(ev.length > 2, 'migrated harmonics still render (arp expanded)');
+}
+
+// ---- v3 rename + per-track custom instruments ----
+{
+  const { migrate } = await import('../js/core/doc.js');
+  const { getInstrument } = await import('../js/core/instruments.js');
+  const idoc = createProject({ name: 'inst', mode: 'poly' });
+  assert(idoc.instruments[0].name === 'Square', 'default badge instrument named "Square"');
+
+  // v2 file with the old display name migrates
+  const v2doc = JSON.parse(JSON.stringify(idoc));
+  v2doc.version = 2;
+  v2doc.instruments[0].name = 'Badge Square';
+  const m = migrate(v2doc);
+  assert(m.version === 3 && m.instruments[0].name === 'Square', 'v2->v3 renames Badge Square');
+
+  // per-track custom instrument resolves via the virtual track: id
+  const t = idoc.tracks[0];
+  t.instrument = { id: 'track:' + t.id, name: 'Custom', wave: 'triangle', harmonics: null, duty: null,
+    adsr: { a: 0.01, d: 0.1, s: 0.5, r: 0.1 }, gain: 0.4 };
+  const resolved = getInstrument(idoc, 'track:' + t.id);
+  assert(resolved.wave === 'triangle', 'getInstrument resolves track: virtual id');
+  assert(getInstrument(idoc, 'track:missing').id === 'badge', 'unknown track: id falls back to default');
+
+  // flatten routes poly events through the custom instrument
+  addNote(idoc, t.id, createNote({ pitch: 60, startTick: 0, durationTicks: 96 }));
+  const ev = flattenSong(idoc).events[0];
+  assert(ev.instrumentId === 'track:' + t.id, 'flatten uses the custom instrument id');
+  // mono still forces the badge square regardless of custom configs
+  idoc.mode = 'mono';
+  assert(flattenSong(idoc).events[0].instrumentId === 'badge', 'mono still forces the badge square');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

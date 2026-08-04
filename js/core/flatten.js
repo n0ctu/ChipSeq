@@ -135,7 +135,8 @@ export function flattenSong(doc) {
   const events = [];
 
   for (const track of playableTracks(doc)) {
-    const instrumentId = doc.mode === 'mono' ? 'badge' : track.instrumentId;
+    const instrumentId =
+      doc.mode === 'mono' ? 'badge' : track.instrument ? 'track:' + track.id : track.instrumentId;
     for (const note of track.notes) {
       let rendered;
       if (doc.mode === 'mono' && note.harmonics && note.harmonics.mode === 'chord') {

@@ -70,6 +70,12 @@ export function scheduleNote(ctx, destination, instrument, { pitch, startTime, s
   return osc;
 }
 
+// Resolves shared instruments by id, and per-track "Custom" configs via the
+// virtual id "track:<trackId>".
 export function getInstrument(doc, instrumentId) {
+  if (instrumentId && instrumentId.startsWith('track:')) {
+    const track = doc.tracks.find((t) => t.id === instrumentId.slice(6));
+    if (track && track.instrument) return track.instrument;
+  }
   return doc.instruments.find((i) => i.id === instrumentId) || doc.instruments[0];
 }

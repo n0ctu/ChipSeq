@@ -782,6 +782,62 @@ await check('dragging the handle resizes the tracks panel and persists', `(() =>
   return after === before + 60 && saved.tracks === after || 'before=' + before + ' after=' + after + ' saved=' + JSON.stringify(saved);
 })()`);
 
+// ---- instrument tool (poly): picker opens section, custom config, preset ----
+await evaluate(`document.querySelector('#seg-mode [data-mode="poly"]').click()`);
+await sleep(200);
+await check('instrument section hidden before picker use', `document.getElementById('sec-instrument').hidden`);
+await evaluate(`(() => {
+  const sel = document.querySelector('#track-list .track-row select');
+  sel.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+})()`);
+await sleep(200);
+await check('using the picker opens the instrument section', `(() => {
+  const sec = document.getElementById('sec-instrument');
+  const ctx = sec.querySelector('.tool-ctx').textContent;
+  return !sec.hidden && ctx.includes('Square') || 'hidden=' + sec.hidden + ' ctx=' + ctx;
+})()`);
+await evaluate(`document.querySelector('#instrument-body #in-wave [data-v="triangle"]').click()`);
+await sleep(200);
+await check('editing makes the track instrument Custom', `(() => {
+  const d = window.__chipseq.store.getDoc();
+  const t = d.tracks[0];
+  const sel = document.querySelector('#track-list .track-row select');
+  return t.instrument && t.instrument.wave === 'triangle' && sel.value === '__custom'
+    || JSON.stringify(t.instrument) + ' sel=' + sel.value;
+})()`);
+await check('custom instrument flows into playback events', `(async () => {
+  const { flattenSong } = await import('/js/core/flatten.js');
+  const d = window.__chipseq.store.getDoc();
+  const ev = flattenSong(d).events.find((e) => e.instrumentId === 'track:' + d.tracks[0].id);
+  return !!ev || 'no track: event';
+})()`);
+// save as preset via the prompt dialog
+await evaluate(`document.querySelector('#instrument-body #in-save').click()`);
+await sleep(300);
+await check('preset prompt dialog opens', `document.getElementById('dlg-prompt').open`);
+await evaluate(`(() => {
+  document.getElementById('prompt-input').value = 'NES Triangle';
+  document.querySelector('#dlg-prompt [value="ok"]').click();
+})()`);
+await sleep(300);
+await check('saved preset lands in the project and the track uses it', `(() => {
+  const d = window.__chipseq.store.getDoc();
+  const preset = d.instruments.find((i) => i.name === 'NES Triangle');
+  const t = d.tracks[0];
+  return preset && t.instrumentId === preset.id && t.instrument === null
+    || JSON.stringify({ preset: !!preset, id: t.instrumentId, custom: t.instrument });
+})()`);
+await check('preset offered in the other track picker too', `(() => {
+  const sels = document.querySelectorAll('#track-list .track-row select');
+  const other = sels[1];
+  return other && [...other.options].some((o) => o.textContent === 'NES Triangle') || 'options missing';
+})()`);
+await check('default instrument renamed to plain Square', `(() => {
+  const sel = document.querySelectorAll('#track-list .track-row select')[0];
+  const names = [...sel.options].map((o) => o.textContent);
+  return names.includes('Square') && !names.includes('Badge Square') || names.join(',');
+})()`);
+
 // ---- back home, then check trimmer + autosave + reload ----
 await evaluate(`document.getElementById('btn-home').click()`);
 await sleep(300);
