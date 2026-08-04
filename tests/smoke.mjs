@@ -111,11 +111,12 @@ await sleep(1200);
 
 // ---- fresh boot: start page greets new users with the seeded demo ----
 await check('fresh boot greets with the start page', `!document.getElementById('screen-start').hidden && !!window.__chipseq`);
-await check('both demos seeded into Recent projects (not auto-opened)', `(() => {
+await check('all four demos seeded into Recent projects (not auto-opened)', `(() => {
   const items = document.querySelectorAll('.recent-item');
   const text = document.getElementById('recent-list').textContent;
-  return items.length === 2 && text.includes('Demo Mono 1') && text.includes('Demo Poly 1')
-    || 'items=' + items.length + ' text=' + text.slice(0, 80);
+  return items.length === 4 && text.includes('Demo Mono 1') && text.includes('Demo Poly 1')
+    && text.includes('Rickroll') && text.includes('Tetris')
+    || 'items=' + items.length + ' text=' + text.slice(0, 120);
 })()`);
 await check('footer shows brand + version', `(() => {
   const t = document.getElementById('st-brand').textContent;
@@ -123,7 +124,7 @@ await check('footer shows brand + version', `(() => {
 })()`);
 await check('per-file seed list set (no reseed after delete-all)', `(() => {
   const seeded = JSON.parse(localStorage.getItem('chipseq.v1.demosSeeded') || '[]');
-  return Array.isArray(seeded) && seeded.includes('demo-mono-1.tune.json') && seeded.includes('demo-poly-1.tune.json')
+  return Array.isArray(seeded) && seeded.length === 4 && seeded.includes('demo-mono-2-rickroll-arp.tune.json')
     || localStorage.getItem('chipseq.v1.demosSeeded');
 })()`);
 // open the mono demo once to verify it loads intact
@@ -1022,7 +1023,7 @@ await sleep(150);
 // ---- back home, then check trimmer + autosave + reload ----
 await evaluate(`document.getElementById('btn-home').click()`);
 await sleep(300);
-await check('back on start screen with 4 recents (incl. demos)', `!document.getElementById('screen-start').hidden && document.querySelectorAll('.recent-item').length === 4`);
+await check('back on start screen with 6 recents (incl. demos)', `!document.getElementById('screen-start').hidden && document.querySelectorAll('.recent-item').length === 6`);
 await evaluate(`document.querySelectorAll('.recent-item')[1] ? document.querySelectorAll('.recent-item')[1].click() : document.querySelector('.recent-item').click()`);
 await sleep(300);
 await check('loop region restored from localStorage', `(() => {
@@ -1064,7 +1065,7 @@ await sleep(300);
 await check('home lists all projects incl. the previous one', `(() => {
   const text = document.getElementById('recent-list').textContent;
   return !document.getElementById('screen-start').hidden && text.includes(${JSON.stringify(projName)})
-    && document.querySelectorAll('.recent-item').length === 4 || text;
+    && document.querySelectorAll('.recent-item').length === 6 || text;
 })()`);
 
 // ---- console errors ----

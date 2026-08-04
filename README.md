@@ -121,7 +121,8 @@ current song at any time.
   files there and list them in `demos/index.json`; newly shipped demos are
   seeded once per browser, so they also reach returning users). "Demo Poly 1"
   shows off the automation lanes: PWM duty sweep, an intra-note gain swell,
-  stepped-gain echoes and a release change.
+  stepped-gain echoes and a release change. "Demo Mono 2" arpeggiates a song
+  that shall not be named, and "Demo Poly 2" is a six-track Tetris theme.
 - The export dialog can restrict `.h`/`.wav` output to the **loop region**
   (checkbox, shown with its bar range). Region exports keep leading/trailing
   rests and are cut to the exact region length, so they loop seamlessly on

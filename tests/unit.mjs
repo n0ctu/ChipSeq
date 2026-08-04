@@ -811,7 +811,7 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   const { readFile } = await import('node:fs/promises');
   const { migrate } = await import('../js/core/doc.js');
   const index = JSON.parse(await readFile(new URL('../demos/index.json', import.meta.url), 'utf8'));
-  eq(index, ['demo-mono-1.tune.json', 'demo-poly-1.tune.json'], 'demo manifest lists both demos');
+  eq(index, ['demo-mono-1.tune.json', 'demo-mono-2-rickroll-arp.tune.json', 'demo-poly-1.tune.json', 'demo-poly-2-tetris.tune.json'], 'demo manifest lists all four demos');
   for (const file of index) {
     const doc = migrate(JSON.parse(await readFile(new URL('../demos/' + file, import.meta.url), 'utf8')));
     assert(doc.tracks.every((t) => t.notes.length >= 0), file + ' migrates cleanly');
