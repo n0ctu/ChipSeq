@@ -29,8 +29,12 @@ deploy from the repository root).
   dotted, rests as `P`; anything rounded is listed in the export warnings).
   Overlapping notes are flagged red (press `N` to cycle, status bar offers
   Auto-fix); mono exports are blocked until they're resolved.
-- **Poly** — multiple tracks with instruments (square / sine / sawtooth,
-  plus custom PWM-style waves in the project file), exports `.wav`.
+- **Poly** — multiple tracks with instruments, exports `.wav`. Besides the
+  square / sine / sawtooth presets, the **Instrument** tool (opens in the
+  sidebar when you use a track's instrument picker) edits wave (incl.
+  triangle and PWM with duty cycle), full ADSR envelope and gain. Edits make
+  the track "Custom" until saved as a named preset, which then appears in
+  every track's picker and travels in the project file.
 
 ## The tools sidebar
 

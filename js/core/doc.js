@@ -13,7 +13,7 @@ export function uid() {
 
 export const DEFAULT_INSTRUMENTS = [
   {
-    id: 'badge', name: 'Badge Square', wave: 'square',
+    id: 'badge', name: 'Square', wave: 'square',
     harmonics: null, duty: null,
     adsr: { a: 0.002, d: 0, s: 1, r: 0.002 }, gain: 0.35,
   },
@@ -99,6 +99,13 @@ export function migrate(doc) {
       }
     }
     doc.version = 2;
+  }
+  if (doc.version === 2) {
+    // v3: "Badge Square" display name simplified to "Square"
+    for (const inst of doc.instruments || []) {
+      if (inst.id === 'badge' && inst.name === 'Badge Square') inst.name = 'Square';
+    }
+    doc.version = 3;
   }
   return doc;
 }

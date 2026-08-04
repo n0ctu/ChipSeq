@@ -19,6 +19,7 @@ export function createUiStore() {
     triplet: false,
     lastNoteLen: PPQ / 2,
     panels: { tracks: true, harmonics: true },
+    instrumentTrackId: null, // track whose instrument tool is open (poly)
   };
 
   return {

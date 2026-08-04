@@ -5,7 +5,7 @@ import { promptDialog, confirmDialog } from './dialogs.js';
 import { icon } from './icons.js';
 import { readTheme, trackColor } from './piano-roll/render.js';
 
-export function initTracksPanel({ store, uiStore }) {
+export function initTracksPanel({ store, uiStore, onInstrumentPicker }) {
   const list = document.getElementById('track-list');
   const theme = readTheme();
 
@@ -64,14 +64,25 @@ export function initTracksPanel({ store, uiStore }) {
 
       if (doc.mode === 'poly') {
         const inst = document.createElement('select');
-        inst.title = 'Instrument';
-        inst.innerHTML = doc.instruments
-          .map((i) => `<option value="${i.id}"${i.id === track.instrumentId ? ' selected' : ''}>${i.name}</option>`)
-          .join('');
+        inst.title = 'Instrument (opens the Instrument tool in the sidebar)';
+        const isCustom = !!track.instrument;
+        inst.innerHTML =
+          (isCustom ? '<option value="__custom" selected>Custom</option>' : '') +
+          doc.instruments
+            .map((i) => `<option value="${i.id}"${!isCustom && i.id === track.instrumentId ? ' selected' : ''}>${i.name}</option>`)
+            .join('');
         inst.addEventListener('change', () => {
-          store.commit('set instrument', ['tracks'], (d) => {
-            d.tracks.find((t) => t.id === track.id).instrumentId = inst.value;
-          });
+          if (inst.value !== '__custom') {
+            store.commit('set instrument', ['tracks'], (d) => {
+              const t = d.tracks.find((x) => x.id === track.id);
+              t.instrumentId = inst.value;
+              t.instrument = null; // picking a preset discards the custom config
+            });
+          }
+          if (onInstrumentPicker) onInstrumentPicker(track.id);
+        });
+        inst.addEventListener('mousedown', () => {
+          if (onInstrumentPicker) onInstrumentPicker(track.id);
         });
         inst.addEventListener('click', (e) => e.stopPropagation());
         li.appendChild(inst);
