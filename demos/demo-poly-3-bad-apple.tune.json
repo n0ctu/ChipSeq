@@ -2,7 +2,7 @@
   "schema": "chipseq-tune",
   "version": 3,
   "id": "a58ffd58-815c-4fd0-ae22-b2f1f767d559",
-  "name": "Demo Poly 3 - Bad Apple",
+  "name": "Bad Apple",
   "mode": "poly",
   "ppq": 96,
   "song": {

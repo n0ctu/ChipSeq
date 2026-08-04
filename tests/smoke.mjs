@@ -111,34 +111,58 @@ await sleep(1200);
 
 // ---- fresh boot: start page greets new users with the seeded demo ----
 await check('fresh boot greets with the start page', `!document.getElementById('screen-start').hidden && !!window.__chipseq`);
-await check('all five demos seeded into Recent projects (not auto-opened)', `(() => {
-  const items = document.querySelectorAll('.recent-item');
-  const text = document.getElementById('recent-list').textContent;
-  return items.length === 5 && text.includes('Demo Mono 1') && text.includes('Demo Poly 1')
-    && text.includes('Rickroll') && text.includes('Tetris') && text.includes('Bad Apple')
-    || 'items=' + items.length + ' text=' + text.slice(0, 140);
+await check('demos listed in their own section, not in recents', `(() => {
+  const demoItems = document.querySelectorAll('#demo-list .demo-item');
+  const demoText = document.getElementById('demo-list').textContent;
+  const recents = document.getElementById('recent-list').textContent;
+  return demoItems.length === 5 && demoText.includes('Demo Mono') && demoText.includes('Demo Poly')
+    && demoText.includes('Rickroll') && demoText.includes('Tetris') && demoText.includes('Bad Apple')
+    && recents.includes('No projects yet')
+    || 'demos=' + demoItems.length + ' recents=' + recents.slice(0, 60);
 })()`);
 await check('footer shows brand + version', `(() => {
   const t = document.getElementById('st-brand').textContent;
   return /^ChipSeq by n0ctu - v\\d+\\.\\d+\\.\\d+$/.test(t) || t;
 })()`);
-await check('per-file seed list set (no reseed after delete-all)', `(() => {
-  const seeded = JSON.parse(localStorage.getItem('chipseq.v1.demosSeeded') || '[]');
-  return Array.isArray(seeded) && seeded.length === 5 && seeded.includes('demo-poly-3-bad-apple.tune.json')
-    || localStorage.getItem('chipseq.v1.demosSeeded');
+await check('demos are not copied into storage', `(() => {
+  const index = JSON.parse(localStorage.getItem('chipseq.v1.index') || '[]');
+  const marker = localStorage.getItem('chipseq.v1.demosSeeded');
+  return index.length === 0 && marker === null || 'index=' + index.length + ' marker=' + marker;
 })()`);
 // open the mono demo once to verify it loads intact
-await evaluate(`[...document.querySelectorAll('.recent-item')].find((i) => i.textContent.includes('Demo Mono 1')).click()`);
+await evaluate(`[...document.querySelectorAll('#demo-list .demo-item')].find((i) => i.textContent.includes('Demo Mono')).click()`);
 await sleep(300);
 await check('mono demo opens with all notes intact', `(() => {
   const doc = window.__chipseq.store.getDoc();
-  return !document.getElementById('screen-editor').hidden && doc.name === 'Demo Mono 1'
+  return !document.getElementById('screen-editor').hidden && doc.name === 'Demo Mono'
     && doc.tracks[0].notes.length === 7 || doc.name + '/' + doc.tracks[0].notes.length;
+})()`);
+await check('opening a demo stores nothing', `(() => {
+  return JSON.parse(localStorage.getItem('chipseq.v1.index') || '[]').length === 0;
+})()`);
+await check('editing a demo forks a personal copy with the same name', `(async () => {
+  const { createNote, addNote } = await import('/js/core/doc.js');
+  const s = window.__chipseq.store;
+  const demoId = s.getDoc().id;
+  s.commit('edit the demo', ['notes'], (d) => {
+    addNote(d, d.tracks[0].id, createNote({ pitch: 65, startTick: 96 * 40, durationTicks: 48 }));
+  });
+  await new Promise((r) => setTimeout(r, 700)); // autosave debounce
+  const doc = s.getDoc();
+  const index = JSON.parse(localStorage.getItem('chipseq.v1.index') || '[]');
+  return doc.id !== demoId && doc.name === 'Demo Mono' && index.length === 1
+    && index[0].name === 'Demo Mono' && !localStorage.getItem('chipseq.v1.proj.' + demoId)
+    || JSON.stringify({ forked: doc.id !== demoId, index: index.length });
 })()`);
 await evaluate(`document.getElementById('btn-home').click()`);
 await sleep(300);
+await check('demo still listed pristine after the fork', `(() => {
+  const demoItems = document.querySelectorAll('#demo-list .demo-item').length;
+  const recents = document.querySelectorAll('#recent-list .recent-item').length;
+  return demoItems === 5 && recents === 1 || 'demos=' + demoItems + ' recents=' + recents;
+})()`);
 // the poly demo shows off the automation lanes
-await evaluate(`[...document.querySelectorAll('.recent-item')].find((i) => i.textContent.includes('Demo Poly 1')).click()`);
+await evaluate(`[...document.querySelectorAll('#demo-list .demo-item')].find((i) => i.textContent.includes('Demo Poly')).click()`);
 await sleep(400);
 await check('poly demo opens with automation lanes visible and populated', `(async () => {
   const { flattenSong } = await import('/js/core/flatten.js');
@@ -1092,7 +1116,7 @@ await sleep(150);
 // ---- back home, then check trimmer + autosave + reload ----
 await evaluate(`document.getElementById('btn-home').click()`);
 await sleep(300);
-await check('back on start screen with 7 recents (incl. demos)', `!document.getElementById('screen-start').hidden && document.querySelectorAll('.recent-item').length === 7`);
+await check('back on start screen with 3 recents (demos are separate)', `!document.getElementById('screen-start').hidden && document.querySelectorAll('#recent-list .recent-item').length === 3`);
 await evaluate(`document.querySelectorAll('.recent-item')[1] ? document.querySelectorAll('.recent-item')[1].click() : document.querySelector('.recent-item').click()`);
 await sleep(300);
 await check('loop region restored from localStorage', `(() => {
@@ -1134,7 +1158,7 @@ await sleep(300);
 await check('home lists all projects incl. the previous one', `(() => {
   const text = document.getElementById('recent-list').textContent;
   return !document.getElementById('screen-start').hidden && text.includes(${JSON.stringify(projName)})
-    && document.querySelectorAll('.recent-item').length === 7 || text;
+    && document.querySelectorAll('#recent-list .recent-item').length === 3 || text;
 })()`);
 
 // ---- console errors ----

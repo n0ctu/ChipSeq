@@ -162,6 +162,15 @@
   color: var(--accent);
 }
 .recent-empty { color: var(--text-dim); padding: 10px 0; }
+.demo-item { border-style: dashed; }
+.demo-chip {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bg-3);
+  color: var(--text-dim);
+}
+.demo-open { color: var(--text-dim); display: flex; align-items: center; }
 
 /* tools sidebar sections */
 .tools-empty { color: var(--text-dim); font-size: 12px; padding: 14px 12px; line-height: 1.5; }

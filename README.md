@@ -124,14 +124,14 @@ current song at any time.
   screen). `Export → .tune.json` gives a portable project file; everything in
   it stays editable, including applied arpeggios.
 - Opening the app resumes the project you last had open.
-  First-time visitors land on the start page with the bundled demo projects
-  waiting under "Recent projects" - demos live in `demos/` (add `.tune.json`
-  files there and list them in `demos/index.json`; newly shipped demos are
-  seeded once per browser, so they also reach returning users). "Demo Poly 1"
-  shows off the automation lanes: PWM duty sweep, an intra-note gain swell,
-  stepped-gain echoes and a release change. "Demo Mono 2" arpeggiates a song
-  that shall not be named, "Demo Poly 2" is a six-track Tetris theme, and
-  "Demo Poly 3" is Bad Apple (5650 events across six tracks).
+- **Demos** get their own section on the start page and are loaded fresh from
+  `demos/` on every visit, so updates always reach everyone - they are never
+  copied into your storage. Open one to explore it; the moment you edit, a
+  personal copy with the same name is created and the demo stays pristine.
+  Add your own by dropping a `.tune.json` into `demos/` and listing it in
+  `demos/index.json`. Shipped: "Demo Mono" (arpeggios), "Demo Poly"
+  (automation lanes: PWM duty sweep, intra-note gain swell, stepped-gain
+  echoes, release change), "Rickroll", "Tetris" and "Bad Apple".
 - The export dialog can restrict `.h`/`.wav` output to the **loop region**
   (checkbox, shown with its bar range). Region exports keep leading/trailing
   rests and are cut to the exact region length, so they loop seamlessly on

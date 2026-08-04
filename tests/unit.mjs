@@ -818,6 +818,12 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   }
   const poly = migrate(JSON.parse(await readFile(new URL('../demos/demo-poly-1.tune.json', import.meta.url), 'utf8')));
   assert(poly.mode === 'poly', 'poly demo is poly');
+  assert(poly.name === 'Demo Poly', 'demo names are short: ' + poly.name);
+  const names = [];
+  for (const file of index) {
+    names.push(JSON.parse(await readFile(new URL('../demos/' + file, import.meta.url), 'utf8')).name);
+  }
+  eq(names, ['Demo Mono', 'Rickroll', 'Demo Poly', 'Tetris', 'Bad Apple'], 'all demo names');
   const evs = flattenSong(poly).events;
   assert(evs.some((e) => e.gainCurve), 'poly demo has an intra-note gain curve');
   assert(evs.some((e) => e.duty != null), 'poly demo has duty automation');

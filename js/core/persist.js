@@ -54,32 +54,27 @@ export function lastOpenId() {
   return localStorage.getItem(KEY_LAST);
 }
 
-// Per-file seed tracking: each demo is imported at most once, so newly
-// shipped demos reach existing users while deleted ones never respawn.
+// Demos are no longer copied into storage - they load fresh from demos/ on
+// every visit so updates reach everyone. Clean up copies seeded by older
+// builds (and the obsolete seed marker) so they don't shadow the live ones.
 const KEY_SEEDED = PREFIX + 'demosSeeded';
-export function seededDemoFiles() {
-  const raw = localStorage.getItem(KEY_SEEDED);
-  if (!raw) return [];
-  if (raw === '1') return ['demo-mono-1.tune.json']; // legacy one-shot flag
-  try {
-    return JSON.parse(raw) || [];
-  } catch {
-    return [];
+export function purgeSeededDemos(demoIds) {
+  localStorage.removeItem(KEY_SEEDED);
+  for (const id of demoIds) {
+    if (localStorage.getItem(projKey(id))) deleteProject(id);
   }
-}
-export function markDemoSeeded(file) {
-  const list = seededDemoFiles();
-  if (!list.includes(file)) list.push(file);
-  localStorage.setItem(KEY_SEEDED, JSON.stringify(list));
 }
 
 // Debounced autosave wired to store changes. Emits 'storage-error' on the
 // store if the quota is hit - never deletes other projects silently.
-export function attachAutosave(store, { debounceMs = 400 } = {}) {
+// shouldSave: optional guard - e.g. an open demo must not be persisted
+// until the user edits it (which forks a personal copy).
+export function attachAutosave(store, { debounceMs = 400, shouldSave = null } = {}) {
   let timer = null;
 
   function flush() {
     timer = null;
+    if (shouldSave && !shouldSave()) return;
     try {
       saveProject(store.getDoc());
       store.emit('saved', { at: Date.now() });
