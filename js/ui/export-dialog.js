@@ -101,6 +101,10 @@ export function initExportDialog({ store, conflicts }) {
   });
 
   $('inp-symbol').addEventListener('input', renderPreview);
+  // Enter in the array-name field must not implicitly submit (= Close)
+  $('inp-symbol').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') e.preventDefault();
+  });
 
   $('chk-export-region').addEventListener('change', () => {
     if (tab === 'h' || tab === 'fmf') renderPreview();

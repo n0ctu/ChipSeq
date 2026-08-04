@@ -30,6 +30,14 @@ export async function promptDialog(title, initial = '') {
   dlg.querySelector('#prompt-title').textContent = title;
   const input = dlg.querySelector('#prompt-input');
   input.value = initial;
+  // Enter must confirm - the form's default submit button is Cancel (first
+  // in tree order), so implicit submission would DISCARD the input.
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      dlg.close('ok');
+    }
+  };
   setTimeout(() => input.select(), 0);
   const result = await openDialog(dlg);
   return result === 'ok' ? input.value.trim() : null;
