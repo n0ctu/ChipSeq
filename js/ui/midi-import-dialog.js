@@ -3,6 +3,7 @@
 // by ear before importing.
 
 import { openDialog } from './dialogs.js';
+import { icon } from './icons.js';
 import { suggestRoles, trackStats } from '../core/midi-import.js';
 import { keyName, PPQ } from '../core/music.js';
 import { scheduleNote } from '../core/instruments.js';
@@ -115,7 +116,7 @@ export async function midiImportDialog(parsed) {
     const poly = Math.round(trackStats(t).polyRatio * 100);
     return `
       <tr>
-        <td><button type="button" class="btn btn-icon midi-preview" data-index="${i}" title="Preview this track">&#9654;</button></td>
+        <td><button type="button" class="btn btn-icon midi-preview" data-index="${i}" title="Preview this track">${icon('player-play')}</button></td>
         <td>${escapeHtml(t.name)}${t.isDrums ? ' 🥁' : ''}</td>
         <td>${t.channel != null ? t.channel + 1 : ''}</td>
         <td>${t.notes.length}</td>
@@ -134,7 +135,7 @@ export async function midiImportDialog(parsed) {
     </table>`;
 
   const resetButtons = () => {
-    for (const b of table.querySelectorAll('.midi-preview')) b.innerHTML = '&#9654;';
+    for (const b of table.querySelectorAll('.midi-preview')) b.innerHTML = icon('player-play');
   };
   // onclick (not addEventListener) so re-opening the dialog replaces the handler
   table.onclick = (e) => {
@@ -143,7 +144,7 @@ export async function midiImportDialog(parsed) {
     const index = Number(btn.dataset.index);
     resetButtons();
     const started = player.toggle(parsed.tracks[index], index, resetButtons);
-    if (started) btn.innerHTML = '&#9646;&#9646;';
+    if (started) btn.innerHTML = icon('player-pause');
   };
 
   const result = await openDialog(dlg);

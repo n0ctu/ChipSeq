@@ -7,6 +7,7 @@ import { explainNoteChord, flattenNote, makeArpContext } from '../core/flatten.j
 import { loadPresets, savePresets } from '../core/persist.js';
 import { chordName, PITCH_NAMES } from '../core/music.js';
 import { promptDialog, confirmDialog } from './dialogs.js';
+import { icon } from './icons.js';
 
 const PATTERNS = [
   { id: 'up', label: 'Up' },
@@ -201,7 +202,7 @@ export function initHarmonicsPanel({ store, uiStore, roll, engine }) {
       <div class="harm-row">
         <strong>${notes.length} note${notes.length === 1 ? '' : 's'}</strong>
         <span style="flex:1"></span>
-        ${has ? '<button class="btn btn-icon" id="harm-audition" title="Audition this arpeggio">&#9654;</button>' : ''}
+        ${has ? `<button class="btn btn-icon" id="harm-audition" title="Audition this arpeggio">${icon('player-play')}</button>` : ''}
         <label class="tb-field"><input type="checkbox" id="harm-on" ${has ? 'checked' : ''}/> On</label>
       </div>
       ${infoHtml}
@@ -261,8 +262,8 @@ export function initHarmonicsPanel({ store, uiStore, roll, engine }) {
       <div class="harm-field" style="margin-top:8px">Presets
         <div class="harm-presets">
           <select id="harm-preset"><option value="">— preset —</option></select>
-          <button class="btn btn-icon" id="harm-preset-save" title="Save current as preset">💾</button>
-          <button class="btn btn-icon" id="harm-preset-del" title="Delete selected preset">✕</button>
+          <button class="btn btn-icon" id="harm-preset-save" title="Save current as preset">${icon('device-floppy')}</button>
+          <button class="btn btn-icon" id="harm-preset-del" title="Delete selected preset">${icon('trash')}</button>
         </div>
       </div>`;
 

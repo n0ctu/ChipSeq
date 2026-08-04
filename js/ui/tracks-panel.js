@@ -2,6 +2,7 @@
 
 import { createTrack } from '../core/doc.js';
 import { promptDialog, confirmDialog } from './dialogs.js';
+import { icon } from './icons.js';
 import { readTheme, trackColor } from './piano-roll/render.js';
 
 export function initTracksPanel({ store, uiStore }) {
@@ -91,7 +92,7 @@ export function initTracksPanel({ store, uiStore }) {
 
       const del = document.createElement('button');
       del.className = 'btn-icon';
-      del.innerHTML = '&#10005;';
+      del.innerHTML = icon('trash');
       del.title = 'Delete track';
       del.addEventListener('click', async (e) => {
         e.stopPropagation();
