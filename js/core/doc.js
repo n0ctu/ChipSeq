@@ -4,9 +4,14 @@
 // ---------------------------------------------------------------------------
 // THREE RULES FOR GROWING THE FORMAT
 //
-// The point of all three: a file written by a newer build must still open in
-// an older one, and - more importantly - an older build must not quietly
-// destroy what it could not read.
+// The point of all three: a build that meets a file it does not fully
+// understand must still open it, say what it cannot honour, and - above all -
+// not quietly destroy the parts it could not read.
+//
+// Note the direction this works in. A v3 build REFUSES a v4 file outright:
+// its validate() predates these rules and throws on any newer version. From
+// v4 onward that is fixed (see validate below), so the guarantee holds going
+// forward, not backward.
 //
 // 1. Extension blocks are namespaced and self-versioned.
 //    Anything a feature owns lives in its own object carrying `kind` and `v`:
@@ -96,8 +101,10 @@ export function createProject({ name = 'Untitled', mode = 'mono' } = {}) {
       tempo: [{ tick: 0, bpm: 120 }],
       meter: [{ tick: 0, num: 4, den: 4 }],
       // Derived mirrors of the first map entry, kept in sync by
-      // syncLegacyFields(). They exist so a file written here still opens in
-      // the previously deployed build; remove them a release after v4 ships.
+      // syncLegacyFields(). Two jobs: a future build that restructures the
+      // maps can still read a tempo out of a file written here, and this
+      // build can read one out of that file (see tempoMap/meterMap).
+      // Output-only - nothing in this build reads them directly.
       bpm: 120,
       timeSig: { num: 4, den: 4 },
     },
@@ -113,11 +120,19 @@ export function createProject({ name = 'Untitled', mode = 'mono' } = {}) {
   };
 }
 
+// A file from a NEWER build is opened, not refused.
+//
+// This used to throw on any version above SCHEMA_VERSION, which made rules 2
+// and 3 above unreachable: a newer file never got far enough for its unknown
+// blocks to be preserved or for doc.uses to explain itself. Refusing to open
+// is also the worst outcome for the user - the project is right there, and
+// most of it is perfectly playable.
+//
+// So a higher version loads, its unknown parts ride along untouched, and
+// unsupportedFeatures() reports it as schema@N for the UI to surface.
 export function validate(doc) {
   if (!doc || doc.schema !== 'chipseq-tune') throw new Error('Not a chipseq .tune.json file');
-  if (typeof doc.version !== 'number' || doc.version > SCHEMA_VERSION) {
-    throw new Error(`Unsupported file version ${doc.version} (app supports up to ${SCHEMA_VERSION})`);
-  }
+  if (typeof doc.version !== 'number') throw new Error('Corrupt project file: no version');
   if (!Array.isArray(doc.tracks) || !doc.song) throw new Error('Corrupt project file');
   return doc;
 }
@@ -148,9 +163,8 @@ export function migrate(doc) {
   }
   if (doc.version === 3) {
     // v4: the single bpm/timeSig scalars became tick-indexed MAPS. The old
-    // fields stay behind as derived mirrors (see syncLegacyFields) so a v4
-    // file still opens in a v3 build - it just cannot see mid-song changes,
-    // which is exactly what doc.uses ends up telling the user.
+    // fields stay behind as derived mirrors (see syncLegacyFields) so any
+    // reader that does not know the maps can still find a tempo.
     if (!Array.isArray(doc.song.tempo)) {
       doc.song.tempo = [{ tick: 0, bpm: doc.song.bpm ?? 120 }];
     }
@@ -167,6 +181,8 @@ export function migrate(doc) {
   }
   // Additive default: melody marker used to be fused with the active track.
   if (!doc.melodyTrackId) doc.melodyTrackId = doc.activeTrackId;
+  // A newer file keeps its own version number: this build did not upgrade it
+  // and must not claim it did. Its unknown parts ride along untouched.
   normalizeDoc(doc);
   return doc;
 }
@@ -190,12 +206,31 @@ function entryAt(map, tick) {
   return found;
 }
 
+// The maps, or a one-entry map rebuilt from the legacy scalars.
+//
+// This is the other half of what makes the mirrors worth carrying: a document
+// from a future version that restructured song.tempo still yields a usable
+// tempo here instead of crashing on an undefined map. Same trick in reverse
+// as an older build reading song.bpm out of a file this one wrote.
+function tempoMap(doc) {
+  const map = doc.song.tempo;
+  if (Array.isArray(map) && map.length) return map;
+  return [{ tick: 0, bpm: doc.song.bpm ?? 120 }];
+}
+
+function meterMap(doc) {
+  const map = doc.song.meter;
+  if (Array.isArray(map) && map.length) return map;
+  const sig = doc.song.timeSig || { num: 4, den: 4 };
+  return [{ tick: 0, num: sig.num, den: sig.den }];
+}
+
 export function bpmAt(doc, tick = 0) {
-  return entryAt(doc.song.tempo, tick).bpm;
+  return entryAt(tempoMap(doc), tick).bpm;
 }
 
 export function timeSigAt(doc, tick = 0) {
-  return entryAt(doc.song.meter, tick);
+  return entryAt(meterMap(doc), tick);
 }
 
 // Absolute position of a tick in seconds, integrating across tempo changes.
@@ -203,7 +238,7 @@ export function timeSigAt(doc, tick = 0) {
 // entry exists, so the multiplication lives here once rather than in the
 // engine, the WAV renderer and two text exporters.
 export function tickToSeconds(doc, tick) {
-  const map = doc.song.tempo;
+  const map = tempoMap(doc);
   const ppq = doc.ppq || PPQ;
   let seconds = 0;
   for (let i = 0; i < map.length; i++) {
@@ -218,7 +253,7 @@ export function tickToSeconds(doc, tick) {
 
 // Inverse of tickToSeconds - the playhead reads back from the audio clock.
 export function secondsToTick(doc, seconds) {
-  const map = doc.song.tempo;
+  const map = tempoMap(doc);
   const ppq = doc.ppq || PPQ;
   let acc = 0;
   for (let i = 0; i < map.length; i++) {
@@ -310,11 +345,18 @@ export function updateUses(doc) {
 // Entries of doc.uses this build cannot honour: an unknown name, or a known
 // one at a higher major than we support.
 export function unsupportedFeatures(doc) {
-  return (doc.uses || []).filter((entry) => {
+  const out = [];
+  // A whole file from the future: report the schema level itself, so the user
+  // is told the document is newer than the app rather than left guessing why
+  // something looks off.
+  if (typeof doc.version === 'number' && doc.version > SCHEMA_VERSION) {
+    out.push(`schema@${doc.version}`);
+  }
+  return out.concat((doc.uses || []).filter((entry) => {
     const [name, major] = String(entry).split('@');
     const supported = KNOWN_FEATURES[name];
     return supported === undefined || Number(major || 1) > supported;
-  });
+  }));
 }
 
 // The single after-commit pass: everything that must hold for EVERY snapshot

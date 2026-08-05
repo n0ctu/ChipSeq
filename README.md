@@ -58,9 +58,14 @@ entirely.
 ## Growing the file format
 
 Three rules keep `.tune.json` extensible without breaking files. The point of
-all three: a file written by a newer build must still open in an older one -
-and, more importantly, the older build must not quietly destroy what it could
-not read.
+all three: a build that meets a file it does not fully understand must still
+open it, say what it cannot honour, and - above all - not quietly destroy the
+parts it could not read.
+
+One caveat about direction. A **v3 build refuses a v4 file outright**: its
+validator predates these rules and throws on any newer version. That is fixed
+from v4 on - `validate()` now opens a newer file and lets `doc.uses` explain
+what is missing - so the guarantee holds going forward, not backward.
 
 1. **Extension blocks are namespaced and self-versioned.** Anything a feature
    owns lives in its own object carrying `kind` and `v`, e.g.
@@ -89,11 +94,14 @@ rewrite of the engine and all four exporters. MIDI import already keeps whole
 maps instead of discarding tempo changes with a warning.
 
 `song.bpm` and `song.timeSig` remain as **derived mirrors** of the first map
-entry so a v4 file still opens in the previously deployed build; they are
-output-only (`syncLegacyFields` recomputes them, nothing reads them) and can be
-removed a release after v4 has shipped. A multi-entry map is declared in
-`doc.uses` precisely because an older build would read the mirror and play one
-tempo throughout - which sounds fine and is wrong.
+entry, doing two jobs: a future build that restructures the maps can still find
+a tempo in a file written here, and this build can still find one in that
+file - `bpmAt`/`timeSigAt` fall back to the scalars when the maps are missing.
+`syncLegacyFields` recomputes them; the maps are always authoritative.
+
+A multi-entry map is declared in `doc.uses` precisely because a reader that
+falls back to the mirror plays one tempo throughout - which sounds fine and is
+wrong, the worst kind of failure.
 
 ## Output level
 
