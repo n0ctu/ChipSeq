@@ -1,10 +1,12 @@
 // Collapsible tool-sidebar sections with remembered fold state.
 
+import { readRaw, writeRaw } from '../core/persist.js';
+
 const KEY = 'chipseq.v1.sections';
 
 function loadState() {
   try {
-    return JSON.parse(localStorage.getItem(KEY)) || {};
+    return JSON.parse(readRaw(KEY)) || {};
   } catch {
     return {};
   }
@@ -17,9 +19,7 @@ export function initSectionFold(section, key) {
     section.classList.toggle('folded');
     const s = loadState();
     s[key] = !section.classList.contains('folded');
-    try {
-      localStorage.setItem(KEY, JSON.stringify(s));
-    } catch {}
+    writeRaw(KEY, JSON.stringify(s));
   });
 }
 

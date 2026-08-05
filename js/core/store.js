@@ -50,6 +50,13 @@ export function createStore(doc) {
     }
   }
 
+  // A repair means the document referenced something that no longer existed.
+  // The user should hear about it - fixing it silently is how a project ends
+  // up subtly different from what someone left behind.
+  function reportRepairs(warnings) {
+    if (warnings && warnings.length) emitter.emit('doc-repaired', warnings);
+  }
+
   function emitChange(scopes, label) {
     emitter.emit('change', { scopes: new Set(scopes), label, doc: current });
   }
@@ -60,7 +67,8 @@ export function createStore(doc) {
 
     // Replace the whole document (project open / import), clears history.
     setDoc(newDoc) {
-      current = normalizeDoc(newDoc);
+      current = newDoc;
+      reportRepairs(normalizeDoc(current));
       undoStack = [];
       redoStack = [];
       session.cursorTick = 0;
@@ -95,7 +103,7 @@ export function createStore(doc) {
       capUndo();
       redoStack = [];
       fn(current);
-      normalizeDoc(current);
+      reportRepairs(normalizeDoc(current));
       current.updatedAt = new Date().toISOString();
       emitChange([...scopes, 'history'], label);
     },
@@ -106,14 +114,16 @@ export function createStore(doc) {
     undo() {
       if (!undoStack.length) return;
       redoStack.push(JSON.stringify(current));
-      current = normalizeDoc(JSON.parse(undoStack.pop()));
+      current = JSON.parse(undoStack.pop());
+      reportRepairs(normalizeDoc(current));
       emitChange(['doc', 'song', 'notes', 'tracks', 'automation', 'history'], 'undo');
     },
 
     redo() {
       if (!redoStack.length) return;
       undoStack.push(JSON.stringify(current));
-      current = normalizeDoc(JSON.parse(redoStack.pop()));
+      current = JSON.parse(redoStack.pop());
+      reportRepairs(normalizeDoc(current));
       emitChange(['doc', 'song', 'notes', 'tracks', 'automation', 'history'], 'redo');
     },
 

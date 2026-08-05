@@ -361,13 +361,90 @@ export function unsupportedFeatures(doc) {
 
 // The single after-commit pass: everything that must hold for EVERY snapshot
 // rather than being remembered at each call site.
+// Referential integrity, repaired rather than assumed.
+//
+// Every id in the document must name something that exists. Checking that at
+// each call site means every future call site has to remember; doing it here
+// makes "well-formed" a property of every snapshot instead. Undo restores a
+// snapshot that was already repaired, so this cannot fight the history.
+//
+// Only ACTUAL repairs are reported - a pass that changed nothing returns an
+// empty list, so this can run on every commit without becoming noise.
+//
+// Deliberately NOT enforced: a muted melody track. It is a legitimate thing
+// to do, and silently moving the M marker in response would repeat an
+// annoyance we already fixed once (clicking a row used to move it).
+export function enforceInvariants(doc) {
+  const warnings = [];
+
+  // Something must be playable. A zero-track document would break every
+  // consumer that reasonably assumes tracks[0] exists.
+  if (!Array.isArray(doc.tracks) || !doc.tracks.length) {
+    doc.tracks = [createTrack({ name: 'Lead', role: 'melody', instrumentId: 'badge' })];
+    warnings.push('the project had no tracks - an empty one was added');
+  }
+  if (!Array.isArray(doc.instruments) || !doc.instruments.length) {
+    doc.instruments = structuredClone(DEFAULT_INSTRUMENTS);
+    warnings.push('the instrument list was empty - the defaults were restored');
+  }
+  // Mono forces the badge square, so it has to exist whatever else was lost.
+  if (!doc.instruments.some((i) => i.id === 'badge')) {
+    doc.instruments.unshift(structuredClone(DEFAULT_INSTRUMENTS[0]));
+    warnings.push('the "Square" instrument was missing - it was restored');
+  }
+
+  const byId = new Set(doc.tracks.map((t) => t.id));
+  const fallback = doc.tracks[0].id;
+
+  // Instrument references: an orphan id falls back to the badge rather than
+  // dangling. getInstrument() would quietly land on instruments[0] anyway -
+  // this makes the document say what actually plays.
+  for (const track of doc.tracks) {
+    const own = String(track.instrumentId || '');
+    if (own.startsWith('track:')) {
+      // the virtual id only resolves through the track's own inline config
+      if (own !== 'track:' + track.id || !track.instrument) {
+        track.instrumentId = 'badge';
+        track.instrument = null;
+        warnings.push(`track "${track.name}" pointed at a missing custom instrument - reset to Square`);
+      }
+    } else if (!doc.instruments.some((i) => i.id === own)) {
+      track.instrumentId = 'badge';
+      warnings.push(`track "${track.name}" used an instrument that no longer exists - reset to Square`);
+    }
+  }
+
+  // Editing focus and the mono voice must both name a real track.
+  if (!byId.has(doc.activeTrackId)) {
+    doc.activeTrackId = fallback;
+    warnings.push('the selected track no longer exists - selection moved');
+  }
+  if (!byId.has(doc.melodyTrackId)) {
+    // prefer something audible, so mono does not resolve to a muted track
+    const audible = doc.tracks.find((t) => t.role !== 'muted');
+    doc.melodyTrackId = (audible || doc.tracks[0]).id;
+    warnings.push(`the melody track no longer exists - "${getTrack(doc, doc.melodyTrackId).name}" is now the mono voice`);
+  }
+  // chordTrackId is a SOFT reference: null is a valid state, and chord
+  // resolution already falls through to its per-note recommendation chain.
+  if (doc.chordTrackId && !byId.has(doc.chordTrackId)) {
+    doc.chordTrackId = null;
+    warnings.push('the chords track no longer exists - chords now resolve from the key');
+  }
+
+  return warnings;
+}
+
+// The single after-commit pass. Returns the repairs it had to make, so the
+// store can tell the user rather than fixing things behind their back.
 export function normalizeDoc(doc) {
-  if (!doc || !doc.song) return doc;
+  if (!doc || !doc.song) return [];
+  const warnings = enforceInvariants(doc);
   if (Array.isArray(doc.song.tempo)) sortMap(doc.song.tempo);
   if (Array.isArray(doc.song.meter)) sortMap(doc.song.meter);
   syncLegacyFields(doc);
   updateUses(doc);
-  return doc;
+  return warnings;
 }
 
 // ---- lookups ----

@@ -12,6 +12,7 @@ import {
 import { getInstrument } from '../../core/instruments.js';
 import { AUTOMATION_PARAMS, LANE_ORDER, sampleAutomation } from '../../core/automation.js';
 import { HOT_ABOVE, isHot } from '../../core/units.js';
+import { readRaw, writeRaw } from '../../core/persist.js';
 import { trackColor } from './render.js';
 
 const MASTER_H = 18;
@@ -32,7 +33,7 @@ export function initAutomationLane({ store, uiStore, canvas }) {
   // ---- prefs ----
   function loadPrefs() {
     try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+      return JSON.parse(readRaw(STORAGE_KEY)) || {};
     } catch {
       return {};
     }
@@ -42,7 +43,7 @@ export function initAutomationLane({ store, uiStore, canvas }) {
   const expanded = { gain: true, ...(prefs.expanded || {}) };
   function savePrefs() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ open: masterOpen, expanded }));
+      writeRaw(STORAGE_KEY, JSON.stringify({ open: masterOpen, expanded }));
     } catch {}
   }
 

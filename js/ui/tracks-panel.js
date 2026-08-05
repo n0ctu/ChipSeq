@@ -113,10 +113,9 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker, onImportTr
         if (doc2.tracks.length <= 1) return;
         if (track.notes.length && !(await confirmDialog('Delete track', `Delete track “${track.name}” and its ${track.notes.length} notes?`, 'Delete'))) return;
         store.commit('delete track', ['tracks', 'notes'], (d) => {
+          // The active/melody/chord markers are re-pointed by the store's
+          // invariant pass - no call site has to remember to do it.
           d.tracks = d.tracks.filter((t) => t.id !== track.id);
-          if (d.chordTrackId === track.id) d.chordTrackId = null;
-          if (d.activeTrackId === track.id) d.activeTrackId = d.tracks[0].id;
-          if (d.melodyTrackId === track.id) d.melodyTrackId = d.tracks[0].id;
         });
         uiStore.update('selection', (s) => s.selection.clear());
       });
