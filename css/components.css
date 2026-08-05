@@ -232,6 +232,18 @@
 .btn-pair { display: flex; gap: 6px; }
 .btn-pair .btn { flex: 1; }
 
+/* envelope editor (instrument tool) */
+.env-canvas {
+  width: 100%;
+  height: 90px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  display: block;
+}
+/* sliders grey out once a drawn shape has taken over - they cannot express
+   it, and pretending otherwise would round the curve away on the next drag */
+.harm-field.disabled { opacity: 0.45; pointer-events: none; }
+
 /* arp panel */
 .harm-info {
   background: var(--bg-2);

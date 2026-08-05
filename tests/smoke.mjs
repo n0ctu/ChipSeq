@@ -1075,6 +1075,77 @@ await check('a fine-tuned instrument makes the card open itself', `(() => {
   return (sec.classList.contains('open') && status.classList.contains('on') && /Custom/.test(status.textContent))
     || 'open=' + sec.classList.contains('open') + ' status=' + status.textContent;
 })()`);
+// ---- envelope editor ----
+// The sliders and the canvas edit ONE shape. While it stays ADSR-shaped it is
+// stored as four numbers; the moment it is drawn into something they cannot
+// express, an explicit envelope block appears and the sliders stand down.
+await evaluate(`(() => {
+  const s = window.__chipseq.store;
+  s.commit('env fixture', ['tracks'], (d) => {
+    const t = d.tracks[0];
+    t.instrument = { id: 'track:' + t.id, name: 'Custom', wave: 'square', duty: null,
+      harmonics: null, adsr: { a: 0.08, d: 0.25, s: 0.45, r: 0.35 }, gain: 0.6 };
+  });
+})()`);
+await sleep(300);
+await openTool('instrument');
+
+await check('the envelope starts as ADSR, stored as four numbers', `(() => {
+  const t = window.__chipseq.store.getDoc().tracks[0];
+  const mode = document.querySelector('#in-env-mode');
+  const canvas = document.querySelector('#in-env');
+  return (!!canvas && !t.instrument.env && mode.textContent === 'ADSR'
+    && !document.querySelector('#instrument-body .harm-field.disabled'))
+    || 'env=' + JSON.stringify(t.instrument.env) + ' mode=' + (mode && mode.textContent);
+})()`);
+
+await check('drawing a point the sliders cannot express stores an envelope', `(() => {
+  const c = document.querySelector('#in-env');
+  const rect = c.getBoundingClientRect();
+  // attack+decay = 0.33 s and release = 0.35 s both clamp to the 0.4 s
+  // minimum span, so the pre-sustain stage is half of the non-held width
+  const usable = rect.width - 12;
+  const preW = (usable - usable * 0.25) * 0.5;
+  const x = rect.left + 6 + preW * 0.7; // clear of the existing handles
+  const y = rect.top + rect.height / 2;
+  c.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: x, clientY: y }));
+  const t = window.__chipseq.store.getDoc().tracks[0];
+  const env = t.instrument.env;
+  return (env && env.kind === 'env' && env.points.length === 5 && env.sustainIndex === 3)
+    || JSON.stringify(env);
+})()`);
+
+await check('the sliders stand down rather than rounding the curve away', `(() => {
+  const mode = document.querySelector('#in-env-mode');
+  const disabled = document.querySelectorAll('#instrument-body .harm-field.disabled').length;
+  const reset = document.querySelector('#in-env-reset');
+  return (mode.textContent === 'drawn' && disabled === 4 && !!reset)
+    || 'mode=' + mode.textContent + ' disabled=' + disabled + ' reset=' + !!reset;
+})()`);
+
+await check('a drawn envelope survives a save/load round-trip', `(async () => {
+  const { exportTuneJson, importTuneJson } = await import('/js/core/persist.js');
+  const doc = window.__chipseq.store.getDoc();
+  const back = importTuneJson(await exportTuneJson(doc).text());
+  const a = doc.tracks[0].instrument.env;
+  const b = back.tracks[0].instrument.env;
+  return JSON.stringify(a) === JSON.stringify(b) || JSON.stringify(b);
+})()`);
+
+await check('reset returns to ADSR and clears the block', `(() => {
+  document.querySelector('#in-env-reset').click();
+  const t = window.__chipseq.store.getDoc().tracks[0];
+  const mode = document.querySelector('#in-env-mode');
+  const disabled = document.querySelectorAll('#instrument-body .harm-field.disabled').length;
+  // the sliders must come back to what they were BEFORE the drawing, not to
+  // the zeros a non-ADSR shape reads back as
+  const restored = t.instrument.adsr.a === 0.08 && t.instrument.adsr.s === 0.45;
+  return (!t.instrument.env && mode.textContent === 'ADSR' && disabled === 0 && restored)
+    || 'env=' + JSON.stringify(t.instrument.env) + ' mode=' + mode.textContent
+       + ' disabled=' + disabled + ' adsr=' + JSON.stringify(t.instrument.adsr);
+})()`);
+await evaluate(`window.__chipseq.store.undo()`);
+
 await check('custom instrument flows into playback events', `(async () => {
   const { flattenSong } = await import('/js/core/flatten.js');
   const d = window.__chipseq.store.getDoc();
@@ -1492,6 +1563,127 @@ await check('home lists all projects incl. the previous one', `(() => {
   const text = document.getElementById('recent-list').textContent;
   return !document.getElementById('screen-start').hidden && text.includes(${JSON.stringify(projName)})
     && document.querySelectorAll('#recent-list .recent-item').length === 3 || text;
+})()`);
+
+// ---- unified modulation, rendered ----
+const MOD_DOC = `
+  const modDoc = (patch) => {
+    const doc = structuredClone(window.__chipseq.store.getDoc());
+    doc.mode = 'poly';
+    const inst = doc.instruments.find((i) => i.id === 'badge');
+    inst.gain = 0.8;
+    inst.adsr = { a: 0.01, d: 0, s: 1, r: 0.05 };
+    doc.tracks = [{
+      id: 'mod', name: 'mod', role: 'melody', instrumentId: 'badge', notes: [
+        { id: 'mn', pitch: 69, startTick: 0, durationTicks: 384, velocity: 127, harmonics: null },
+      ],
+    }];
+    doc.activeTrackId = doc.melodyTrackId = 'mod';
+    patch(doc, inst);
+    return doc;
+  };
+`;
+
+// The merged curve has to carry the release tail. The old two-node scheme let
+// the ADSR node release while the lane curve held its final value; folding
+// them into one array means the array itself must come back to silence, or a
+// note under automation would simply stop dead.
+await check('a note under a gain lane still releases to silence', `(async () => {
+  ${WAV_HELPERS}
+  ${MOD_DOC}
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const doc = modDoc((d) => {
+    d.tracks[0].automation = { gain: [
+      { tick: 0, value: 0.2, curve: 'linear' },
+      { tick: 384, value: 1, curve: 'linear' },
+    ] };
+  });
+  const { blob } = await renderWav(doc);
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  const samples = new Int16Array(buf.buffer, 44, (buf.length - 44) / 2);
+  let peak = 0;
+  for (const s of samples) peak = Math.max(peak, Math.abs(s / 32768));
+  // last 20 ms must be silent: the release ran to zero inside the curve
+  let tail = 0;
+  for (let i = samples.length - 900; i < samples.length; i++) tail = Math.max(tail, Math.abs(samples[i] / 32768));
+  return (peak > 0.3 && tail < 0.01) || 'peak=' + peak.toFixed(4) + ' tail=' + tail.toFixed(4);
+})()`);
+
+// A rising lane must actually rise: the note is quieter at its start than at
+// its end, which is what proves the lane and the envelope were multiplied
+// rather than one of them winning.
+await check('a rising gain lane is audible across the note', `(async () => {
+  ${MOD_DOC}
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const doc = modDoc((d) => {
+    d.tracks[0].automation = { gain: [
+      { tick: 0, value: 0.1, curve: 'linear' },
+      { tick: 384, value: 1, curve: 'linear' },
+    ] };
+  });
+  const { blob } = await renderWav(doc);
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  const samples = new Int16Array(buf.buffer, 44, (buf.length - 44) / 2);
+  const rms = (from, to) => {
+    let sum = 0;
+    for (let i = from; i < to; i++) sum += (samples[i] / 32768) ** 2;
+    return Math.sqrt(sum / (to - from));
+  };
+  // The note is 384 ticks = 2 s at 120 BPM = 88200 samples; the render adds a
+  // release plus padding after that, so both windows must sit INSIDE the note.
+  const early = rms(4000, 8000);
+  const late = rms(80000, 84000);
+  return (late > early * 2) || 'early=' + early.toFixed(4) + ' late=' + late.toFixed(4);
+})()`);
+
+// A drawn envelope overrides the sliders - the storage is additive, so a
+// project without one is untouched.
+await check('a drawn envelope overrides the ADSR sliders', `(async () => {
+  ${MOD_DOC}
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const { adsrToEnv } = await import('/js/core/modulation.js');
+  const plain = modDoc(() => {});
+  const drawn = modDoc((d, inst) => {
+    // a slow swell the four sliders cannot express: rise, dip, rise
+    inst.env = { kind: 'env', v: 1, timeBase: 'sec', sustainIndex: 3, points: [
+      { t: 0, value: 0, curve: 'linear' },
+      { t: 0.3, value: 1, curve: 'linear' },
+      { t: 0.5, value: 0.2, curve: 'linear' },
+      { t: 0.8, value: 1, curve: 'linear' },
+      { t: 0.05, value: 0, curve: 'linear' },
+    ] };
+  });
+  const rmsOf = async (doc) => {
+    const { blob } = await renderWav(doc);
+    const buf = new Uint8Array(await blob.arrayBuffer());
+    const s = new Int16Array(buf.buffer, 44, (buf.length - 44) / 2);
+    let sum = 0;
+    for (let i = 0; i < s.length; i++) sum += (s[i] / 32768) ** 2;
+    return Math.sqrt(sum / s.length);
+  };
+  const a = await rmsOf(plain);
+  const b = await rmsOf(drawn);
+  // the swell spends much of the note below full level, so it is quieter
+  return (b < a * 0.9 && b > 0) || 'plain=' + a.toFixed(4) + ' drawn=' + b.toFixed(4);
+})()`);
+
+// detune is a real target now, which is what makes vibrato and portamento
+// data rather than deferred features.
+await check('detune shifts the rendered pitch', `(async () => {
+  ${MOD_DOC}
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const zeroCrossings = async (doc) => {
+    const { blob } = await renderWav(doc);
+    const buf = new Uint8Array(await blob.arrayBuffer());
+    const s = new Int16Array(buf.buffer, 44, (buf.length - 44) / 2);
+    let n = 0;
+    for (let i = 5000; i < 20000; i++) if ((s[i - 1] < 0) !== (s[i] < 0)) n++;
+    return n;
+  };
+  const base = await zeroCrossings(modDoc(() => {}));
+  const up = await zeroCrossings(modDoc((d) => { d.tracks[0].notes[0].detune = 1200; }));
+  // an octave up is twice the frequency, so roughly twice the crossings
+  return (up > base * 1.7 && up < base * 2.3) || 'base=' + base + ' up=' + up;
 })()`);
 
 // ---- referential integrity through the real UI ----
