@@ -1,15 +1,12 @@
 // Transpose section of the tools sidebar: bulk pitch operations on the
 // selection, or the whole active track when nothing is selected.
 
-import { updateNotes, activeTrack, getTrack } from '../core/doc.js';
-import { keyName, transposeDiatonic, snapToKey, isInKey } from '../core/music.js';
-import { PITCH_MIN, PITCH_MAX } from './piano-roll/coords.js';
-import { initSectionFold, updateEmptyHint } from './sections.js';
+import { updateNotes, activeTrack, getTrack } from '../../core/doc.js';
+import { keyName, transposeDiatonic, snapToKey, isInKey } from '../../core/music.js';
+import { PITCH_MIN, PITCH_MAX } from '../piano-roll/coords.js';
 
-export function initTransposePanel({ store, uiStore, engine }) {
-  const section = document.getElementById('sec-transpose');
-  const body = document.getElementById('transpose-body');
-  const ctxLabel = section.querySelector('.tool-ctx');
+// Mounted by tools-panel.js on first expand; the manifest owns the header.
+export function mount(body, { store, uiStore, engine }) {
   const ui = uiStore.state;
   const clamp = (p) => Math.max(PITCH_MIN, Math.min(PITCH_MAX, p));
 
@@ -42,10 +39,7 @@ export function initTransposePanel({ store, uiStore, engine }) {
 
   function render() {
     const s = scope();
-    section.hidden = !s;
-    updateEmptyHint();
-    if (!s) return;
-    ctxLabel.textContent = s.label;
+    if (!s) return; // the panel hides the card; keep the last body
     const key = store.getDoc().song.key;
 
     body.innerHTML = `
@@ -84,6 +78,5 @@ export function initTransposePanel({ store, uiStore, engine }) {
 
   store.subscribe(['notes', 'tracks', 'song', 'doc'], render);
   uiStore.subscribe(['selection'], render);
-  initSectionFold(section, 'transpose');
   render();
 }

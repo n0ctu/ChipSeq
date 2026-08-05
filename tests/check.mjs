@@ -11,9 +11,13 @@ const modules = [
   'ui/piano-roll/coords.js', 'ui/piano-roll/render.js', 'ui/piano-roll/interactions.js',
   'ui/piano-roll/automation-lane.js',
   'ui/piano-roll/piano-roll.js', 'ui/keymap.js', 'ui/toolbar.js', 'ui/status-bar.js',
-  'ui/start-screen.js', 'ui/tracks-panel.js', 'ui/harmonics-panel.js',
+  'ui/start-screen.js', 'ui/tracks-panel.js',
+  // every tool the manifest can load must import cleanly, or a broken tool
+  // would only surface as an empty card at runtime
+  'ui/tools-panel.js', 'ui/tools/manifest.js',
+  'ui/tools/harmonics.js', 'ui/tools/transpose.js', 'ui/tools/instrument.js',
   'ui/midi-import-dialog.js', 'ui/export-dialog.js',
-  'ui/icons.js', 'ui/sections.js', 'ui/transpose-panel.js', 'ui/instrument-panel.js', 'ui/panel-resize.js', 'ui/trimmer.js',
+  'ui/icons.js', 'ui/panel-resize.js', 'ui/trimmer.js',
 ];
 let failed = 0;
 for (const m of modules) {

@@ -76,7 +76,7 @@
 
 #tracks-panel.collapsed { width: 0 !important; border: none; }
 
-#harmonics-panel {
+#tools-panel {
   grid-area: arp;
   width: 230px;
   background: var(--bg-1);
@@ -87,9 +87,11 @@
   position: relative;
 }
 
-#harmonics-panel .tool-scroll { overflow-y: auto; flex: 1; }
+/* the scroll area sits DARKER than the cards it holds, so each card reads
+   as its own box rather than dissolving into the panel */
+#tools-panel .tool-scroll { overflow-y: auto; flex: 1; background: var(--bg-0); }
 
-#harmonics-panel.collapsed { width: 0 !important; border: none; }
+#tools-panel.collapsed { width: 0 !important; border: none; }
 
 /* drag handles on the panels' inner edges */
 .panel-resize {

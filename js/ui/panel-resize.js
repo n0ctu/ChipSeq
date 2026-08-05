@@ -22,7 +22,7 @@ export function initPanelResizers() {
   const widths = loadWidths();
   const panels = [
     { id: 'tracks-panel', side: 'right', key: 'tracks' },
-    { id: 'harmonics-panel', side: 'left', key: 'harmonics' },
+    { id: 'tools-panel', side: 'left', key: 'harmonics' },
   ];
 
   for (const cfg of panels) {
