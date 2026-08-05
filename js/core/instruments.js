@@ -69,7 +69,7 @@ export function scheduleNote(
   {
     pitch, startTime, stopTime, velocity = 100,
     gainMul = 1, gainCurve = null, duty = null, adsr = null,
-    detune = 0, lfo = null,
+    detune = 0, lfo = null, pan = null,
   }
 ) {
   const osc = ctx.createOscillator();
@@ -128,7 +128,17 @@ export function scheduleNote(
   }
 
   osc.connect(gain);
-  gain.connect(destination);
+  // A pan lane makes position per-event, so this voice carries its own
+  // panner. Without a lane the track node handles it once for every voice,
+  // which is cheaper and is why this is conditional.
+  if (pan != null && ctx.createStereoPanner) {
+    const panner = ctx.createStereoPanner();
+    panner.pan.value = Math.max(-1, Math.min(1, pan));
+    gain.connect(panner);
+    panner.connect(destination);
+  } else {
+    gain.connect(destination);
+  }
   osc.start(startTime);
   osc.stop(stopTime + release + 0.001);
   return osc;

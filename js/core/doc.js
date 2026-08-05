@@ -504,8 +504,30 @@ export function trackPan(track) {
 
 // Does anything in this project need a stereo field? Mono stays mono, so
 // existing exports keep the size and shape they always had.
+export function hasPanLane(track) {
+  return !!(track && track.automation && track.automation.pan && track.automation.pan.length);
+}
+
 export function needsStereo(doc) {
-  return doc.mode === 'poly' && doc.tracks.some((t) => trackPan(t) !== 0);
+  if (doc.mode !== 'poly') return false;
+  return doc.tracks.some((t) => trackPan(t) !== 0 || hasPanLane(t));
+}
+
+// Fan tracks across the stereo field: the melody stays centred (it is the
+// thing you are listening to) and the rest alternate outward. A starting
+// point you then adjust, not a fixed layout - which is why it is a button
+// rather than something that happens to you.
+export function spreadPan(doc, { width = 0.7 } = {}) {
+  const others = doc.tracks.filter((t) => t.id !== doc.melodyTrackId);
+  const melody = getTrack(doc, doc.melodyTrackId);
+  if (melody) melody.pan = 0;
+  others.forEach((track, i) => {
+    // -1, +1, -1, +1 ... at growing distance from the centre
+    const side = i % 2 === 0 ? -1 : 1;
+    const step = Math.floor(i / 2) + 1;
+    const depth = Math.min(1, step / Math.max(1, Math.ceil(others.length / 2)));
+    track.pan = Math.round(side * width * depth * 100) / 100;
+  });
 }
 
 // Both take an optional tick so they follow the meter map. Callers that pass
@@ -758,6 +780,10 @@ export function applyImport(doc, parsed, assignments) {
   const melody = newTracks.find((x) => x.role === 'melody') || newTracks[0];
   doc.activeTrackId = melody.track.id;
   doc.melodyTrackId = melody.track.id;
+  // A multi-track file stacked dead centre is a mush; fan it out so the
+  // import already sounds like an arrangement. Mono has one voice, so there
+  // is nothing to place.
+  if (doc.mode === 'poly' && doc.tracks.length > 2) spreadPan(doc);
 }
 
 // Merge imported MIDI tracks into the CURRENT project: appends tracks and

@@ -5,7 +5,7 @@ import { exportHeader, sanitizeSymbolName } from '../core/export-h.js';
 import { exportFmf } from '../core/export-fmf.js';
 import { renderWav } from '../core/export-wav.js';
 import { exportTuneJson } from '../core/persist.js';
-import { ticksPerBar } from '../core/doc.js';
+import { ticksPerBar, needsStereo, trackPan, hasPanLane } from '../core/doc.js';
 
 export function initExportDialog({ store, conflicts }) {
   const dlg = document.getElementById('dlg-export');
@@ -69,6 +69,31 @@ export function initExportDialog({ store, conflicts }) {
     }
   }
 
+  // The output used to be described as "mono mix" in a hint that stopped
+  // being true the moment panning shipped. Say what the file will actually
+  // be, and what decides it, so stereo is a visible state rather than a side
+  // effect of having moved a slider.
+  function renderChannels() {
+    const doc = store.getDoc();
+    const row = $('export-channels');
+    const box = $('chk-export-stereo');
+    const forced = box.checked;
+    const panned = doc.tracks.filter((t) => trackPan(t) !== 0 || hasPanLane(t));
+    const auto = needsStereo(doc);
+    row.hidden = tab !== 'wav';
+    box.parentElement.hidden = tab !== 'wav' || doc.mode !== 'poly';
+    if (doc.mode !== 'poly') {
+      row.textContent = 'Output: mono - a mono project has one voice to place.';
+    } else if (auto) {
+      row.textContent =
+        `Output: stereo - ${panned.length} of ${doc.tracks.length} track${doc.tracks.length === 1 ? '' : 's'} panned.`;
+    } else if (forced) {
+      row.textContent = 'Output: stereo - forced; nothing is panned, so both channels will match.';
+    } else {
+      row.textContent = 'Output: mono - nothing is panned. Pan a track in the Mixer, or force stereo below.';
+    }
+  }
+
   function renderTabs() {
     const doc = store.getDoc();
     const monoDisabled = doc.mode !== 'mono' || conflicts.count() > 0;
@@ -90,6 +115,7 @@ export function initExportDialog({ store, conflicts }) {
     $('export-h-pane').hidden = tab !== 'h';
     $('export-fmf-pane').hidden = tab !== 'fmf';
     $('export-wav-pane').hidden = tab !== 'wav';
+    renderChannels();
     $('export-json-pane').hidden = tab !== 'json';
     $('btn-export-copy').hidden = tab !== 'h' && tab !== 'fmf';
     renderRegionRow();
@@ -130,6 +156,8 @@ export function initExportDialog({ store, conflicts }) {
     if (e.key === 'Enter') e.preventDefault();
   });
 
+  $('chk-export-stereo').addEventListener('change', renderChannels);
+
   $('chk-export-region').addEventListener('change', () => {
     if (tab === 'h' || tab === 'fmf') renderPreview();
   });
@@ -162,7 +190,7 @@ export function initExportDialog({ store, conflicts }) {
       btn.disabled = true;
       btn.textContent = 'Rendering…';
       try {
-        const { blob, level } = await renderWav(doc, { region });
+        const { blob, level } = await renderWav(doc, { region, stereo: $('chk-export-stereo').checked });
         showLevel(level);
         downloadBlob(blob, base + suffix + '.wav');
       } finally {
@@ -179,6 +207,7 @@ export function initExportDialog({ store, conflicts }) {
       const doc = store.getDoc();
       $('inp-symbol').value = sanitizeSymbolName(doc.name);
       showLevel(null); // never show the previous render's level
+      $('chk-export-stereo').checked = false;
       tab = doc.mode === 'mono' && conflicts.count() === 0 ? 'h' : 'wav';
       renderTabs();
       openDialog(dlg);

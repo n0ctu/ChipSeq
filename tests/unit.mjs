@@ -994,7 +994,7 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   const {
     trackGain, trackPan, needsStereo, playableTracks, createTrack,
   } = await import('../js/core/doc.js');
-  const { formatPan } = await import('../js/ui/tools/mixer.js');
+  const { formatPan } = await import('../js/core/units.js');
 
   const doc = createProject({ name: 'mix', mode: 'poly' });
   const a = doc.tracks[0];
@@ -1038,6 +1038,60 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   mono.tracks[0].solo = false;
   mono.tracks[0].role = 'muted';
   eq(playableTracks(mono).map((t) => t.name), ['Lead'], 'mono plays its melody track regardless');
+
+  // Spread: melody centred, the rest fanned outward alternately.
+  {
+    const { spreadPan, hasPanLane } = await import('../js/core/doc.js');
+    const d = createProject({ name: 'spread', mode: 'poly' });
+    for (const name of ['B', 'C', 'D', 'E']) {
+      d.tracks.push(createTrack({ name, role: 'melody', instrumentId: 'sine' }));
+    }
+    spreadPan(d);
+    assert(trackPan(d.tracks[0]) === 0, 'the melody track stays centred');
+    const pans = d.tracks.slice(1).map(trackPan);
+    assert(pans.some((p) => p < 0) && pans.some((p) => p > 0), 'the rest fan to both sides');
+    assert(pans.every((p) => Math.abs(p) <= 1), 'and stay inside the field');
+    assert(new Set(pans.map((p) => Math.sign(p))).size === 2, 'sides alternate rather than piling up');
+    assert(needsStereo(d) === true, 'a spread project renders stereo');
+
+    // A single-track project has nothing to fan out.
+    const solo1 = createProject({ name: 'one', mode: 'poly' });
+    spreadPan(solo1);
+    assert(trackPan(solo1.tracks[0]) === 0, 'one track is left where it was');
+
+    // A pan LANE takes over from the static value, so the static slider must
+    // stand down rather than fight it.
+    const laned = createProject({ name: 'laned', mode: 'poly' });
+    assert(hasPanLane(laned.tracks[0]) === false, 'no lane by default');
+    laned.tracks[0].automation = { pan: [{ tick: 0, value: -1, curve: 'linear' }] };
+    assert(hasPanLane(laned.tracks[0]) === true, 'a pan lane is detected');
+    assert(needsStereo(laned) === true, 'and forces a stereo render on its own');
+  }
+
+  // A pan lane is sampled per event, exactly like the other lanes, so an
+  // arpeggio can ping-pong step by step.
+  {
+    const { flattenSong } = await import('../js/core/flatten.js');
+    const d = createProject({ name: 'panlane', mode: 'poly' });
+    const t = d.tracks[0];
+    t.automation = { pan: [
+      { tick: 0, value: -1, curve: 'linear' },
+      { tick: 384, value: 1, curve: 'linear' },
+    ] };
+    addNote(d, t.id, createNote({ pitch: 60, startTick: 0, durationTicks: 96 }));
+    addNote(d, t.id, createNote({ pitch: 62, startTick: 192, durationTicks: 96 }));
+    addNote(d, t.id, createNote({ pitch: 64, startTick: 384, durationTicks: 96 }));
+    const evs = flattenSong(d).events;
+    assert(Math.abs(evs[0].pan + 1) < 1e-9, 'the first event sits hard left');
+    assert(Math.abs(evs[1].pan) < 1e-9, 'the middle event has swept to centre');
+    assert(Math.abs(evs[2].pan - 1) < 1e-9, 'the last sits hard right');
+
+    // No lane means no field on the event at all, so documents without one
+    // flatten to exactly the stream they always did.
+    const plain = createProject({ name: 'nopan', mode: 'poly' });
+    addNote(plain, plain.tracks[0].id, createNote({ pitch: 60, startTick: 0, durationTicks: 96 }));
+    assert(!('pan' in flattenSong(plain).events[0]), 'no lane, no pan field');
+  }
 
   assert(formatPan(0) === 'C', 'centre reads as C');
   assert(formatPan(-0.5) === 'L50', 'left reads as L50');

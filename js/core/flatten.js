@@ -3,7 +3,7 @@
 // which is what guarantees preview === export === badge.
 
 import { renderHarmonics, resolveChord } from './harmonics.js';
-import { playableTracks, getTrack, getNote, findOverlaps, ticksPerBar } from './doc.js';
+import { playableTracks, getTrack, getNote, findOverlaps, ticksPerBar, trackPan } from './doc.js';
 import { sampleAutomation, sampleGainCurve, quantizeDuty, AUTOMATION_PARAMS } from './automation.js';
 
 // Segment the chords track into a timeline of chord EVENTS that hold until
@@ -144,6 +144,7 @@ export function flattenSong(doc) {
     const auto = doc.mode === 'poly' ? track.automation : null;
     const gainLane = auto && auto.gain && auto.gain.length ? auto.gain : null;
     const dutyLane = auto && auto.duty && auto.duty.length ? auto.duty : null;
+    const panLane = auto && auto.pan && auto.pan.length ? auto.pan : null;
     const adsrLanes = [];
     if (auto) {
       for (const [param, meta] of Object.entries(AUTOMATION_PARAMS)) {
@@ -168,6 +169,10 @@ export function flattenSong(doc) {
           const d = sampleAutomation(dutyLane, ev.startTick, NaN);
           if (!Number.isNaN(d)) extra.duty = quantizeDuty(d);
         }
+        // A pan lane makes position per-event, so the voice pans itself and
+        // the track's static pan steps aside (same rule as every other lane:
+        // the lane overrides the static value rather than stacking with it).
+        if (panLane) extra.pan = sampleAutomation(panLane, ev.startTick, trackPan(track));
         if (adsrLanes.length) {
           const adsr = {};
           for (const [key, lane] of adsrLanes) {

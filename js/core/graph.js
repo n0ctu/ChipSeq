@@ -11,7 +11,7 @@
 // state, which would let realtime and offline renders drift apart, and
 // preview === export is the invariant the whole app rests on.
 
-import { trackGain, trackPan, needsStereo } from './doc.js';
+import { trackGain, trackPan, needsStereo, hasPanLane } from './doc.js';
 
 // Level of the summed mix before the clipper. Unchanged from the engine's
 // original master so existing projects keep their balance.
@@ -132,7 +132,9 @@ export function buildTrackNodes(ctx, doc, master) {
   for (const track of doc.tracks) {
     const node = ctx.createGain();
     node.gain.value = trackGain(track);
-    const pan = trackPan(track);
+    // A pan LANE overrides the static value, so the track node must not pan
+    // as well - the voices do it themselves, per event.
+    const pan = hasPanLane(track) ? 0 : trackPan(track);
     // A StereoPannerNode is inserted ONLY when it will do something. At
     // pan 0 it still applies the -3 dB centre law and, downmixed into a mono
     // render, that would quietly make every unpanned export 3 dB quieter.

@@ -20,13 +20,16 @@ export const AUTOMATION_PARAMS = {
   sustain: { label: 'Sustain', min: 0, max: 1, def: null, adsrKey: 's', display: 'percent' },
   release: { label: 'Release', min: 0, max: 0.8, def: null, adsrKey: 'r', display: 'seconds' },
   duty: { label: 'Duty', min: 0.05, max: 0.5, def: null, display: 'percent' },
+  // Pan is a TRACK property rather than an instrument control, so its
+  // baseline comes from the track (trackKey) instead of the instrument.
+  pan: { label: 'Pan', min: -1, max: 1, def: null, trackKey: 'pan', display: 'pan' },
 };
 
 // fmt is derived, not declared, so a param can never disagree with itself.
 for (const meta of Object.values(AUTOMATION_PARAMS)) meta.fmt = formatter(meta.display);
 
 // Lane stacking order in the UI; duty only applies to PWM instruments.
-export const LANE_ORDER = ['gain', 'attack', 'decay', 'sustain', 'release', 'duty'];
+export const LANE_ORDER = ['gain', 'pan', 'attack', 'decay', 'sustain', 'release', 'duty'];
 
 const smoothstep = (t) => t * t * (3 - 2 * t);
 

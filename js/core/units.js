@@ -33,6 +33,13 @@ export function formatSeconds(v) {
   return v >= 0.1 ? v.toFixed(2) + ' s' : Math.round(v * 1000) + ' ms';
 }
 
+// Stereo position as something readable: hard left, centre, hard right.
+// -1..1 is what the audio needs; "L50" is what a person can act on.
+export function formatPan(v) {
+  if (Math.abs(v) < 0.005) return 'C';
+  return (v < 0 ? 'L' : 'R') + Math.round(Math.abs(v) * 100);
+}
+
 export function formatRaw(v) {
   return String(Math.round(v * 1000) / 1000);
 }
@@ -40,6 +47,7 @@ export function formatRaw(v) {
 export const DISPLAY = {
   percent: formatPercent,
   seconds: formatSeconds,
+  pan: formatPan,
   raw: formatRaw,
 };
 
