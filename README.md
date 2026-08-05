@@ -151,14 +151,46 @@ act on. The limiter is stored per project as
 `master.limiter = {kind, v, enabled, ceilingDb, kneeDb}`; there is no UI switch
 yet, but the data supports one.
 
-## The tools sidebar
+## The tools sidebar (and how to add a tool)
 
-The right sidebar is context-sensitive: with notes selected it offers
-**Harmonics** (below) and **Transpose**; with no selection, Transpose targets
-the whole active track. Transpose moves notes in bulk - ±1 octave, ±1
-semitone, ±1 *scale degree* (stays in the song key), and "snap chromatic
-notes to key" for cleanup after imports or key changes. Sections fold and
-remember their state.
+Each tool is a **collapsible card**, boxed so it is obvious where one starts
+and what belongs to it. A card **opens itself when its tool is actually in
+play and stays closed when it is not** - select a note carrying an arpeggio
+and Harmonics opens; select a plain one and it waits, showing `1 note`. The
+status indicator is drawn for collapsed cards too: that is its main job, so a
+closed card still tells you whether the tool is in effect.
+
+Fold state is tri-state. Absent means *auto* (follow the tool's own status);
+an explicit click is **sticky** from then on, because a card someone
+deliberately closed must not spring back open every time the selection
+changes. `reset` in the panel header returns everything to auto.
+
+**Adding a tool is one file plus one manifest entry.** `js/ui/tools/manifest.js`
+declares each tool with four things:
+
+| | |
+|---|---|
+| `when(ctx)` | is it applicable at all? `false` hides the card |
+| `status(ctx)` | `{on, label}` for the indicator - **cheap and pure** |
+| `load()` | the only dynamic `import()`, run on first expand |
+| `id`, `name` | identity; ids are asserted unique at load |
+
+`status()` deliberately lives in the manifest rather than the tool module,
+because it runs for *collapsed* cards - answering it must not require loading
+anything. `js/ui/tools-panel.js` imports no tool at all: it builds every card
+from the manifest and calls `tool.load()` the first time a card opens, so a
+tool you never touch is never fetched, parsed or wired up. The tool module
+itself only exports `mount(host, ctx)` and fills the card body.
+
+Nothing looks a tool up by string - the panel iterates the array - so a typo
+is a missing card at load time rather than a card that silently renders
+nothing, and `tests/check.mjs` imports every `load()` target so a broken tool
+fails CI instead of at runtime.
+
+The tools themselves: **Harmonics** (below), **Transpose** - bulk pitch moves,
+±1 octave, ±1 semitone, ±1 *scale degree* (stays in the song key), plus "snap
+chromatic notes to key" for cleanup after imports or key changes - and
+**Instrument** (poly only), opened by a track's instrument picker.
 
 ## Arpeggios (the fun part)
 
@@ -303,6 +335,9 @@ duration and RIFF structure instead.
   parser, exporters.
 - `js/ui/` - screens, canvas piano roll, panels. UI talks to core only via
   the store; core never touches the DOM.
+- `js/ui/tools/` - one file per sidebar tool, each exporting `mount(host, ctx)`,
+  plus `manifest.js` which declares them. Adding a tool means adding a file and
+  a manifest entry - nothing else in the app has to know it exists.
 - Theme: edit the custom properties in `css/base.css` - the canvases read
   them too.
 - Console handle: `window.__chipseq` exposes `{store, uiStore, engine}`.

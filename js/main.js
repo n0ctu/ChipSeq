@@ -16,9 +16,7 @@ import { initPianoRoll } from './ui/piano-roll/piano-roll.js';
 import { initToolbar } from './ui/toolbar.js';
 import { initStatusBar } from './ui/status-bar.js';
 import { initTracksPanel } from './ui/tracks-panel.js';
-import { initHarmonicsPanel } from './ui/harmonics-panel.js';
-import { initTransposePanel } from './ui/transpose-panel.js';
-import { initInstrumentPanel } from './ui/instrument-panel.js';
+import { initToolsPanel } from './ui/tools-panel.js';
 import { initKeymap } from './ui/keymap.js';
 import { initExportDialog } from './ui/export-dialog.js';
 import { midiImportDialog } from './ui/midi-import-dialog.js';
@@ -203,18 +201,23 @@ const actions = initToolbar({
 });
 
 initStatusBar({ store, uiStore, conflicts, roll, engine });
-const instrumentPanel = initInstrumentPanel({ store, uiStore, engine });
+// The sidebar builds its cards from js/ui/tools/manifest.js and imports a
+// tool's module only when its card first opens.
+const toolsPanel = initToolsPanel({ store, uiStore, engine, roll });
 initTracksPanel({
   store,
   uiStore,
-  onInstrumentPicker: (trackId) => instrumentPanel.openFor(trackId),
+  onInstrumentPicker: (trackId) => {
+    uiStore.update('instrument', (s) => {
+      s.instrumentTrackId = trackId;
+    });
+    toolsPanel.reveal('instrument');
+  },
   onImportTracks: () => {
     trackImportInput.value = '';
     trackImportInput.click();
   },
 });
-initHarmonicsPanel({ store, uiStore, roll, engine });
-initTransposePanel({ store, uiStore, engine });
 initKeymap({ store, uiStore, engine, roll, conflicts, actions });
 initPanelResizers();
 

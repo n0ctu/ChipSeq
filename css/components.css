@@ -172,29 +172,67 @@
 }
 .demo-open { color: var(--text-dim); display: flex; align-items: center; }
 
-/* tools sidebar sections */
+/* tools sidebar: one boxed card per tool, so it is obvious where a tool
+   starts and what belongs to it */
 .tools-empty { color: var(--text-dim); font-size: 12px; padding: 14px 12px; line-height: 1.5; }
-.tool-section { border-bottom: 1px solid var(--line); }
-.tool-head {
+#tools-list { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
+
+.tool-card {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-1);
+  overflow: hidden;
+}
+.tool-card.open { border-color: var(--line-strong); }
+
+.tool-card-head {
   display: flex;
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 7px 9px;
   color: var(--text);
   font-weight: 600;
   text-align: left;
 }
-.tool-head:hover { background: var(--bg-2); }
-.tool-caret { color: var(--text-dim); font-size: 10px; transition: transform 0.12s; }
-.tool-section.folded .tool-caret { transform: rotate(-90deg); }
-.tool-section.folded .harm-body { display: none; }
-.tool-ctx { margin-left: auto; font-weight: 400; font-size: 11px; color: var(--text-dim); }
+.tool-card-head:hover { background: var(--bg-2); }
+.tool-card-name { flex: none; }
+.tool-caret { color: var(--text-dim); font-size: 10px; }
+
+/* the status indicator is drawn for collapsed cards too - a closed card
+   still has to say whether its tool is in play */
+.tool-status {
+  margin-left: auto;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-status.on { color: var(--accent); }
+.tool-status.on::before { content: "● "; font-size: 8px; vertical-align: middle; }
+
+.tool-card-body {
+  display: none;
+  border-top: 1px solid var(--line);
+  padding: 10px;
+  flex-direction: column;
+  gap: 10px;
+}
+.tool-card.open .tool-card-body { display: flex; }
+
+.btn-link {
+  color: var(--text-dim);
+  font-size: 11px;
+  text-decoration: underline;
+  padding: 0 2px;
+}
+.btn-link:hover { color: var(--text); }
 .btn-pair { display: flex; gap: 6px; }
 .btn-pair .btn { flex: 1; }
 
 /* arp panel */
-.harm-body { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
 .harm-info {
   background: var(--bg-2);
   border: 1px solid var(--line);

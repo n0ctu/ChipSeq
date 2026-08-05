@@ -1,14 +1,13 @@
 // Harmonics panel: non-destructive arpeggio/chord config on the selected
 // note(s) + presets.
 
-import { DEFAULT_HARMONICS, updateNotes, uid } from '../core/doc.js';
-import { CHORD_TYPES } from '../core/harmonics.js';
-import { explainNoteChord, flattenNote, makeArpContext } from '../core/flatten.js';
-import { loadPresets, savePresets } from '../core/persist.js';
-import { chordName, PITCH_NAMES } from '../core/music.js';
-import { promptDialog, confirmDialog } from './dialogs.js';
-import { initSectionFold, updateEmptyHint } from './sections.js';
-import { icon } from './icons.js';
+import { DEFAULT_HARMONICS, updateNotes, uid } from '../../core/doc.js';
+import { CHORD_TYPES } from '../../core/harmonics.js';
+import { explainNoteChord, flattenNote, makeArpContext } from '../../core/flatten.js';
+import { loadPresets, savePresets } from '../../core/persist.js';
+import { chordName, PITCH_NAMES } from '../../core/music.js';
+import { promptDialog, confirmDialog } from '../dialogs.js';
+import { icon } from '../icons.js';
 
 const PATTERNS = [
   { id: 'up', label: 'Up' },
@@ -53,10 +52,9 @@ function pcsEqual(a, b) {
   return sa.length === sb.length && sa.every((p, i) => p === sb[i]);
 }
 
-export function initHarmonicsPanel({ store, uiStore, roll, engine }) {
-  const body = document.getElementById('harmonics-body');
-  const section = document.getElementById('sec-harmonics');
-  const ctxLabel = section.querySelector('.tool-ctx');
+// Mounted by tools-panel.js on first expand. Applicability and the header
+// indicator live in the manifest, so this module only fills the card body.
+export function mount(body, { store, uiStore, roll, engine }) {
   const ui = uiStore.state;
 
   function selectedNotes() {
@@ -105,11 +103,9 @@ export function initHarmonicsPanel({ store, uiStore, roll, engine }) {
     const doc = store.getDoc();
     const notes = selectedNotes();
 
-    // Context-sensitive section: only shown while notes are selected.
-    section.hidden = !notes.length;
-    updateEmptyHint();
+    // The card is hidden by the panel when nothing is selected; bail so the
+    // body keeps its last content instead of rendering an empty state.
     if (!notes.length) return;
-    ctxLabel.textContent = `${notes.length} note${notes.length === 1 ? '' : 's'}`;
 
     const arp = commonArp(notes);
     const has = !!arp;
@@ -409,6 +405,5 @@ export function initHarmonicsPanel({ store, uiStore, roll, engine }) {
 
   store.subscribe(['notes', 'tracks', 'arp', 'song', 'doc'], render);
   uiStore.subscribe(['selection'], render);
-  initSectionFold(section, 'harmonics');
   render();
 }

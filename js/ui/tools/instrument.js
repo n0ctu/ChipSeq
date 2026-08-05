@@ -6,10 +6,9 @@
 // always plays the current values - slider drags are audible live via a
 // transient patch that only becomes an undoable commit on release.
 
-import { getTrack, uid } from '../core/doc.js';
-import { promptDialog } from './dialogs.js';
-import { initSectionFold, updateEmptyHint } from './sections.js';
-import { formatPercent, formatSeconds, isHot } from '../core/units.js';
+import { getTrack, uid } from '../../core/doc.js';
+import { promptDialog } from '../dialogs.js';
+import { formatPercent, formatSeconds, isHot } from '../../core/units.js';
 
 const WAVES = [
   ['square', 'Square'],
@@ -19,10 +18,10 @@ const WAVES = [
   ['custom', 'PWM'],
 ];
 
-export function initInstrumentPanel({ store, uiStore, engine }) {
-  const section = document.getElementById('sec-instrument');
-  const body = document.getElementById('instrument-body');
-  const ctxLabel = section.querySelector('.tool-ctx');
+// Mounted by tools-panel.js on first expand; the manifest owns the header.
+// Opening the card for a particular track is the panel's reveal('instrument')
+// - this module just renders whatever ui.instrumentTrackId points at.
+export function mount(body, { store, uiStore, engine }) {
   const ui = uiStore.state;
 
   // Uncommitted values while a slider is being dragged.
@@ -79,8 +78,6 @@ export function initInstrumentPanel({ store, uiStore, engine }) {
   function render() {
     const doc = store.getDoc();
     const track = target();
-    section.hidden = !track;
-    updateEmptyHint();
     if (!track) {
       livePatch = null;
       if (engine.isAuditioning()) engine.setAudition(null);
@@ -89,7 +86,6 @@ export function initInstrumentPanel({ store, uiStore, engine }) {
 
     const inst = effective(doc, track);
     const isCustom = !!track.instrument;
-    ctxLabel.textContent = `“${track.name}” - ${isCustom ? 'Custom' : inst.name}`;
     const duty = inst.duty ?? 0.25;
 
     body.innerHTML = `
@@ -180,16 +176,7 @@ export function initInstrumentPanel({ store, uiStore, engine }) {
   }
 
   // Called by the tracks panel when an instrument picker is used.
-  function openFor(trackId) {
-    uiStore.update('instrument', (s) => {
-      s.instrumentTrackId = trackId;
-    });
-    section.classList.remove('folded');
-  }
-
   store.subscribe(['tracks', 'song', 'doc'], render);
   uiStore.subscribe(['instrument'], render);
-  initSectionFold(section, 'instrument');
   render();
-  return { openFor };
 }

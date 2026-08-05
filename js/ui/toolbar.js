@@ -213,7 +213,7 @@ export function initToolbar({ store, uiStore, engine, roll, openExport, goHome, 
     },
     applyPanels() {
       document.getElementById('tracks-panel').classList.toggle('collapsed', !ui.panels.tracks);
-      document.getElementById('harmonics-panel').classList.toggle('collapsed', !ui.panels.harmonics);
+      document.getElementById('tools-panel').classList.toggle('collapsed', !ui.panels.harmonics);
     },
     setSnap,
     trimBefore: () => trimBeforeAction(store, uiStore),

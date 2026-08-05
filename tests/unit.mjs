@@ -989,6 +989,89 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(limiterConfig({ master: { limiter: { ceilingDb: -6 } } }).kneeDb === cfg.kneeDb, 'partial overrides keep defaults');
 }
 
+// ---- tool manifest ----
+// The manifest must be usable with nothing but the two stores: no DOM, no
+// piano roll, no tool module loaded. That is exactly what lets a COLLAPSED
+// card show its indicator without importing anything - so it is worth
+// proving here, where none of those things exist to accidentally lean on.
+{
+  const { TOOLS } = await import('../js/ui/tools/manifest.js');
+
+  const ctxFor = (doc, ui = {}) => ({
+    store: { getDoc: () => doc },
+    uiStore: { state: { selection: new Set(), selectionTrackId: null, instrumentTrackId: null, ...ui } },
+  });
+
+  assert(TOOLS.length >= 3, 'the manifest lists the tools');
+  assert(new Set(TOOLS.map((t) => t.id)).size === TOOLS.length, 'tool ids are unique');
+  for (const tool of TOOLS) {
+    assert(typeof tool.name === 'string' && tool.name, `${tool.id} has a name`);
+    assert(typeof tool.when === 'function', `${tool.id} declares when()`);
+    assert(typeof tool.status === 'function', `${tool.id} declares status()`);
+    assert(typeof tool.load === 'function', `${tool.id} declares load()`);
+  }
+
+  const byId = Object.fromEntries(TOOLS.map((t) => [t.id, t]));
+  const doc = createProject({ name: 'tools', mode: 'poly' });
+  const trackId = doc.tracks[0].id;
+  const plain = createNote({ pitch: 60, startTick: 0, durationTicks: 96 });
+  const arped = createNote({
+    pitch: 64, startTick: 96, durationTicks: 96,
+    harmonics: { mode: 'arp', stepsPerBeat: 2, pattern: 'up', octaves: 1, gate: 1, chordType: 'major' },
+  });
+  addNote(doc, trackId, plain);
+  addNote(doc, trackId, arped);
+
+  // Nothing selected: no tool that acts on a selection applies.
+  {
+    const ctx = ctxFor(doc);
+    assert(byId.harmonics.when(ctx) === false, 'harmonics needs a selection');
+    // transpose falls back to the whole active track, which does have notes
+    assert(byId.transpose.when(ctx) === true, 'transpose falls back to the whole track');
+    assert(byId.transpose.status(ctx).label.includes('whole'), 'and says so');
+  }
+
+  // A selected note WITHOUT a decoration: applicable, but nothing is in play,
+  // so the card has no reason to open itself.
+  {
+    const ctx = ctxFor(doc, { selection: new Set([plain.id]), selectionTrackId: trackId });
+    const st = byId.harmonics.status(ctx);
+    assert(byId.harmonics.when(ctx) === true, 'harmonics applies to a selection');
+    assert(st.on === false, 'an undecorated note leaves the indicator off');
+    assert(st.label === '1 note', 'the label still says what is selected: ' + st.label);
+  }
+
+  // A selected note WITH one: in play, so the card opens itself.
+  {
+    const ctx = ctxFor(doc, { selection: new Set([arped.id]), selectionTrackId: trackId });
+    const st = byId.harmonics.status(ctx);
+    assert(st.on === true, 'a decorated note lights the indicator');
+    assert(st.label === '1/1 arp', 'and counts them: ' + st.label);
+  }
+
+  // Instrument: only in poly, only for the track the picker pointed at.
+  {
+    assert(byId.instrument.when(ctxFor(doc)) === false, 'instrument needs a target track');
+    const ctx = ctxFor(doc, { instrumentTrackId: trackId });
+    assert(byId.instrument.when(ctx) === true, 'a picked track makes it applicable');
+    assert(byId.instrument.status(ctx).on === false, 'a stock instrument is not "configured"');
+    doc.tracks[0].instrument = { id: 'track:' + trackId, name: 'Custom', wave: 'square', adsr: {}, gain: 1 };
+    assert(byId.instrument.status(ctx).on === true, 'a Custom instrument lights the indicator');
+    doc.tracks[0].instrument = null;
+
+    const mono = createProject({ name: 'mono', mode: 'mono' });
+    assert(byId.instrument.when(ctxFor(mono, { instrumentTrackId: mono.tracks[0].id })) === false,
+      'the instrument tool is poly-only');
+  }
+
+  // Transpose keeps nothing, so it must never claim to be in play - that is
+  // what keeps it closed by default.
+  {
+    const ctx = ctxFor(doc, { selection: new Set([arped.id]), selectionTrackId: trackId });
+    assert(byId.transpose.status(ctx).on === false, 'a stateless tool never lights up');
+  }
+}
+
 // ---- storage that never throws ----
 // persist.js touches localStorage/document/window, none of which exist here,
 // so this runs against minimal stubs. The point is the failure behaviour: an

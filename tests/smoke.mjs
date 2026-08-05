@@ -327,6 +327,7 @@ await evaluate(`(async () => {
 })()`);
 await sleep(150);
 await check('note is selected', `window.__chipseq.uiStore.state.selection.size === 1`);
+await openTool('harmonics');
 await check('arp panel offers On toggle', `!!document.querySelector('#harmonics-body #harm-on')`);
 
 // ---- apply arp via panel ----
@@ -369,14 +370,49 @@ await sleep(100);
 await evaluate(`document.querySelector('#harmonics-body #harm-shift-inc').click()`);
 await sleep(150);
 
-// ---- tools sidebar: sections + transpose ----
-await check('both tool sections visible with a selection', `(() => {
+// ---- tools sidebar: cards, lazy loading, tri-state fold ----
+// Opening a card is now a real step: its module is imported on first expand,
+// so nothing inside a card exists until someone asks for it.
+async function openTool(id) {
+  await evaluate(
+    "(() => { const sec = document.getElementById('sec-" + id + "');" +
+    " if (!sec.classList.contains('open')) sec.querySelector('.tool-card-head').click(); })()"
+  );
+  await sleep(250); // the module is imported on this click
+}
+
+await check('both tool cards visible with a selection', `(() => {
   const h = !document.getElementById('sec-harmonics').hidden;
   const t = !document.getElementById('sec-transpose').hidden;
   const hint = document.getElementById('tools-empty').hidden;
   return h && t && hint || 'harm=' + h + ' trans=' + t;
 })()`);
-await check('transpose section shows selection scope', `document.querySelector('#sec-transpose .tool-ctx').textContent === '1 note'`);
+
+// A card the user has not asked for is not merely collapsed - its module was
+// never fetched, so its body is genuinely empty.
+await check('an unopened card has not loaded its module', `(() => {
+  const sec = document.getElementById('sec-transpose');
+  const body = document.getElementById('transpose-body');
+  return (!sec.classList.contains('open') && body.children.length === 0)
+    || 'open=' + sec.classList.contains('open') + ' children=' + body.children.length;
+})()`);
+
+// The other half of the rule: the selected note carries an arpeggio by now,
+// so Harmonics opens itself and lights its indicator without being asked.
+await check('a configured tool opens itself and lights its dot', `(() => {
+  const sec = document.getElementById('sec-harmonics');
+  const status = sec.querySelector('.tool-status');
+  return (sec.classList.contains('open') && status.classList.contains('on') && /arp/.test(status.textContent))
+    || 'open=' + sec.classList.contains('open') + ' status=' + status.textContent;
+})()`);
+await check('transpose card shows selection scope while closed', `document.querySelector('#sec-transpose .tool-status').textContent === '1 note'`);
+await openTool('transpose');
+await check('opening a card loads and mounts its module', `(() => {
+  const sec = document.getElementById('sec-transpose');
+  const body = document.getElementById('transpose-body');
+  return (sec.classList.contains('open') && body.children.length > 0)
+    || 'open=' + sec.classList.contains('open') + ' children=' + body.children.length;
+})()`);
 await check('+1 octave button transposes the selection', `(() => {
   const d = () => window.__chipseq.store.getDoc();
   const before = d().tracks[0].notes.find((n) => window.__chipseq.uiStore.state.selection.has(n.id)).pitch;
@@ -388,7 +424,7 @@ await check('+1 octave button transposes the selection', `(() => {
 await check('no selection: harmonics hides, transpose targets whole track', `(() => {
   window.__chipseq.uiStore.update('selection', (st) => st.selection.clear());
   const h = document.getElementById('sec-harmonics').hidden;
-  const label = document.querySelector('#sec-transpose .tool-ctx').textContent;
+  const label = document.querySelector('#sec-transpose .tool-status').textContent;
   return h && label.startsWith('whole') || 'hidden=' + h + ' label=' + label;
 })()`);
 await check('diatonic +1 degree keeps notes in key', `(async () => {
@@ -416,15 +452,20 @@ await check('snap-to-key conforms chromatic notes', `(async () => {
   s.undo();
   return allInKey;
 })()`);
-await check('section fold persists to localStorage', `(() => {
+await check('an explicit toggle is sticky and persists', `(() => {
   const sec = document.getElementById('sec-transpose');
-  sec.querySelector('.tool-head').click();
-  const folded = sec.classList.contains('folded');
+  const head = sec.querySelector('.tool-card-head');
+  const wasOpen = sec.classList.contains('open');
+  head.click(); // explicit choice - leaves auto mode
+  const flipped = sec.classList.contains('open') !== wasOpen;
   const saved = JSON.parse(localStorage.getItem('chipseq.v1.sections') || '{}');
-  sec.querySelector('.tool-head').click();
-  return folded && saved.transpose === false && !sec.classList.contains('folded')
-    || 'folded=' + folded + ' saved=' + JSON.stringify(saved);
+  const stored = saved.transpose === !wasOpen;
+  const resetShown = !document.getElementById('tools-reset').hidden;
+  head.click(); // back where it was, still explicit
+  return (flipped && stored && resetShown)
+    || 'flipped=' + flipped + ' saved=' + JSON.stringify(saved) + ' reset=' + resetShown;
 })()`);
+
 // restore the selection for the following harmonics tests
 await evaluate(`(() => {
   const s = window.__chipseq.store;
@@ -435,6 +476,30 @@ await evaluate(`(() => {
   });
 })()`);
 await sleep(150);
+
+// An explicitly closed card must NOT spring open again when the context
+// changes - the app never fights a decision the user made. (Needs a live
+// selection, or the card is hidden and the panel skips it entirely.)
+await check('an explicitly closed card stays closed when it would auto-open', `(() => {
+  const sec = document.getElementById('sec-harmonics');
+  const head = sec.querySelector('.tool-card-head');
+  if (sec.classList.contains('open')) head.click(); // explicitly close a configured tool
+  const closed = !sec.classList.contains('open');
+  window.__chipseq.uiStore.update('selection', () => {}); // force a re-render
+  const stillClosed = !sec.classList.contains('open');
+  const dotStillShown = sec.querySelector('.tool-status').classList.contains('on');
+  return (closed && stillClosed && dotStillShown)
+    || 'closed=' + closed + ' stillClosed=' + stillClosed + ' dot=' + dotStillShown;
+})()`);
+
+await check('reset returns every card to following its own status', `(() => {
+  document.getElementById('tools-reset').click();
+  const sec = document.getElementById('sec-harmonics');
+  const saved = JSON.parse(localStorage.getItem('chipseq.v1.sections') || '{}');
+  // back to auto: harmonics is configured, so it opens again by itself
+  return (Object.keys(saved).length === 0 && sec.classList.contains('open'))
+    || 'saved=' + JSON.stringify(saved) + ' open=' + sec.classList.contains('open');
+})()`);
 
 // ---- chord source menu (autoSong) ----
 await evaluate(`(() => {
@@ -980,7 +1045,7 @@ await evaluate(`(() => {
 await sleep(200);
 await check('using the picker opens the instrument section', `(() => {
   const sec = document.getElementById('sec-instrument');
-  const ctx = sec.querySelector('.tool-ctx').textContent;
+  const ctx = sec.querySelector('.tool-status').textContent;
   return !sec.hidden && ctx.includes('Square') || 'hidden=' + sec.hidden + ' ctx=' + ctx;
 })()`);
 await evaluate(`document.querySelector('#instrument-body #in-wave [data-v="triangle"]').click()`);
