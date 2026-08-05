@@ -3,7 +3,7 @@
 
 import { flattenSong } from './flatten.js';
 import { scheduleNote, getInstrument } from './instruments.js';
-import { ticksPerBeat, ticksPerBar, songEndTick } from './doc.js';
+import { ticksPerBeat, ticksPerBar, songEndTick, tickToSeconds, secondsToTick } from './doc.js';
 import { createEmitter } from './store.js';
 import { buildOutputGraph } from './graph.js';
 
@@ -29,7 +29,6 @@ export function createEngine(store) {
   let eventIndex = 0;
   let passStartTick = 0; // tick corresponding to passStartTime
   let passStartTime = 0; // AudioContext time of current (loop) pass start
-  let secondsPerTick = 0;
   let nextBeatTick = 0;
   let liveNodes = new Set();
 
@@ -71,8 +70,12 @@ export function createEngine(store) {
     return peak;
   }
 
+  // Anchored at the current pass start, but the span itself is integrated
+  // across the tempo map - a constant secondsPerTick would silently be wrong
+  // the moment a song carries a second tempo entry.
   function tickToTime(tick) {
-    return passStartTime + (tick - passStartTick) * secondsPerTick;
+    const doc = store.getDoc();
+    return passStartTime + (tickToSeconds(doc, tick) - tickToSeconds(doc, passStartTick));
   }
 
   function currentLoop() {
@@ -83,7 +86,6 @@ export function createEngine(store) {
 
   function refreshEvents(fromTick) {
     const doc = store.getDoc();
-    secondsPerTick = 60 / (doc.song.bpm * doc.ppq);
     events = flattenSong(doc).events;
     eventIndex = events.findIndex((e) => e.startTick + e.durationTicks > fromTick);
     if (eventIndex < 0) eventIndex = events.length;
@@ -232,8 +234,9 @@ export function createEngine(store) {
 
   function getPlayheadTick() {
     if (!playing || !audioCtx) return store.session.cursorTick;
+    const doc = store.getDoc();
     const t = Math.max(audioCtx.currentTime, passStartTime);
-    return passStartTick + (t - passStartTime) / secondsPerTick;
+    return secondsToTick(doc, tickToSeconds(doc, passStartTick) + (t - passStartTime));
   }
 
   function previewNote(pitch, instrumentId) {
@@ -285,14 +288,14 @@ export function createEngine(store) {
     ensureCtx();
     const doc = store.getDoc();
     const id = doc.mode === 'mono' ? 'badge' : instrumentId || 'badge';
-    const spt = 60 / (doc.song.bpm * doc.ppq);
     const t0 = audioCtx.currentTime + 0.03;
     const baseTick = Math.min(...events.map((e) => e.startTick));
+    const at = (tick) => tickToSeconds(doc, tick) - tickToSeconds(doc, baseTick);
     for (const ev of events) {
       scheduleNote(audioCtx, masterGain, getInstrument(doc, id), {
         pitch: ev.pitch,
-        startTime: t0 + (ev.startTick - baseTick) * spt,
-        stopTime: t0 + (ev.startTick - baseTick + ev.durationTicks) * spt,
+        startTime: t0 + at(ev.startTick),
+        stopTime: t0 + at(ev.startTick + ev.durationTicks),
         velocity: ev.velocity ?? 100,
       });
     }

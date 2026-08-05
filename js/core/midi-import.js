@@ -25,6 +25,19 @@ export const GM_PROGRAMS = [
   'Fret Noise', 'Breath Noise', 'Seashore', 'Bird Tweet', 'Telephone', 'Helicopter', 'Applause', 'Gunshot',
 ];
 
+// Append to a tempo/meter map, keeping it sorted and one entry per tick.
+// Files often restate the same tempo in several chunks; collapsing duplicates
+// keeps the map honest about where something actually CHANGES.
+function addMapEntry(map, entry) {
+  const existing = map.find((e) => e.tick === entry.tick);
+  if (existing) return;
+  const prev = map.length ? map[map.length - 1] : null;
+  const same = prev && Object.keys(entry).every((k) => k === 'tick' || prev[k] === entry[k]);
+  if (same) return;
+  map.push(entry);
+  map.sort((a, b) => a.tick - b.tick);
+}
+
 export function parseMidi(arrayBuffer) {
   const view = new DataView(arrayBuffer);
   let pos = 0;
@@ -61,7 +74,10 @@ export function parseMidi(arrayBuffer) {
   if (division & 0x8000) throw new Error('SMPTE time division is not supported');
   const toTick = (t) => Math.round((t * PPQ) / division);
 
-  const song = { bpm: null, timeSig: null, key: null };
+  // tempo/meter are collected as MAPS - mid-song changes used to be parsed
+  // and then thrown away with a warning, because the document could only
+  // hold one value. It can hold the whole map now, so they are kept.
+  const song = { tempo: [], meter: [], key: null };
   const tracks = [];
 
   for (let tr = 0; tr < ntrks; tr++) {
@@ -127,12 +143,11 @@ export function parseMidi(arrayBuffer) {
         if (metaType === 0x51 && metaLen === 3) {
           const usPerQuarter = (u8() << 16) | (u8() << 8) | u8();
           const bpm = Math.round((60e6 / usPerQuarter) * 10) / 10;
-          if (song.bpm == null) song.bpm = bpm;
-          else if (song.bpm !== bpm) warnings.push(`Tempo change to ${bpm} BPM ignored (single global BPM).`);
+          addMapEntry(song.tempo, { tick: toTick(tick), bpm });
         } else if (metaType === 0x58 && metaLen >= 2) {
           const num = u8();
           const den = Math.pow(2, u8());
-          if (!song.timeSig) song.timeSig = { num, den };
+          addMapEntry(song.meter, { tick: toTick(tick), num, den });
         } else if (metaType === 0x59 && metaLen >= 2) {
           const sf = view.getInt8(pos);
           const mi = view.getUint8(pos + 1);
@@ -183,6 +198,14 @@ export function parseMidi(arrayBuffer) {
   }
 
   if (!tracks.length) throw new Error('No notes found in this MIDI file');
+
+  // Every map needs an opening entry at tick 0, even for files that never
+  // state a tempo (MIDI's default is 120) or a meter (4/4).
+  if (!song.tempo.length || song.tempo[0].tick !== 0) song.tempo.unshift({ tick: 0, bpm: 120 });
+  if (!song.meter.length || song.meter[0].tick !== 0) song.meter.unshift({ tick: 0, num: 4, den: 4 });
+  if (song.tempo.length > 1) {
+    warnings.push(`${song.tempo.length - 1} tempo change(s) imported - the editor shows the first, and .fmf exports use one global BPM.`);
+  }
 
   // Most files carry no key-signature meta event - fall back to analyzing
   // the notes themselves (drums excluded, they are atonal).

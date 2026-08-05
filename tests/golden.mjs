@@ -18,7 +18,7 @@ import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { migrate, createProject } from '../js/core/doc.js';
+import { migrate, createProject, normalizeDoc } from '../js/core/doc.js';
 import { flattenSong } from '../js/core/flatten.js';
 import { exportHeader } from '../js/core/export-h.js';
 import { exportFmf } from '../js/core/export-fmf.js';
@@ -182,9 +182,22 @@ function seededDoc() {
     mods: { someFutureMod: { kind: 'vibrato', v: 2, rate: 5 } },
   }];
 
+  // Normalize first so the fixture is already in the canonical state migrate()
+  // would put it in. Otherwise this would be testing that migrate adds no
+  // defaults, when the property that actually matters is narrower and more
+  // important: it must not DROP anything.
+  normalizeDoc(doc);
+
   const before = JSON.stringify(doc, null, 2);
-  const after = JSON.stringify(migrate(JSON.parse(before)), null, 2);
+  const reloaded = migrate(JSON.parse(before));
+  const after = JSON.stringify(reloaded, null, 2);
   assert(after === before, 'a document with unknown blocks round-trips unchanged');
+  // Named separately, so a failure says WHICH block was lost rather than
+  // just that two long strings differ.
+  assert(JSON.stringify(reloaded.futureThing) === JSON.stringify(doc.futureThing), 'unknown top-level block survives');
+  assert(JSON.stringify(reloaded.tracks[0].sends) === JSON.stringify(doc.tracks[0].sends), 'unknown track field survives');
+  assert(JSON.stringify(reloaded.tracks[0].notes[0].mods) === JSON.stringify(doc.tracks[0].notes[0].mods), 'unknown note block survives');
+  assert(JSON.stringify(reloaded.master) === JSON.stringify(doc.master), 'unknown master block survives');
   compare('forward-compat.tune.json', before + '\n');
 }
 

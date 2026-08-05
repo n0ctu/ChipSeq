@@ -1,5 +1,12 @@
 // Document store: snapshot-based undo/redo + scope-tagged change events.
 // The whole project doc is plain JSON; every mutation goes through commit().
+//
+// Every path that changes the current document ends in normalizeDoc(), so
+// derived state (the legacy tempo mirrors, doc.uses) is a property of every
+// snapshot rather than something each call site has to remember. It is
+// idempotent, which is why running it again after undo/redo is harmless.
+
+import { normalizeDoc } from './doc.js';
 
 const UNDO_CAP_ENTRIES = 200;
 const UNDO_CAP_BYTES = 8 * 1024 * 1024;
@@ -53,7 +60,7 @@ export function createStore(doc) {
 
     // Replace the whole document (project open / import), clears history.
     setDoc(newDoc) {
-      current = newDoc;
+      current = normalizeDoc(newDoc);
       undoStack = [];
       redoStack = [];
       session.cursorTick = 0;
@@ -88,6 +95,7 @@ export function createStore(doc) {
       capUndo();
       redoStack = [];
       fn(current);
+      normalizeDoc(current);
       current.updatedAt = new Date().toISOString();
       emitChange([...scopes, 'history'], label);
     },
@@ -98,14 +106,14 @@ export function createStore(doc) {
     undo() {
       if (!undoStack.length) return;
       redoStack.push(JSON.stringify(current));
-      current = JSON.parse(undoStack.pop());
+      current = normalizeDoc(JSON.parse(undoStack.pop()));
       emitChange(['doc', 'song', 'notes', 'tracks', 'automation', 'history'], 'undo');
     },
 
     redo() {
       if (!redoStack.length) return;
       undoStack.push(JSON.stringify(current));
-      current = JSON.parse(redoStack.pop());
+      current = normalizeDoc(JSON.parse(redoStack.pop()));
       emitChange(['doc', 'song', 'notes', 'tracks', 'automation', 'history'], 'redo');
     },
 

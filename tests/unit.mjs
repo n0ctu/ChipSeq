@@ -7,7 +7,7 @@ import { exportHeader, pitchSymbol, sanitizeSymbolName } from '../js/core/export
 import { parseMidi, suggestRoles } from '../js/core/midi-import.js';
 import {
   createProject, createNote, addNote, trimBefore, trimAfter, findOverlaps,
-  autoFixOverlaps, activeTrack, applyImport,
+  autoFixOverlaps, activeTrack, applyImport, setTempo, setTimeSig, bpmAt, timeSigAt,
 } from '../js/core/doc.js';
 import { PPQ, noteName, pitchToFreq, diatonicTriadIntervals, detectKey } from '../js/core/music.js';
 
@@ -76,7 +76,7 @@ assert(chordEvents.every((e) => e.startTick === 0 && e.durationTicks === 96), 'c
 
 // ---- flatten mono enforcement ----
 const doc = createProject({ name: 'Test Tune', mode: 'mono' });
-doc.song.bpm = 125; // 1 tick = 5 ms exactly at PPQ 96? 60000/(125*96) = 5 ms. yes.
+setTempo(doc, 125); // 1 tick = 5 ms exactly at PPQ 96? 60000/(125*96) = 5 ms. yes.
 const trackId = doc.tracks[0].id;
 addNote(doc, trackId, createNote({ pitch: 64, startTick: 0, durationTicks: 96 })); // overlaps next
 addNote(doc, trackId, createNote({ pitch: 72, startTick: 48, durationTicks: 48 }));
@@ -86,7 +86,7 @@ eq(flat.events.map((e) => [e.pitch, e.startTick, e.durationTicks]), [[64, 0, 48]
 
 // ---- export-h ----
 const hdoc = createProject({ name: 'start sound!', mode: 'mono' });
-hdoc.song.bpm = 125; // 5 ms per tick
+setTempo(hdoc, 125); // 5 ms per tick
 const htid = hdoc.tracks[0].id;
 addNote(hdoc, htid, createNote({ pitch: 64, startTick: 0, durationTicks: 16 })); // 80 ms E4
 addNote(hdoc, htid, createNote({ pitch: 84, startTick: 16, durationTicks: 16 })); // 80 ms C6
@@ -105,7 +105,7 @@ assert(sanitizeSymbolName('123 go') === 'T_123_GO', 'leading digit prefixed');
 
 // arp flattening into .h: gap steps produce rests
 const adoc = createProject({ name: 'arp', mode: 'mono' });
-adoc.song.bpm = 125;
+setTempo(adoc, 125);
 const atid = adoc.tracks[0].id;
 addNote(adoc, atid, createNote({
   pitch: 60, startTick: 0, durationTicks: 96,
@@ -118,7 +118,7 @@ assert(restCount >= 2, 'gated arp emits rests (found ' + restCount + ' incl. #de
 // ---- loop region export (.h) ----
 {
   const rdoc = createProject({ name: 'loop', mode: 'mono' });
-  rdoc.song.bpm = 125; // 5 ms per tick
+  setTempo(rdoc, 125); // 5 ms per tick
   const rtid = rdoc.tracks[0].id;
   addNote(rdoc, rtid, createNote({ pitch: 60, startTick: 0, durationTicks: 96 }));
   addNote(rdoc, rtid, createNote({ pitch: 64, startTick: 96, durationTicks: 96 }));
@@ -151,7 +151,7 @@ assert(restCount >= 2, 'gated arp emits rests (found ' + restCount + ' incl. #de
 {
   const { exportFmf } = await import('../js/core/export-fmf.js');
   const fdoc = createProject({ name: 'flipper', mode: 'mono' });
-  fdoc.song.bpm = 140;
+  setTempo(fdoc, 140);
   const ftid = fdoc.tracks[0].id;
   // eighth notes A#5, D#6 (octave override), quarter A#5, half D#5, plus a gap
   addNote(fdoc, ftid, createNote({ pitch: 82, startTick: 0, durationTicks: 48 })); // A#5 8th
@@ -170,7 +170,7 @@ assert(restCount >= 2, 'gated arp emits rests (found ' + restCount + ' incl. #de
 
   // dotted duration: 144 ticks = dotted quarter
   const ddoc = createProject({ name: 'dot', mode: 'mono' });
-  ddoc.song.bpm = 120;
+  setTempo(ddoc, 120);
   addNote(ddoc, ddoc.tracks[0].id, createNote({ pitch: 72, startTick: 0, durationTicks: 144 }));
   addNote(ddoc, ddoc.tracks[0].id, createNote({ pitch: 74, startTick: 144, durationTicks: 48 }));
   const d = exportFmf(ddoc);
@@ -191,7 +191,7 @@ assert(restCount >= 2, 'gated arp emits rests (found ' + restCount + ' incl. #de
 
   // fast arp: 32 steps/beat becomes 128th notes
   const adoc2 = createProject({ name: 'fastfmf', mode: 'mono' });
-  adoc2.song.bpm = 120;
+  setTempo(adoc2, 120);
   addNote(adoc2, adoc2.tracks[0].id, createNote({
     pitch: 60, startTick: 0, durationTicks: 96,
     harmonics: { mode: 'arp', stepsPerBeat: 32, pattern: 'up', octaves: 1, gate: 1, chordType: 'major' },
@@ -308,8 +308,8 @@ function buildMidi() {
   return new Uint8Array(bytes).buffer;
 }
 const parsed = parseMidi(buildMidi());
-assert(parsed.song.bpm === 120, 'tempo parsed: ' + parsed.song.bpm);
-eq(parsed.song.timeSig, { num: 3, den: 4 }, 'time sig parsed');
+assert(parsed.song.tempo[0].bpm === 120, 'tempo parsed: ' + JSON.stringify(parsed.song.tempo));
+eq(parsed.song.meter, [{ tick: 0, num: 3, den: 4 }], 'meter map parsed');
 eq(parsed.song.key, { tonic: 2, mode: 'major' }, 'key sig parsed (D major)');
 assert(parsed.tracks.length === 2, 'two note tracks');
 eq(parsed.tracks[0].notes.map((n) => [n.pitch, n.startTick, n.durationTicks]),
@@ -329,7 +329,7 @@ assert(idoc.tracks.length === 2, 'imported 2 tracks');
 assert(idoc.chordTrackId === idoc.tracks[1].id, 'chord track designated');
 assert(idoc.activeTrackId === idoc.tracks[0].id, 'melody active');
 assert(idoc.melodyTrackId === idoc.tracks[0].id, 'melody marker set by import');
-assert(idoc.song.bpm === 120 && idoc.song.timeSig.num === 3, 'song meta applied');
+assert(bpmAt(idoc, 0) === 120 && timeSigAt(idoc, 0).num === 3, 'song meta applied');
 
 // autoSong via real chord track
 addNote(idoc, idoc.tracks[0].id, createNote({
@@ -579,7 +579,7 @@ function createTrackHelper(doc, name) {
   assert(renderHarmonics(fast24, ctx).length === 24, '24 steps/beat works');
   // .h export of a fast arp keeps total duration exact (no rounding drift)
   const fdoc = createProject({ name: 'fastarp', mode: 'mono' });
-  fdoc.song.bpm = 125; // 5 ms per tick
+  setTempo(fdoc, 125); // 5 ms per tick
   addNote(fdoc, fdoc.tracks[0].id, createNote({
     pitch: 60, startTick: 0, durationTicks: 96,
     harmonics: { mode: 'arp', stepsPerBeat: 32, pattern: 'up', octaves: 2, gate: 1, chordType: 'major' },
@@ -644,14 +644,14 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     }
   }
   const migrated = migrate(v1);
-  assert(migrated.version === 3, 'migration bumps version to 3');
+  assert(migrated.version === 4, 'migration bumps version to 4');
   const withCfg = migrated.tracks[0].notes.find((n) => n.harmonics);
   assert(withCfg && withCfg.harmonics.mode === 'arp' && withCfg.harmonics.stepsPerBeat === 2, 'arp field renamed to harmonics, config intact');
   assert(migrated.tracks[0].notes.every((n) => !('arp' in n)), 'old arp field removed');
   assert(migrated.tracks[0].notes.find((n) => !n.harmonics).harmonics === null, 'plain notes get harmonics: null');
   // v2 files pass through untouched
   const again = migrate(JSON.parse(JSON.stringify(migrated)));
-  assert(again.version === 3 && again.tracks[0].notes.some((n) => n.harmonics), 'migration is idempotent');
+  assert(again.version === 4 && again.tracks[0].notes.some((n) => n.harmonics), 'migration is idempotent');
   // renders identically after migration
   const ev = flattenSong(migrated).events;
   assert(ev.length > 2, 'migrated harmonics still render (arp expanded)');
@@ -669,7 +669,7 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   v2doc.version = 2;
   v2doc.instruments[0].name = 'Badge Square';
   const m = migrate(v2doc);
-  assert(m.version === 3 && m.instruments[0].name === 'Square', 'v2->v3 renames Badge Square');
+  assert(m.version === 4 && m.instruments[0].name === 'Square', 'v2->v3 renames Badge Square');
 
   // per-track custom instrument resolves via the virtual track: id
   const t = idoc.tracks[0];
@@ -858,7 +858,7 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
 {
   const { mergeImport } = await import('../js/core/doc.js');
   const base = createProject({ name: 'host', mode: 'poly' });
-  base.song.bpm = 90;
+  setTempo(base, 90);
   base.song.key = { tonic: 7, mode: 'major' };
   const hostTrack = base.tracks[0];
   hostTrack.name = 'Lead';
@@ -873,7 +873,7 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   ]);
   assert(base.tracks.length === 3, 'tracks appended, not replaced');
   assert(base.tracks[0] === hostTrack && hostTrack.notes.length === 1, 'existing track untouched');
-  assert(base.song.bpm === 90 && base.song.key.tonic === 7, 'song settings preserved on merge');
+  assert(bpmAt(base, 0) === 90 && base.song.key.tonic === 7, 'song settings preserved on merge');
   assert(base.melodyTrackId === hostTrack.id, 'melody marker not hijacked');
   assert(base.tracks[1].name === 'Lead 2', 'colliding names get a suffix');
   assert(base.chordTrackId === ids[1], 'chords role assigns the chord source');
@@ -987,6 +987,129 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(limiterConfig(undefined).enabled === true, 'missing block falls back to the default');
   assert(limiterConfig({ master: { limiter: { ceilingDb: -6 } } }).ceilingDb === -6, 'document overrides merge');
   assert(limiterConfig({ master: { limiter: { ceilingDb: -6 } } }).kneeDb === cfg.kneeDb, 'partial overrides keep defaults');
+}
+
+// ---- tempo / meter maps ----
+{
+  const {
+    migrate, bpmAt, timeSigAt, tickToSeconds, secondsToTick, setTempo, setTimeSig,
+    ticksPerBeat, ticksPerBar, syncLegacyFields, normalizeDoc,
+  } = await import('../js/core/doc.js');
+
+  const d = createProject({ name: 'tempo', mode: 'poly' });
+  assert(Array.isArray(d.song.tempo) && d.song.tempo[0].tick === 0, 'a new project starts with a tempo map');
+  assert(Array.isArray(d.song.meter) && d.song.meter[0].tick === 0, 'a new project starts with a meter map');
+
+  // Single entry: the map must behave exactly like the old scalar, or every
+  // existing project would shift in time.
+  assert(bpmAt(d, 0) === 120 && bpmAt(d, 99999) === 120, 'a one-entry map holds its tempo everywhere');
+  assert(Math.abs(tickToSeconds(d, 96) - 0.5) < 1e-12, '96 ticks = one beat = 0.5 s at 120 BPM');
+  assert(Math.abs(secondsToTick(d, 0.5) - 96) < 1e-9, 'seconds convert back to ticks');
+
+  // Multi-entry: 120 BPM for the first bar, then 240. The second half must
+  // take half as long - this is the whole reason the map exists.
+  const m = createProject({ name: 'multi', mode: 'poly' });
+  setTempo(m, 240, 384);
+  assert(m.song.tempo.length === 2, 'a second tempo entry is added');
+  assert(bpmAt(m, 0) === 120 && bpmAt(m, 383) === 120 && bpmAt(m, 384) === 240, 'tempo lookup is tick-indexed');
+  const firstBar = tickToSeconds(m, 384);
+  const twoBars = tickToSeconds(m, 768);
+  assert(Math.abs(firstBar - 2) < 1e-9, 'bar 1 at 120 BPM takes 2 s');
+  assert(Math.abs(twoBars - 3) < 1e-9, 'bar 2 at 240 BPM adds only 1 s');
+  assert(Math.abs(secondsToTick(m, twoBars) - 768) < 1e-6, 'the inverse survives a tempo change');
+  assert(Math.abs(secondsToTick(m, 2.5) - 576) < 1e-6, 'the inverse lands inside the second segment');
+
+  // Meter map
+  setTimeSig(m, 3, 4, 768);
+  assert(timeSigAt(m, 0).num === 4 && timeSigAt(m, 768).num === 3, 'meter lookup is tick-indexed');
+  assert(ticksPerBar(m, 0) === 384 && ticksPerBar(m, 768) === 288, 'bar length follows the meter map');
+  assert(ticksPerBeat(m) === 96, 'the no-tick call still means the song opening');
+
+  // Entries stay sorted however they arrive, so lookups can scan forward.
+  const s2 = createProject({ name: 'sorted', mode: 'poly' });
+  setTempo(s2, 200, 960);
+  setTempo(s2, 150, 480);
+  assert(s2.song.tempo.map((e) => e.tick).join(',') === '0,480,960', 'tempo entries stay sorted');
+  setTempo(s2, 155, 480);
+  assert(s2.song.tempo.length === 3 && bpmAt(s2, 480) === 155, 'writing an existing tick replaces it');
+
+  // Legacy mirrors: OUTPUT ONLY, so the previously shipped build can still
+  // open a v4 file. Nothing in this build may read them.
+  assert(d.song.bpm === 120 && d.song.timeSig.den === 4, 'legacy scalars mirror the map');
+  setTempo(d, 90);
+  assert(d.song.bpm === 90, 'the mirror follows a tempo edit');
+  d.song.bpm = 999; // a stale mirror must never win
+  syncLegacyFields(d);
+  assert(d.song.bpm === 90, 'the map is authoritative - the mirror is recomputed');
+
+  // v3 -> v4
+  const v3 = createProject({ name: 'old', mode: 'mono' });
+  v3.version = 3;
+  delete v3.song.tempo;
+  delete v3.song.meter;
+  v3.song.bpm = 140;
+  v3.song.timeSig = { num: 6, den: 8 };
+  const up = migrate(v3);
+  assert(up.version === 4, 'v3 -> v4 bumps the version');
+  eq(up.song.tempo, [{ tick: 0, bpm: 140 }], 'the scalar bpm becomes a one-entry map');
+  eq(up.song.meter, [{ tick: 0, num: 6, den: 8 }], 'the scalar timeSig becomes a one-entry map');
+  assert(up.song.bpm === 140 && up.song.timeSig.den === 8, 'the mirrors survive the migration');
+  assert(migrate(JSON.parse(JSON.stringify(up))).song.tempo.length === 1, 'migrating a v4 file is idempotent');
+
+  // ---- doc.uses ----
+  const plain = createProject({ name: 'plain', mode: 'mono' });
+  normalizeDoc(plain);
+  eq(plain.uses, [], 'a plain project declares no features');
+
+  const withArp = createProject({ name: 'arp', mode: 'mono' });
+  addNote(withArp, withArp.tracks[0].id, createNote({
+    pitch: 60, startTick: 0, durationTicks: 96,
+    harmonics: { mode: 'arp', stepsPerBeat: 2, pattern: 'up', octaves: 1, gate: 1, chordType: 'major' },
+  }));
+  normalizeDoc(withArp);
+  eq(withArp.uses, ['harmonics'], 'a note with harmonics declares it');
+
+  const withAuto = createProject({ name: 'auto', mode: 'poly' });
+  withAuto.tracks[0].automation = { gain: [{ tick: 0, value: 0.5, curve: 'linear' }] };
+  normalizeDoc(withAuto);
+  eq(withAuto.uses, ['automation'], 'automation keyframes are declared');
+  withAuto.tracks[0].automation = { gain: [] };
+  normalizeDoc(withAuto);
+  eq(withAuto.uses, [], 'an empty lane declares nothing');
+
+  // A multi-entry tempo map is exactly the case an older build would get
+  // WRONG rather than fail on - it would read the mirror and play one tempo
+  // throughout - so it has to be declared.
+  const multi = createProject({ name: 'multi-uses', mode: 'poly' });
+  setTempo(multi, 200, 384);
+  normalizeDoc(multi);
+  assert(multi.uses.includes('tempoMap'), 'a multi-entry tempo map is declared');
+  setTimeSig(multi, 3, 4, 384);
+  normalizeDoc(multi);
+  assert(multi.uses.includes('meterMap'), 'a multi-entry meter map is declared');
+
+  // A declaration this build cannot evaluate must survive a load/save cycle.
+  // Recomputing doc.uses from scratch would strip it - which is the very
+  // data loss the field exists to prevent.
+  const fromFuture = createProject({ name: 'future', mode: 'poly' });
+  fromFuture.uses = ['effects@1', 'wavetable@2'];
+  normalizeDoc(fromFuture);
+  assert(fromFuture.uses.includes('effects@1'), 'an unknown declaration is carried over');
+  assert(fromFuture.uses.includes('wavetable@2'), 'every unknown declaration is carried over');
+  normalizeDoc(fromFuture);
+  assert(fromFuture.uses.filter((u) => u === 'effects@1').length === 1, 'carrying over does not duplicate');
+  // ...but a KNOWN feature that is no longer present is dropped, because we
+  // can actually check that one.
+  fromFuture.uses.push('harmonics');
+  normalizeDoc(fromFuture);
+  assert(!fromFuture.uses.includes('harmonics'), 'a known-but-absent feature is recomputed away');
+
+  const { unsupportedFeatures } = await import('../js/core/doc.js');
+  eq(unsupportedFeatures({ uses: [] }), [], 'nothing declared, nothing unsupported');
+  eq(unsupportedFeatures({ uses: ['harmonics', 'automation'] }), [], 'known features are supported');
+  eq(unsupportedFeatures({ uses: ['effects@1'] }), ['effects@1'], 'an unknown feature is reported');
+  eq(unsupportedFeatures({ uses: ['harmonics@9'] }), ['harmonics@9'], 'a known feature at a newer major is reported');
+  eq(unsupportedFeatures({ uses: ['harmonics@1'] }), [], 'an explicit supported major is fine');
 }
 
 // ---- level display units ----

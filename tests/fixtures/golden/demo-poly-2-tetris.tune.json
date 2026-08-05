@@ -1,6 +1,6 @@
 # chipseq-golden digest v1
 # artifact exceeds 32768 bytes - compared by hash, head/tail for context
-bytes:  259351
-sha256: 1215957f73486a4269575e52e6d4b5f42eb1f265a2c200f702b7601d9d0e4b86
-head:   {\n  \"schema\": \"chipseq-tune\",\n  \"version\": 3,\n  \"id\": \"7345fdb1-1344-4c1a-8065-ac7d2f85e3ad\",\n  \"name\": \"Tetris\",\n  \"mode\": \"poly\",\n  \"ppq\": 96,\n  \"song\": {\n    \"bpm\": 140,\n    \"timeSig\": {\n      \"num\": 4,\n      \"den\": 4\n    },\n    \"key\": {\n      \"tonic\": 4,\n      \"mode\": \"major\"\n    }\n  },\n  \"instr
-tail:   973c-38e389f01a5a\",\n  \"activeTrackId\": \"3b6c2f24-8b1d-403c-8e37-e7081952d900\",\n  \"loop\": null,\n  \"grid\": {\n    \"snapTicks\": 48,\n    \"triplet\": false\n  },\n  \"createdAt\": \"2026-08-04T17:03:45.639Z\",\n  \"updatedAt\": \"2026-08-04T05:50:00.000Z\",\n  \"melodyTrackId\": \"3b6c2f24-8b1d-403c-8e37-e7081952d900\"\n}\n
+bytes:  259533
+sha256: 884525f7c37e33dffcc2a6b75b43a4809bedfd801f97f2febf8c2c135a4e5756
+head:   {\n  \"schema\": \"chipseq-tune\",\n  \"version\": 4,\n  \"id\": \"7345fdb1-1344-4c1a-8065-ac7d2f85e3ad\",\n  \"name\": \"Tetris\",\n  \"mode\": \"poly\",\n  \"ppq\": 96,\n  \"song\": {\n    \"bpm\": 140,\n    \"timeSig\": {\n      \"num\": 4,\n      \"den\": 4\n    },\n    \"key\": {\n      \"tonic\": 4,\n      \"mode\": \"major\"\n    },\n    \"tempo\":
+tail:   a5a\",\n  \"activeTrackId\": \"3b6c2f24-8b1d-403c-8e37-e7081952d900\",\n  \"loop\": null,\n  \"grid\": {\n    \"snapTicks\": 48,\n    \"triplet\": false\n  },\n  \"createdAt\": \"2026-08-04T17:03:45.639Z\",\n  \"updatedAt\": \"2026-08-04T05:50:00.000Z\",\n  \"melodyTrackId\": \"3b6c2f24-8b1d-403c-8e37-e7081952d900\",\n  \"uses\": []\n}\n

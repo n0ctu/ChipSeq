@@ -2,7 +2,7 @@
 // Returns the shared `actions` object also used by the keyboard map.
 
 import { PPQ, PITCH_NAMES, snapTick, detectKey, keyName } from '../core/music.js';
-import { activeTrack, updateNotes } from '../core/doc.js';
+import { activeTrack, updateNotes, setTempo, setTimeSig, bpmAt, timeSigAt } from '../core/doc.js';
 import { effectiveSnap } from './piano-roll/coords.js';
 import { contextMenu } from './dialogs.js';
 import { icon } from './icons.js';
@@ -38,8 +38,9 @@ export function initToolbar({ store, uiStore, engine, roll, openExport, goHome, 
   function render() {
     const doc = store.getDoc();
     if (document.activeElement !== $('inp-name')) $('inp-name').value = doc.name;
-    if (document.activeElement !== $('inp-bpm')) $('inp-bpm').value = doc.song.bpm;
-    selSig.value = `${doc.song.timeSig.num}/${doc.song.timeSig.den}`;
+    if (document.activeElement !== $('inp-bpm')) $('inp-bpm').value = bpmAt(doc, 0);
+    const sig = timeSigAt(doc, 0);
+    selSig.value = `${sig.num}/${sig.den}`;
     selTonic.value = String(doc.song.key.tonic);
     $('sel-key-mode').value = doc.song.key.mode;
     for (const btn of $('seg-mode').querySelectorAll('.seg-btn')) {
@@ -73,14 +74,14 @@ export function initToolbar({ store, uiStore, engine, roll, openExport, goHome, 
   $('inp-bpm').addEventListener('change', (e) => {
     const bpm = Math.max(20, Math.min(400, Number(e.target.value) || 120));
     store.commit('set BPM', ['song'], (doc) => {
-      doc.song.bpm = bpm;
+      setTempo(doc, bpm); // writes the map; the legacy scalar is derived
     });
   });
 
   selSig.addEventListener('change', (e) => {
     const [num, den] = e.target.value.split('/').map(Number);
     store.commit('set time signature', ['song'], (doc) => {
-      doc.song.timeSig = { num, den };
+      setTimeSig(doc, num, den);
     });
   });
 
