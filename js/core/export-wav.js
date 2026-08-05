@@ -11,6 +11,7 @@ const SAMPLE_RATE = 44100;
 
 // opts.region: {startTick, endTick} - render exactly that slice, rebased to
 // 0 and cut to the exact region length so the file loops seamlessly.
+// opts.stereo: render two channels even when nothing is panned.
 // Returns {blob, level}, where level reports the pre-limiter peak so the
 // export dialog can warn about a mix that only fits because it was limited.
 export async function renderWav(doc, opts = {}) {
@@ -41,7 +42,7 @@ export async function renderWav(doc, opts = {}) {
   // Stereo ONLY when something is actually panned, so an unpanned project
   // renders the same mono file it always did - same size, same bytes, half
   // the disk of a stereo file carrying two identical channels.
-  const channels = needsStereo(doc) ? 2 : 1;
+  const channels = opts.stereo || needsStereo(doc) ? 2 : 1;
   const ctx = new OfflineAudioContext(channels, Math.ceil(SAMPLE_RATE * lengthS), SAMPLE_RATE);
   // Same output stage as playback, but rendered UNSHAPED: the clipper is
   // applied to the finished buffer instead, which is the only way to read the
@@ -60,11 +61,12 @@ export async function renderWav(doc, opts = {}) {
       adsr: ev.adsr ?? null,
       detune: ev.detune ?? 0,
       lfo: ev.lfo ?? null,
+      pan: ev.pan ?? null,
     });
   }
   const buffer = await ctx.startRendering();
   const level = applyLimiter(buffer, doc);
-  return { blob: encodeWav(buffer), level };
+  return { blob: encodeWav(buffer), level, channels };
 }
 
 export function encodeWav(audioBuffer) {

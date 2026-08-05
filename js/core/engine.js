@@ -140,6 +140,7 @@ export function createEngine(store) {
             adsr: ev.adsr ?? null,
             detune: ev.detune ?? 0,
             lfo: ev.lfo ?? null,
+            pan: ev.pan ?? null,
           });
           liveNodes.add(node);
           node.onended = () => liveNodes.delete(node);

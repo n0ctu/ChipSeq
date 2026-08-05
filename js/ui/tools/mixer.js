@@ -5,21 +5,21 @@
 // than in the Instrument card, and they act on the per-track audio nodes
 // built by graph.js rather than being baked into each voice.
 
-import { getTrack, trackGain, trackPan } from '../../core/doc.js';
-import { formatPercent, isHot } from '../../core/units.js';
-
-// -1..1 as something readable: hard left, centre, hard right.
-export function formatPan(p) {
-  if (Math.abs(p) < 0.005) return 'C';
-  return (p < 0 ? 'L' : 'R') + Math.round(Math.abs(p) * 100);
-}
+import { getTrack, trackGain, trackPan, spreadPan, hasPanLane } from '../../core/doc.js';
+import { formatPercent, formatPan, isHot } from '../../core/units.js';
 
 export function mount(body, { store, engine }) {
   function render() {
     const doc = store.getDoc();
     const anySolo = doc.tracks.some((t) => t.solo);
 
-    body.innerHTML = doc.tracks
+    // A starting point, not a layout: one click fans the tracks out and you
+    // adjust from there, which beats dragging four sliders to find out that
+    // a wide mix was what you wanted.
+    const spread = `<button class="btn" id="mix-spread"
+      title="Fan the tracks across the stereo field - melody centred, the rest outward">Spread</button>`;
+
+    body.innerHTML = spread + doc.tracks
       .map((track, i) => {
         const gain = trackGain(track);
         const pan = trackPan(track);
@@ -42,8 +42,9 @@ export function mount(body, { store, engine }) {
             </div>
             <div class="mix-ctl">
               <label>Pan</label>
-              <input type="range" data-act="pan" min="-100" max="100" step="1" value="${Math.round(pan * 100)}" />
-              <span class="mix-val">${formatPan(pan)}</span>
+              <input type="range" data-act="pan" min="-100" max="100" step="1"
+                value="${Math.round(pan * 100)}" ${hasPanLane(track) ? 'disabled' : ''} />
+              <span class="mix-val">${hasPanLane(track) ? 'lane' : formatPan(pan)}</span>
             </div>
           </div>`;
       })
@@ -86,6 +87,10 @@ export function mount(body, { store, engine }) {
   });
 
   body.addEventListener('click', (e) => {
+    if (e.target.closest('#mix-spread')) {
+      store.commit('spread tracks', ['tracks'], (doc) => spreadPan(doc));
+      return;
+    }
     const btn = e.target.closest('[data-act="solo"]');
     if (!btn) return;
     const trackId = btn.closest('.mix-row').dataset.track;

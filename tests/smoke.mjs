@@ -1214,6 +1214,34 @@ await check('preset offered in the other track picker too', `(() => {
   const other = sels[1];
   return other && [...other.options].some((o) => o.textContent === 'NES Triangle') || 'options missing';
 })()`);
+await check('Spread fans the tracks and the export says so', `(async () => {
+  const store = window.__chipseq.store;
+  const sec = document.getElementById('sec-mixer');
+  if (!sec.classList.contains('open')) sec.querySelector('.tool-card-head').click();
+  await new Promise((r) => setTimeout(r, 250));
+  // one track only in this project, so add a couple to fan out
+  const { createTrack } = await import('/js/core/doc.js');
+  store.commit('tracks to spread', ['tracks'], (d) => {
+    d.tracks.push(createTrack({ name: 'S1', role: 'melody', instrumentId: 'sine' }));
+    d.tracks.push(createTrack({ name: 'S2', role: 'melody', instrumentId: 'saw' }));
+  });
+  await new Promise((r) => setTimeout(r, 200));
+  document.getElementById('mix-spread').click();
+  await new Promise((r) => setTimeout(r, 200));
+  const pans = store.getDoc().tracks.map((t) => t.pan ?? 0);
+  const fanned = pans.some((p) => p < 0) && pans.some((p) => p > 0);
+
+  // and the export dialog must now say the file will be stereo, instead of
+  // the "mono mix" it used to claim regardless
+  document.getElementById('btn-export').click();
+  await new Promise((r) => setTimeout(r, 200));
+  const line = document.getElementById('export-channels').textContent;
+  document.querySelector('#dlg-export [value="cancel"]').click();
+  store.undo();
+  store.undo();
+  return (fanned && /stereo/.test(line)) || 'pans=' + JSON.stringify(pans) + ' line=' + line;
+})()`);
+
 await check('the mixer card edits track gain through the UI', `(async () => {
   const store = window.__chipseq.store;
   const before = store.getDoc().tracks[0].gain;
@@ -1241,14 +1269,34 @@ await check('default instrument renamed to plain Square', `(() => {
 })()`);
 
 // ---- automation lanes (poly): per-control keyframes ----
+
+// Lane geometry is derived from the corner buttons' own heights, never
+// hard-coded: the stack grows whenever a parameter is added (Pan did exactly
+// that), and a literal y would then silently point at the wrong lane.
+const LANE_GEOM = `
+  const laneGeom = (label) => {
+    let y = 0;
+    for (const b of document.querySelectorAll('.auto-lane-btn')) {
+      const h = parseFloat(b.style.height);
+      if (b.textContent.trim().startsWith(label)) return { y, h, btn: b };
+      y += h;
+    }
+    return null;
+  };
+`;
+
 await check('automation stack open by default with gain expanded', `(() => {
   const master = document.getElementById('auto-master');
-  const btns = [...document.querySelectorAll('.auto-lane-btn')].map((b) => b.textContent.trim());
+  const btns = [...document.querySelectorAll('.auto-lane-btn')];
+  const labels = btns.map((b) => b.textContent.trim());
   const rows = document.getElementById('roll-area').style.gridTemplateRows;
-  // triangle preset: gain + 4 ADSR lanes, NO duty lane
-  return master && master.textContent.includes('▾') && btns.length === 6
-    && btns.some((t) => t.startsWith('Gain')) && !btns.some((t) => t.startsWith('Duty'))
-    && rows.endsWith('142px') || btns.join(',') + ' rows=' + rows;
+  // triangle preset: gain + pan + 4 ADSR lanes, NO duty lane
+  const total = btns.reduce((sum, b) => sum + parseFloat(b.style.height), 0);
+  return (master && master.textContent.includes('▾')
+    && labels.some((t) => t.startsWith('Gain')) && labels.some((t) => t.startsWith('Pan'))
+    && !labels.some((t) => t.startsWith('Duty'))
+    && rows.endsWith(total + 'px'))
+    || labels.join(',') + ' rows=' + rows + ' total=' + total;
 })()`);
 // The lane's y<->value mapping follows the param's declared range, so the
 // expected value is derived rather than hard-coded - the gain lane's range
@@ -1269,11 +1317,12 @@ await check('click in expanded gain lane adds a keyframe', `(async () => {
     || JSON.stringify(lane) + ' expected~' + expected;
 })()`);
 await check('click on a collapsed lane only expands it (no edit)', `(() => {
+  ${LANE_GEOM}
   const c = document.getElementById('auto-canvas');
   const r = c.getBoundingClientRect();
-  // attack lane header: collapsed strip right below gain (y 78..94)
+  const g = laneGeom('Attack');
   for (const type of ['mousedown', 'mouseup']) {
-    (type === 'mousedown' ? c : window).dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: r.left + 300, clientY: r.top + 86, button: 0 }));
+    (type === 'mousedown' ? c : window).dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: r.left + 300, clientY: r.top + g.y + g.h / 2, button: 0 }));
   }
   const auto = window.__chipseq.store.getDoc().tracks[0].automation || {};
   const attackBtn = [...document.querySelectorAll('.auto-lane-btn')].find((b) => b.textContent.includes('Attack'));
@@ -1283,11 +1332,12 @@ await check('click on a collapsed lane only expands it (no edit)', `(() => {
 })()`);
 await check('keyframe in the attack lane overrides note envelopes', `(async () => {
   const { flattenSong } = await import('/js/core/flatten.js');
+  ${LANE_GEOM}
   const c = document.getElementById('auto-canvas');
   const r = c.getBoundingClientRect();
-  // attack lane now expanded at y 78..138; click near the top = long attack
+  const g = laneGeom('Attack'); // now expanded; click near its top = long attack
   for (const type of ['mousedown', 'mouseup']) {
-    (type === 'mousedown' ? c : window).dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: r.left + 10, clientY: r.top + 78 + 10, button: 0 }));
+    (type === 'mousedown' ? c : window).dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: r.left + 10, clientY: r.top + g.y + 10, button: 0 }));
   }
   const d = window.__chipseq.store.getDoc();
   const lane = (d.tracks[0].automation || {}).attack || [];
@@ -1746,6 +1796,48 @@ await check('a panned track renders stereo, weighted to that side', `(async () =
     right += (frames[i + 1] / 32768) ** 2;
   }
   return (left > right * 20 && right >= 0) || 'left=' + left.toFixed(2) + ' right=' + right.toFixed(2);
+})()`);
+
+// A pan lane sweeps position over the note, which the track node cannot do -
+// the voices pan themselves, so the energy has to move between the channels.
+await check('a pan lane sweeps the voice across the field', `(async () => {
+  ${MOD_DOC}
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const doc = modDoc((d) => {
+    d.tracks[0].automation = { pan: [
+      { tick: 0, value: -1, curve: 'linear' },
+      { tick: 384, value: 1, curve: 'linear' },
+    ] };
+    // several short notes, so each one is placed separately along the sweep
+    d.tracks[0].notes = [0, 96, 192, 288].map((t, i) => ({
+      id: 'pn' + i, pitch: 69, startTick: t, durationTicks: 96, velocity: 120, harmonics: null,
+    }));
+  });
+  const { blob } = await renderWav(doc);
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  const dv = new DataView(buf.buffer);
+  if (dv.getUint16(22, true) !== 2) return 'not stereo: ' + dv.getUint16(22, true);
+  const s = new Int16Array(buf.buffer, 44, (buf.length - 44) / 2);
+  const energy = (from, to) => {
+    let l = 0, r = 0;
+    for (let i = from; i + 1 < to; i += 2) { l += (s[i] / 32768) ** 2; r += (s[i + 1] / 32768) ** 2; }
+    return { l, r };
+  };
+  const first = energy(0, 40000);          // first note: hard left
+  const last = energy(s.length - 60000, s.length - 20000); // last: hard right
+  return (first.l > first.r * 5 && last.r > last.l * 5)
+    || 'first L/R=' + (first.l / (first.r || 1e-9)).toFixed(1) + ' last R/L=' + (last.r / (last.l || 1e-9)).toFixed(1);
+})()`);
+
+await check('forcing stereo renders two channels with nothing panned', `(async () => {
+  ${WAV_HELPERS}
+  ${MOD_DOC}
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const doc = modDoc(() => {});
+  const auto = await readWav((await renderWav(doc)).blob);
+  const forced = await readWav((await renderWav(doc, { stereo: true })).blob);
+  return (auto.channels === 1 && forced.channels === 2 && forced.blockAlign === 4)
+    || 'auto=' + auto.channels + ' forced=' + forced.channels;
 })()`);
 
 await check('solo silences everything else', `(async () => {

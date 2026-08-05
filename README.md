@@ -63,11 +63,27 @@ per-track **gain** and **pan** are audio operations rather than numbers baked
 into each voice. The **Mixer** card in the sidebar edits both (gain as a
 percentage, pan as `L50`/`C`/`R100`), plus **solo**.
 
+**Pan** also exists as an automation lane, so a voice can sweep across the
+field over time - the classic ping-pong. A lane overrides the track's static
+pan (the same rule every other lane follows), and because position then
+changes per event, each voice carries its own panner instead of sharing the
+track's; the Mixer's pan slider stands down and reads `lane`.
+
+**Spread** fans the tracks out in one click - melody centred, the rest
+alternating outward - as a starting point you then adjust. A MIDI import of
+more than two tracks into a poly project gets the same treatment, so a
+multi-track file arrives sounding like an arrangement rather than a mush
+stacked dead centre.
+
 Exports go stereo **only when something is actually panned**; an unpanned
-project renders the same mono file it always did. A `StereoPannerNode` is
-likewise only inserted when it will do something, because at pan 0 it still
-applies the -3 dB centre law - downmixed into a mono render, that would have
-made every unpanned export quietly 3 dB quieter.
+project renders the same mono file it always did. The export dialog says
+which it will be and why (`Output: stereo - 2 of 4 tracks panned`), with a
+**Force stereo** checkbox for when you want two channels regardless - the
+hint there used to claim "mono mix" unconditionally, which stopped being true
+the moment panning shipped. A `StereoPannerNode` is likewise only inserted
+when it will do something, because at pan 0 it still applies the -3 dB centre
+law - downmixed into a mono render, that would have made every unpanned
+export quietly 3 dB quieter.
 
 Mute and solo stay *flatten-time* filters rather than becoming node gains:
 routing a muted track through a zero-gain node would mean scheduling and

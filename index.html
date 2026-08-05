@@ -165,8 +165,11 @@
         <pre id="export-fmf-preview" class="export-preview mono-font"></pre>
       </div>
       <div id="export-wav-pane" hidden>
-        <p class="dlg-hint">Renders the current song (mono mix, 44.1 kHz, 16-bit) using the same
+        <p class="dlg-hint">Renders the current song at 44.1 kHz, 16-bit, using the same
           engine as playback.</p>
+        <div id="export-channels" class="dlg-hint"></div>
+        <label class="tb-field"><input type="checkbox" id="chk-export-stereo" />
+          <span>Force stereo (even with nothing panned)</span></label>
         <div id="export-level" class="level-note"></div>
       </div>
       <div id="export-json-pane" hidden>
