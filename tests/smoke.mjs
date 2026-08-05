@@ -574,7 +574,7 @@ await check('region .wav is exactly the region length', `(async () => {
   const { renderWav } = await import('/js/core/export-wav.js');
   const doc = window.__chipseq.store.getDoc();
   const region = { startTick: 1536, endTick: 1920 };
-  const blob = await renderWav(doc, { region });
+  const { blob } = await renderWav(doc, { region });
   const expectedSamples = Math.ceil(44100 * 384 * 60 / (doc.song.bpm * doc.ppq));
   return blob.size === 44 + 2 * expectedSamples || 'size=' + blob.size + ' expected=' + (44 + 2 * expectedSamples);
 })()`);
@@ -590,7 +590,7 @@ await sleep(100);
 // ---- wav render (OfflineAudioContext) ----
 await check('wav renders and is a valid RIFF', `(async () => {
   const { renderWav } = await import('/js/core/export-wav.js');
-  const blob = await renderWav(window.__chipseq.store.getDoc());
+  const { blob } = await renderWav(window.__chipseq.store.getDoc());
   const buf = new Uint8Array(await blob.arrayBuffer());
   return buf.length > 1000 && String.fromCharCode(...buf.slice(0, 4)) === 'RIFF' && String.fromCharCode(...buf.slice(8, 12)) === 'WAVE';
 })()`);
@@ -1197,6 +1197,130 @@ await check('grid preference included in .tune.json export', `(async () => {
   const { exportTuneJson } = await import('/js/core/persist.js');
   const parsed = JSON.parse(await exportTuneJson(window.__chipseq.store.getDoc()).text());
   return parsed.grid && parsed.grid.snapTicks === 24 || JSON.stringify(parsed.grid);
+})()`);
+
+// ---- WAV render: structure, level and the non-clipping master ----
+// Rendered audio is checked by measurement rather than byte-comparison: the
+// WaveShaper's behaviour depends on the Chromium build, so a byte golden
+// would fail on browser upgrades instead of on real regressions.
+const WAV_HELPERS = `
+  const readWav = async (blob) => {
+    const buf = new Uint8Array(await blob.arrayBuffer());
+    const dv = new DataView(buf.buffer);
+    const str = (o, n) => String.fromCharCode(...buf.slice(o, o + n));
+    const samples = new Int16Array(buf.buffer, 44, (buf.length - 44) / 2);
+    let peak = 0, sumSq = 0;
+    for (const s of samples) { const a = Math.abs(s / 32768); if (a > peak) peak = a; sumSq += a * a; }
+    return {
+      riff: str(0, 4), wave: str(8, 4), fmt: str(12, 4), dataTag: str(36, 4),
+      fmtSize: dv.getUint32(16, true), format: dv.getUint16(20, true),
+      channels: dv.getUint16(22, true), rate: dv.getUint32(24, true),
+      byteRate: dv.getUint32(28, true), blockAlign: dv.getUint16(32, true),
+      bits: dv.getUint16(34, true), dataSize: dv.getUint32(40, true),
+      riffSize: dv.getUint32(4, true),
+      bytes: buf.length, sampleCount: samples.length,
+      peak, rms: Math.sqrt(sumSq / samples.length),
+    };
+  };
+`;
+
+await check('rendered WAV is structurally valid', `(async () => {
+  ${WAV_HELPERS}
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const { blob } = await renderWav(window.__chipseq.store.getDoc());
+  const w = await readWav(blob);
+  const errs = [];
+  if (w.riff !== 'RIFF' || w.wave !== 'WAVE' || w.fmt !== 'fmt ' || w.dataTag !== 'data') errs.push('chunk tags');
+  if (w.fmtSize !== 16 || w.format !== 1) errs.push('not PCM');
+  if (w.channels !== 1 || w.rate !== 44100 || w.bits !== 16) errs.push('not 16-bit mono 44.1k');
+  if (w.blockAlign !== 2 || w.byteRate !== 88200) errs.push('block align/byte rate');
+  // the length fields must agree with the payload, or players truncate
+  if (w.dataSize !== w.sampleCount * 2) errs.push('data size vs samples');
+  if (w.riffSize !== w.bytes - 8) errs.push('riff size');
+  return errs.length === 0 || errs.join(', ');
+})()`);
+
+await check('WAV length matches the song length at the project tempo', `(async () => {
+  ${WAV_HELPERS}
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const { songEndTick } = await import('/js/core/doc.js');
+  const doc = window.__chipseq.store.getDoc();
+  const { blob } = await renderWav(doc);
+  const w = await readWav(blob);
+  const seconds = w.sampleCount / 44100;
+  const songS = songEndTick(doc) * (60 / (doc.song.bpm * doc.ppq));
+  // the render adds the longest release plus a short tail
+  return seconds > songS && seconds < songS + 1.5 || 'wav=' + seconds.toFixed(3) + ' song=' + songS.toFixed(3);
+})()`);
+
+await check('a normal mix renders below 0 dBFS and is not flagged', `(async () => {
+  ${WAV_HELPERS}
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const { blob, level } = await renderWav(window.__chipseq.store.getDoc());
+  const w = await readWav(blob);
+  return (level.over === false && w.peak <= 1 && w.peak > 0 && w.rms > 0)
+    || 'over=' + level.over + ' peak=' + w.peak.toFixed(4) + ' rms=' + w.rms.toFixed(4);
+})()`);
+
+// The headline guarantee: however hot the project is, the file cannot clip -
+// and the user is told it happened rather than left with a squashed render.
+await check('a deliberately hot mix is limited, not clipped, and is reported', `(async () => {
+  ${WAV_HELPERS}
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const { dbToLin, limiterConfig } = await import('/js/core/graph.js');
+  const doc = structuredClone(window.__chipseq.store.getDoc());
+  doc.mode = 'poly';
+  // eight loud voices stacked on the same beat - guaranteed to sum over 1.0
+  doc.instruments.forEach((i) => { i.gain = 1; });
+  doc.tracks = [0,1,2,3,4,5,6,7].map((i) => ({
+    id: 'hot-' + i, name: 'hot' + i, role: 'melody', instrumentId: 'badge',
+    notes: [{ id: 'hn-' + i, pitch: 60 + i, startTick: 0, durationTicks: 384, velocity: 127, harmonics: null }],
+  }));
+  doc.activeTrackId = doc.melodyTrackId = 'hot-0';
+  const { blob, level } = await renderWav(doc);
+  const w = await readWav(blob);
+  const ceiling = dbToLin(limiterConfig(doc).ceilingDb);
+  const errs = [];
+  if (!level.over) errs.push('hot mix not flagged (peak ' + level.peakDb.toFixed(2) + ' dB)');
+  if (level.peak <= 1) errs.push('pre-limiter peak not above 1: ' + level.peak.toFixed(3));
+  // +0.5/32768 tolerance: the ceiling survives 16-bit rounding, not exceeds it
+  if (w.peak > ceiling + 0.0001) errs.push('rendered peak above the ceiling: ' + w.peak.toFixed(5));
+  if (level.shapedRatio <= 0) errs.push('nothing reported as shaped');
+  return errs.length === 0 || errs.join('; ');
+})()`);
+
+// Regression guard for the bug this phase fixed: the exporter used to bypass
+// the master gain entirely, so files rendered ~1 dB hotter than the preview.
+await check('export runs through the same master gain as playback', `(async () => {
+  ${WAV_HELPERS}
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const { MASTER_GAIN } = await import('/js/core/graph.js');
+  const doc = structuredClone(window.__chipseq.store.getDoc());
+  doc.mode = 'poly';
+  const inst = doc.instruments.find((i) => i.id === 'badge');
+  inst.gain = 0.5;
+  inst.adsr = { a: 0.002, d: 0, s: 1, r: 0.002 };
+  doc.tracks = [{
+    id: 'lvl', name: 'lvl', role: 'melody', instrumentId: 'badge',
+    notes: [{ id: 'ln', pitch: 69, startTick: 0, durationTicks: 384, velocity: 127, harmonics: null }],
+  }];
+  doc.activeTrackId = doc.melodyTrackId = 'lvl';
+  const { blob } = await renderWav(doc);
+  const w = await readWav(blob);
+  // one square voice: gain * velocity/127 * MASTER_GAIN, before the (inactive
+  // at this level) clipper. A normalized PeriodicWave overshoots a little, so
+  // this is a band rather than an equality.
+  const expected = 0.5 * (127 / 127) * MASTER_GAIN;
+  const ratio = w.peak / expected;
+  return (ratio > 0.85 && ratio < 1.35) || 'peak=' + w.peak.toFixed(4) + ' expected~' + expected.toFixed(4) + ' ratio=' + ratio.toFixed(3);
+})()`);
+
+await check('the engine exposes a pre-limiter peak for the clip indicator', `(() => {
+  const e = window.__chipseq.engine;
+  if (typeof e.getPeak !== 'function') return 'no getPeak';
+  e.ensureCtx();
+  const p = e.getPeak();
+  return (typeof p === 'number' && p >= 0 && p <= 8) || 'peak=' + p;
 })()`);
 
 // ---- autosave + reload ----

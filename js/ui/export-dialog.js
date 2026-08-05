@@ -45,6 +45,30 @@ export function initExportDialog({ store, conflicts }) {
     }
   }
 
+  // Report the rendered mix level. The limiter guarantees the file itself is
+  // clean, so silence here would hide the fact that it only fits because it
+  // was shaped - a mix 3 dB over sounds squashed and the user needs to know
+  // why, not just that "it exported fine".
+  function showLevel(level) {
+    const el = $('export-level');
+    if (!level) {
+      el.textContent = '';
+      el.classList.remove('warn');
+      return;
+    }
+    const db = (v) => (v > 0 ? '+' : '') + v.toFixed(1) + ' dB';
+    if (level.over) {
+      const pct = (level.shapedRatio * 100).toFixed(1);
+      el.textContent =
+        `⚠ Mix peaks at ${db(level.peakDb)} - the limiter held the file to 0 dB, ` +
+        `shaping ${pct}% of it. Lower track or instrument gains for a cleaner render.`;
+      el.classList.add('warn');
+    } else {
+      el.textContent = `Peak ${db(level.peakDb)} - headroom is fine.`;
+      el.classList.remove('warn');
+    }
+  }
+
   function renderTabs() {
     const doc = store.getDoc();
     const monoDisabled = doc.mode !== 'mono' || conflicts.count() > 0;
@@ -138,7 +162,8 @@ export function initExportDialog({ store, conflicts }) {
       btn.disabled = true;
       btn.textContent = 'Rendering…';
       try {
-        const blob = await renderWav(doc, { region });
+        const { blob, level } = await renderWav(doc, { region });
+        showLevel(level);
         downloadBlob(blob, base + suffix + '.wav');
       } finally {
         btn.disabled = false;
@@ -153,6 +178,7 @@ export function initExportDialog({ store, conflicts }) {
     open() {
       const doc = store.getDoc();
       $('inp-symbol').value = sanitizeSymbolName(doc.name);
+      showLevel(null); // never show the previous render's level
       tab = doc.mode === 'mono' && conflicts.count() === 0 ? 'h' : 'wav';
       renderTabs();
       openDialog(dlg);

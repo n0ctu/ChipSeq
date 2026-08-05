@@ -1,0 +1,122 @@
+{
+  "schema": "chipseq-tune",
+  "version": 3,
+  "id": "future-doc",
+  "name": "Future",
+  "mode": "poly",
+  "ppq": 96,
+  "song": {
+    "bpm": 120,
+    "timeSig": {
+      "num": 4,
+      "den": 4
+    },
+    "key": {
+      "tonic": 0,
+      "mode": "major"
+    }
+  },
+  "instruments": [
+    {
+      "id": "badge",
+      "name": "Square",
+      "wave": "square",
+      "harmonics": null,
+      "duty": null,
+      "adsr": {
+        "a": 0.002,
+        "d": 0,
+        "s": 1,
+        "r": 0.002
+      },
+      "gain": 0.35
+    },
+    {
+      "id": "sine",
+      "name": "Sine",
+      "wave": "sine",
+      "harmonics": null,
+      "duty": null,
+      "adsr": {
+        "a": 0.005,
+        "d": 0.03,
+        "s": 0.8,
+        "r": 0.04
+      },
+      "gain": 0.5
+    },
+    {
+      "id": "saw",
+      "name": "Sawtooth",
+      "wave": "sawtooth",
+      "harmonics": null,
+      "duty": null,
+      "adsr": {
+        "a": 0.005,
+        "d": 0.03,
+        "s": 0.8,
+        "r": 0.04
+      },
+      "gain": 0.35
+    }
+  ],
+  "tracks": [
+    {
+      "id": "future-track",
+      "name": "Lead",
+      "role": "melody",
+      "instrumentId": "badge",
+      "notes": [
+        {
+          "id": "future-note",
+          "pitch": 60,
+          "startTick": 0,
+          "durationTicks": 96,
+          "velocity": 100,
+          "harmonics": null,
+          "mods": {
+            "someFutureMod": {
+              "kind": "vibrato",
+              "v": 2,
+              "rate": 5
+            }
+          }
+        }
+      ],
+      "sends": [
+        {
+          "busId": "space",
+          "level": 0.35
+        }
+      ]
+    }
+  ],
+  "chordTrackId": null,
+  "activeTrackId": "future-track",
+  "melodyTrackId": "future-track",
+  "loop": null,
+  "grid": {
+    "snapTicks": 48,
+    "triplet": false
+  },
+  "createdAt": "2020-01-01T00:00:00.000Z",
+  "updatedAt": "2020-01-01T00:00:00.000Z",
+  "futureThing": {
+    "kind": "warp",
+    "v": 1,
+    "params": {
+      "amount": 0.5
+    }
+  },
+  "master": {
+    "chain": [
+      {
+        "kind": "delay",
+        "v": 1,
+        "params": {
+          "timeTicks": 48
+        }
+      }
+    ]
+  }
+}
