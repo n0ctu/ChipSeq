@@ -1,6 +1,6 @@
 {
   "schema": "chipseq-tune",
-  "version": 3,
+  "version": 4,
   "id": "516d0895-2347-42b8-8aba-6948ef9e5e08",
   "name": "Demo Mono",
   "mode": "mono",
@@ -14,7 +14,20 @@
     "key": {
       "tonic": 0,
       "mode": "major"
-    }
+    },
+    "tempo": [
+      {
+        "tick": 0,
+        "bpm": 180
+      }
+    ],
+    "meter": [
+      {
+        "tick": 0,
+        "num": 4,
+        "den": 4
+      }
+    ]
   },
   "instruments": [
     {
@@ -162,5 +175,8 @@
   },
   "createdAt": "2026-08-03T21:25:57.255Z",
   "updatedAt": "2026-08-04T06:42:41.918Z",
-  "melodyTrackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef"
+  "melodyTrackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
+  "uses": [
+    "harmonics"
+  ]
 }

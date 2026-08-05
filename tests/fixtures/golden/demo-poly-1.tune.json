@@ -1,6 +1,6 @@
 {
   "schema": "chipseq-tune",
-  "version": 3,
+  "version": 4,
   "id": "47ec2f8a-cdf0-4d3a-9bbc-b7fb5b35e78d",
   "name": "Demo Poly",
   "mode": "poly",
@@ -14,7 +14,20 @@
     "key": {
       "tonic": 9,
       "mode": "minor"
-    }
+    },
+    "tempo": [
+      {
+        "tick": 0,
+        "bpm": 112
+      }
+    ],
+    "meter": [
+      {
+        "tick": 0,
+        "num": 4,
+        "den": 4
+      }
+    ]
   },
   "instruments": [
     {
@@ -714,5 +727,9 @@
   },
   "createdAt": "2026-08-03T22:00:00.000Z",
   "updatedAt": "2026-08-04T06:00:00.000Z",
-  "melodyTrackId": "70707a08-baf0-4627-972d-8654d472049c"
+  "melodyTrackId": "70707a08-baf0-4627-972d-8654d472049c",
+  "uses": [
+    "automation",
+    "harmonics"
+  ]
 }

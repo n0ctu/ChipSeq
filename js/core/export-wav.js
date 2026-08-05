@@ -4,6 +4,7 @@
 import { flattenSong, clipEventsToRegion } from './flatten.js';
 import { scheduleNote, getInstrument } from './instruments.js';
 import { buildOutputGraph, applyLimiter } from './graph.js';
+import { tickToSeconds } from './doc.js';
 
 const SAMPLE_RATE = 44100;
 
@@ -15,17 +16,23 @@ export async function renderWav(doc, opts = {}) {
   let { events } = flattenSong(doc);
   const region = opts.region && opts.region.endTick > opts.region.startTick ? opts.region : null;
   if (region) events = clipEventsToRegion(events, region.startTick, region.endTick);
-  const secondsPerTick = 60 / (doc.song.bpm * doc.ppq);
+  // Region events are rebased to 0, so a tick here is an OFFSET into the
+  // region - it has to be shifted back to its absolute position before the
+  // tempo map can say what time it lands at. With a single tempo entry the
+  // shift makes no difference; with two it is the difference between a
+  // region export playing at the right speed and the wrong one.
+  const base = region ? region.startTick : 0;
+  const at = (tick) => tickToSeconds(doc, tick + base) - tickToSeconds(doc, base);
 
   let lengthS;
   if (region) {
-    lengthS = (region.endTick - region.startTick) * secondsPerTick;
+    lengthS = at(region.endTick - region.startTick);
   } else {
     let maxRelease = 0.01;
     for (const inst of doc.instruments) maxRelease = Math.max(maxRelease, inst.adsr.r);
     let endS = 0.5;
     for (const ev of events) {
-      endS = Math.max(endS, (ev.startTick + ev.durationTicks) * secondsPerTick);
+      endS = Math.max(endS, at(ev.startTick + ev.durationTicks));
     }
     lengthS = endS + maxRelease + 0.3;
   }
@@ -39,8 +46,8 @@ export async function renderWav(doc, opts = {}) {
     if (ev.durationTicks <= 0) continue;
     scheduleNote(ctx, master, getInstrument(doc, ev.instrumentId), {
       pitch: ev.pitch,
-      startTime: ev.startTick * secondsPerTick,
-      stopTime: (ev.startTick + ev.durationTicks) * secondsPerTick,
+      startTime: at(ev.startTick),
+      stopTime: at(ev.startTick + ev.durationTicks),
       velocity: ev.velocity,
       gainMul: ev.gainMul ?? 1,
       gainCurve: ev.gainCurve ?? null,

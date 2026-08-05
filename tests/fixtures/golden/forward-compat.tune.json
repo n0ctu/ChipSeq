@@ -1,19 +1,32 @@
 {
   "schema": "chipseq-tune",
-  "version": 3,
+  "version": 4,
   "id": "future-doc",
   "name": "Future",
   "mode": "poly",
   "ppq": 96,
   "song": {
+    "key": {
+      "tonic": 0,
+      "mode": "major"
+    },
+    "tempo": [
+      {
+        "tick": 0,
+        "bpm": 120
+      }
+    ],
+    "meter": [
+      {
+        "tick": 0,
+        "num": 4,
+        "den": 4
+      }
+    ],
     "bpm": 120,
     "timeSig": {
       "num": 4,
       "den": 4
-    },
-    "key": {
-      "tonic": 0,
-      "mode": "major"
     }
   },
   "instruments": [
@@ -118,5 +131,6 @@
         }
       }
     ]
-  }
+  },
+  "uses": []
 }

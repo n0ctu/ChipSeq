@@ -1,7 +1,7 @@
 // Boot: create stores + engine, wire all UI components. The only place the
 // core and UI layers are composed.
 
-import { createProject, applyImport, mergeImport, uid, activeTrack, trackPitchCenter, PPQ } from './core/doc.js';
+import { createProject, applyImport, mergeImport, uid, activeTrack, trackPitchCenter, bpmAt, unsupportedFeatures, PPQ } from './core/doc.js';
 import { createStore } from './core/store.js';
 import {
   attachAutosave, saveProject, importTuneJson, listProjects, loadProject,
@@ -73,6 +73,19 @@ function openProject(doc, { demo = null } = {}) {
   showScreen('editor');
   // centre the view where the active track's notes actually are
   roll.centerOnPitch(trackPitchCenter(activeTrack(doc)));
+  announceUnsupported(doc);
+}
+
+// A file written by a newer build can carry features this one cannot play.
+// It is never dropped - unknown blocks round-trip untouched - but staying
+// silent about it would mean playing the project wrong without saying so.
+function announceUnsupported(doc) {
+  const missing = unsupportedFeatures(doc);
+  const save = document.getElementById('st-save');
+  if (!missing.length || !save) return;
+  save.textContent =
+    `this project uses ${missing.join(', ')}, which this version can't play - it is preserved, not lost`;
+  setTimeout(() => (save.textContent = ''), 8000);
 }
 
 // Editing a demo creates your own copy (same name, not a demo).
@@ -118,7 +131,7 @@ trackImportInput.addEventListener('change', async () => {
   try {
     const parsed = parseMidi(await file.arrayBuffer());
     const doc = store.getDoc();
-    const assignments = await midiImportDialog(parsed, { merge: true, projectBpm: doc.song.bpm });
+    const assignments = await midiImportDialog(parsed, { merge: true, projectBpm: bpmAt(doc, 0) });
     if (!assignments) return;
     let addedIds = [];
     store.commit('import MIDI tracks', ['tracks', 'notes'], (d) => {

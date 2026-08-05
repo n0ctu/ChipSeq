@@ -4,6 +4,7 @@
 
 import { flattenSong, clipEventsToRegion } from './flatten.js';
 import { PITCH_SYMBOLS } from './music.js';
+import { bpmAt } from './doc.js';
 
 // den -> ticks at PPQ 96 (quarter = 96). Dotted = 1.5x where integral.
 const DURATIONS = [];
@@ -53,8 +54,13 @@ export function exportFmf(doc, opts = {}) {
     .slice(0, 1)
     .map(() => 'Overlapping notes were truncated (fix conflicts for exact control).');
 
-  const bpm = Math.round(doc.song.bpm);
-  if (bpm !== doc.song.bpm) warnings.push(`BPM rounded from ${doc.song.bpm} to ${bpm} (FMF needs an integer BPM).`);
+  // FMF carries ONE tempo in its header, so a tempo map cannot survive here.
+  const songBpm = bpmAt(doc, region ? region.startTick : 0);
+  const bpm = Math.round(songBpm);
+  if (bpm !== songBpm) warnings.push(`BPM rounded from ${songBpm} to ${bpm} (FMF needs an integer BPM).`);
+  if (doc.song.tempo.length > 1) {
+    warnings.push(`This song has ${doc.song.tempo.length} tempo changes - FMF has one global BPM, so the file plays at ${bpm}.`);
+  }
 
   // FMF assumes the file's PPQ-equivalent timing; our ticks are PPQ 96 too,
   // so durations translate directly. Build {kind, pitch?, den, dots} tokens.

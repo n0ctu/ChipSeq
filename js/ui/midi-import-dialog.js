@@ -109,7 +109,9 @@ export async function midiImportDialog(parsed, opts = {}) {
     // merging into an existing project: never hijack the chords source
     opts.merge && r === 'chords' ? 'melody' : r
   );
-  const player = createPreviewPlayer(parsed.song.bpm);
+  const fileBpm = parsed.song.tempo[0].bpm;
+  const fileMeter = parsed.song.meter[0];
+  const player = createPreviewPlayer(fileBpm);
 
   title.textContent = opts.merge ? 'Import tracks into this project' : 'MIDI import - assign tracks';
   intro.textContent = opts.merge
@@ -118,17 +120,18 @@ export async function midiImportDialog(parsed, opts = {}) {
   okBtn.textContent = opts.merge ? 'Add tracks' : 'Import';
 
   const bits = [];
-  if (parsed.song.bpm != null) bits.push(`${parsed.song.bpm} BPM`);
-  if (parsed.song.timeSig) bits.push(`${parsed.song.timeSig.num}/${parsed.song.timeSig.den}`);
+  bits.push(`${fileBpm} BPM`);
+  if (parsed.song.tempo.length > 1) bits.push(`${parsed.song.tempo.length - 1} tempo change(s)`);
+  bits.push(`${fileMeter.num}/${fileMeter.den}`);
   if (parsed.song.key) bits.push(keyName(parsed.song.key) + (parsed.song.keyGuessed ? ' (guessed from the notes)' : ''));
   const tempoMismatch =
-    opts.merge && parsed.song.bpm != null && opts.projectBpm != null &&
-    Math.abs(parsed.song.bpm - opts.projectBpm) > 0.5;
+    opts.merge && opts.projectBpm != null &&
+    Math.abs(fileBpm - opts.projectBpm) > 0.5;
   meta.innerHTML =
     (bits.length ? 'Detected: ' + bits.join(' - ') : 'No tempo/key metadata found - current song settings are kept.') +
     (opts.merge
       ? tempoMismatch
-        ? `<br>\u26a0 The file is ${parsed.song.bpm} BPM but this project runs at ${opts.projectBpm} BPM - the notes keep their musical positions and play at the project tempo.`
+        ? `<br>\u26a0 The file is ${fileBpm} BPM but this project runs at ${opts.projectBpm} BPM - the notes keep their musical positions and play at the project tempo.`
         : ''
       : '<br>Don\u2019t worry about getting it perfect: melody and chords can be exchanged later' +
         ' with the M/C buttons in the track list.');

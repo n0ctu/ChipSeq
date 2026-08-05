@@ -1,5 +1,33 @@
 // Project document schema, factories and pure mutation helpers.
 // All helpers mutate the given doc in place; callers wrap them in store.commit().
+//
+// ---------------------------------------------------------------------------
+// THREE RULES FOR GROWING THE FORMAT
+//
+// The point of all three: a file written by a newer build must still open in
+// an older one, and - more importantly - an older build must not quietly
+// destroy what it could not read.
+//
+// 1. Extension blocks are namespaced and self-versioned.
+//    Anything a feature owns lives in its own object carrying `kind` and `v`:
+//      master.limiter = { kind: 'limiter', v: 1, ceilingDb: -0.1, … }
+//      buses[].chain  = [{ kind: 'delay', v: 1, params: {…} }]
+//    A block can then evolve on its own `v` without touching SCHEMA_VERSION.
+//    Bump SCHEMA_VERSION only for renames or changed meaning - never for
+//    additions, which default on load.
+//
+// 2. Unknown keys are preserved verbatim.
+//    migrate() MUTATES the parsed JSON rather than rebuilding a document from
+//    known fields, so a block this build has never heard of survives a load
+//    and save untouched. Never reconstruct a document field-by-field; that is
+//    what silently drops a newer build's data. (tests/golden.mjs pins this.)
+//
+// 3. doc.uses declares what a reader must understand.
+//    A list like ['harmonics', 'automation', 'tempoMap'] naming the features
+//    the document actually relies on. A build that meets an entry it does not
+//    know says so - "this project uses X, which this version can't play; it
+//    is preserved, not lost" - instead of playing the file wrong in silence.
+// ---------------------------------------------------------------------------
 
 import { PPQ } from './music.js';
 import { SCHEMA_VERSION } from './version.js';
@@ -60,9 +88,18 @@ export function createProject({ name = 'Untitled', mode = 'mono' } = {}) {
     mode,
     ppq: PPQ,
     song: {
+      key: { tonic: 0, mode: 'major' },
+      // Tempo and meter are MAPS even though the editing UI only ever writes
+      // one entry. Everything reads them through bpmAt/timeSigAt/tickToSeconds,
+      // so adding mid-song changes later is a UI job, not a rewrite of the
+      // engine and all four exporters.
+      tempo: [{ tick: 0, bpm: 120 }],
+      meter: [{ tick: 0, num: 4, den: 4 }],
+      // Derived mirrors of the first map entry, kept in sync by
+      // syncLegacyFields(). They exist so a file written here still opens in
+      // the previously deployed build; remove them a release after v4 ships.
       bpm: 120,
       timeSig: { num: 4, den: 4 },
-      key: { tonic: 0, mode: 'major' },
     },
     instruments: structuredClone(DEFAULT_INSTRUMENTS),
     tracks: [track],
@@ -109,6 +146,20 @@ export function migrate(doc) {
     }
     doc.version = 3;
   }
+  if (doc.version === 3) {
+    // v4: the single bpm/timeSig scalars became tick-indexed MAPS. The old
+    // fields stay behind as derived mirrors (see syncLegacyFields) so a v4
+    // file still opens in a v3 build - it just cannot see mid-song changes,
+    // which is exactly what doc.uses ends up telling the user.
+    if (!Array.isArray(doc.song.tempo)) {
+      doc.song.tempo = [{ tick: 0, bpm: doc.song.bpm ?? 120 }];
+    }
+    if (!Array.isArray(doc.song.meter)) {
+      const sig = doc.song.timeSig || { num: 4, den: 4 };
+      doc.song.meter = [{ tick: 0, num: sig.num, den: sig.den }];
+    }
+    doc.version = 4;
+  }
   // Cleanup (no version bump): instrument-switch automation existed briefly
   // and was replaced by per-control lanes - drop stray lanes on load.
   for (const t of doc.tracks) {
@@ -116,6 +167,164 @@ export function migrate(doc) {
   }
   // Additive default: melody marker used to be fused with the active track.
   if (!doc.melodyTrackId) doc.melodyTrackId = doc.activeTrackId;
+  normalizeDoc(doc);
+  return doc;
+}
+
+// ---- tempo and meter maps ----
+//
+// Both are sorted, non-empty, and start at tick 0. Nothing outside this file
+// should index them directly - go through the accessors, so multi-entry maps
+// become a no-op for every caller.
+
+const sortMap = (map) => map.sort((a, b) => a.tick - b.tick);
+
+// Last entry at or before tick (the maps are short; a scan beats a binary
+// search and stays readable).
+function entryAt(map, tick) {
+  let found = map[0];
+  for (const e of map) {
+    if (e.tick > tick) break;
+    found = e;
+  }
+  return found;
+}
+
+export function bpmAt(doc, tick = 0) {
+  return entryAt(doc.song.tempo, tick).bpm;
+}
+
+export function timeSigAt(doc, tick = 0) {
+  return entryAt(doc.song.meter, tick);
+}
+
+// Absolute position of a tick in seconds, integrating across tempo changes.
+// A plain tick * secondsPerTick would be wrong the moment a second tempo
+// entry exists, so the multiplication lives here once rather than in the
+// engine, the WAV renderer and two text exporters.
+export function tickToSeconds(doc, tick) {
+  const map = doc.song.tempo;
+  const ppq = doc.ppq || PPQ;
+  let seconds = 0;
+  for (let i = 0; i < map.length; i++) {
+    const from = map[i].tick;
+    if (from >= tick) break;
+    const nextTick = i + 1 < map.length ? map[i + 1].tick : Infinity;
+    const to = Math.min(tick, nextTick);
+    seconds += ((to - from) * 60) / (map[i].bpm * ppq);
+  }
+  return seconds;
+}
+
+// Inverse of tickToSeconds - the playhead reads back from the audio clock.
+export function secondsToTick(doc, seconds) {
+  const map = doc.song.tempo;
+  const ppq = doc.ppq || PPQ;
+  let acc = 0;
+  for (let i = 0; i < map.length; i++) {
+    const from = map[i].tick;
+    const nextTick = i + 1 < map.length ? map[i + 1].tick : Infinity;
+    const secPerTick = 60 / (map[i].bpm * ppq);
+    const segment = (nextTick - from) * secPerTick;
+    if (seconds <= acc + segment || nextTick === Infinity) {
+      return from + (seconds - acc) / secPerTick;
+    }
+    acc += segment;
+  }
+  return 0;
+}
+
+export function setTempo(doc, bpm, tick = 0) {
+  const entry = doc.song.tempo.find((e) => e.tick === tick);
+  if (entry) {
+    entry.bpm = bpm;
+  } else {
+    doc.song.tempo.push({ tick, bpm });
+    sortMap(doc.song.tempo);
+  }
+  syncLegacyFields(doc);
+}
+
+export function setTimeSig(doc, num, den, tick = 0) {
+  const entry = doc.song.meter.find((e) => e.tick === tick);
+  if (entry) {
+    entry.num = num;
+    entry.den = den;
+  } else {
+    doc.song.meter.push({ tick, num, den });
+    sortMap(doc.song.meter);
+  }
+  syncLegacyFields(doc);
+}
+
+// ---- derived fields ----
+
+// The v3 scalars, recomputed from the maps. They are output only: nothing in
+// this build reads them, they exist so the previously deployed version can
+// still open a file written here.
+export function syncLegacyFields(doc) {
+  if (!doc.song) return;
+  if (Array.isArray(doc.song.tempo) && doc.song.tempo.length) {
+    doc.song.bpm = doc.song.tempo[0].bpm;
+  }
+  if (Array.isArray(doc.song.meter) && doc.song.meter.length) {
+    const m = doc.song.meter[0];
+    doc.song.timeSig = { num: m.num, den: m.den };
+  }
+}
+
+// Features a reader must understand to play this document correctly, and the
+// highest major version of each that this build supports.
+export const KNOWN_FEATURES = {
+  harmonics: 1,
+  automation: 1,
+  tempoMap: 1,
+  meterMap: 1,
+};
+
+// Recompute doc.uses from what the document actually contains. Only features
+// whose absence would make a reader play the file WRONG belong here - not
+// every field in use. A multi-entry tempo map qualifies precisely because an
+// older build would fall back to the mirrored scalar and play one tempo
+// throughout, which sounds fine and is wrong.
+export function updateUses(doc) {
+  const uses = [];
+  if (doc.tracks.some((t) => t.notes.some((n) => n.harmonics))) uses.push('harmonics');
+  if (doc.tracks.some((t) => t.automation && Object.values(t.automation).some((l) => l && l.length))) {
+    uses.push('automation');
+  }
+  if (doc.song.tempo && doc.song.tempo.length > 1) uses.push('tempoMap');
+  if (doc.song.meter && doc.song.meter.length > 1) uses.push('meterMap');
+
+  // Entries this build cannot evaluate are CARRIED OVER rather than
+  // recomputed away. Rebuilding the list from scratch would quietly strip a
+  // newer build's declaration - the exact data loss doc.uses exists to
+  // prevent. Over-declaring is the safe direction: we cannot verify a
+  // feature we do not understand, so we keep its claim.
+  for (const entry of doc.uses || []) {
+    if (unsupportedFeatures({ uses: [entry] }).length && !uses.includes(entry)) uses.push(entry);
+  }
+  doc.uses = uses.sort();
+}
+
+// Entries of doc.uses this build cannot honour: an unknown name, or a known
+// one at a higher major than we support.
+export function unsupportedFeatures(doc) {
+  return (doc.uses || []).filter((entry) => {
+    const [name, major] = String(entry).split('@');
+    const supported = KNOWN_FEATURES[name];
+    return supported === undefined || Number(major || 1) > supported;
+  });
+}
+
+// The single after-commit pass: everything that must hold for EVERY snapshot
+// rather than being remembered at each call site.
+export function normalizeDoc(doc) {
+  if (!doc || !doc.song) return doc;
+  if (Array.isArray(doc.song.tempo)) sortMap(doc.song.tempo);
+  if (Array.isArray(doc.song.meter)) sortMap(doc.song.meter);
+  syncLegacyFields(doc);
+  updateUses(doc);
   return doc;
 }
 
@@ -148,13 +357,16 @@ export function playableTracks(doc) {
   return doc.tracks.filter((t) => t.role !== 'muted');
 }
 
-export function ticksPerBeat(doc) {
+// Both take an optional tick so they follow the meter map. Callers that pass
+// only the document get the song's opening meter, which is what every caller
+// meant back when there could only be one.
+export function ticksPerBeat(doc, tick = 0) {
   // A "beat" is the denominator note of the time signature.
-  return Math.round((PPQ * 4) / doc.song.timeSig.den);
+  return Math.round((PPQ * 4) / timeSigAt(doc, tick).den);
 }
 
-export function ticksPerBar(doc) {
-  return ticksPerBeat(doc) * doc.song.timeSig.num;
+export function ticksPerBar(doc, tick = 0) {
+  return ticksPerBeat(doc, tick) * timeSigAt(doc, tick).num;
 }
 
 export function songEndTick(doc) {
@@ -367,9 +579,12 @@ export function trimAfter(doc, tick) {
 
 // assignments: [{index, role: "melody"|"chords"|"muted"|"skip", name}]
 export function applyImport(doc, parsed, assignments) {
-  doc.song.bpm = parsed.song.bpm ?? doc.song.bpm;
-  if (parsed.song.timeSig) doc.song.timeSig = parsed.song.timeSig;
+  // The parser hands over whole maps: a MIDI file with mid-song tempo or
+  // meter changes keeps them instead of collapsing to its first value.
+  if (parsed.song.tempo && parsed.song.tempo.length) doc.song.tempo = parsed.song.tempo.map((e) => ({ ...e }));
+  if (parsed.song.meter && parsed.song.meter.length) doc.song.meter = parsed.song.meter.map((e) => ({ ...e }));
   if (parsed.song.key) doc.song.key = parsed.song.key;
+  syncLegacyFields(doc);
 
   const newTracks = [];
   for (const a of assignments) {

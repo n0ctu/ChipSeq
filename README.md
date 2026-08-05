@@ -55,6 +55,46 @@ fast arps become smooth sweeps - and held notes get true intra-note gain
 ramps. Poly-only; mono and the `.h`/`.fmf` exports ignore automation
 entirely.
 
+## Growing the file format
+
+Three rules keep `.tune.json` extensible without breaking files. The point of
+all three: a file written by a newer build must still open in an older one -
+and, more importantly, the older build must not quietly destroy what it could
+not read.
+
+1. **Extension blocks are namespaced and self-versioned.** Anything a feature
+   owns lives in its own object carrying `kind` and `v`, e.g.
+   `master.limiter = {kind:'limiter', v:1, ceilingDb:-0.1}`. A block evolves on
+   its own `v`; `SCHEMA_VERSION` is bumped only for renames or changed meaning,
+   never for additions (which default on load).
+2. **Unknown keys are preserved verbatim.** `migrate()` mutates the parsed JSON
+   instead of rebuilding a document from known fields, so a block this build has
+   never heard of survives load-and-save untouched. Never reconstruct a document
+   field-by-field - that is what silently drops a newer build's data.
+3. **`doc.uses` declares what a reader must understand**, e.g.
+   `['harmonics','automation','tempoMap']`. Meeting an entry it does not know,
+   a build says so - "this project uses X, which this version can't play; it is
+   preserved, not lost" - instead of playing the file wrong in silence. Entries
+   this build cannot evaluate are carried over rather than recomputed away.
+
+`tests/golden.mjs` pins all three.
+
+### Tempo and meter are maps
+
+`song.tempo` is `[{tick, bpm}]` and `song.meter` is `[{tick, num, den}]`, even
+though the editing UI only ever writes one entry. Everything reads them through
+`bpmAt` / `timeSigAt` / `tickToSeconds` / `secondsToTick`, and `tickToSeconds`
+integrates across entries - so adding mid-song tempo changes is a UI job, not a
+rewrite of the engine and all four exporters. MIDI import already keeps whole
+maps instead of discarding tempo changes with a warning.
+
+`song.bpm` and `song.timeSig` remain as **derived mirrors** of the first map
+entry so a v4 file still opens in the previously deployed build; they are
+output-only (`syncLegacyFields` recomputes them, nothing reads them) and can be
+removed a release after v4 has shipped. A multi-entry map is declared in
+`doc.uses` precisely because an older build would read the mirror and play one
+tempo throughout - which sounds fine and is wrong.
+
 ## Output level
 
 Playback and the `.wav` exporter share one output stage (`js/core/graph.js`),

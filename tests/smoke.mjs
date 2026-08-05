@@ -1226,6 +1226,47 @@ await check('grid preference included in .tune.json export', `(async () => {
   return parsed.grid && parsed.grid.snapTicks === 24 || JSON.stringify(parsed.grid);
 })()`);
 
+// ---- tempo map + doc.uses ----
+await check('the BPM field writes the tempo map, not the legacy mirror', `(async () => {
+  const { bpmAt } = await import('/js/core/doc.js');
+  const inp = document.getElementById('inp-bpm');
+  inp.value = '150';
+  inp.dispatchEvent(new Event('change', { bubbles: true }));
+  const d = window.__chipseq.store.getDoc();
+  const errs = [];
+  if (!Array.isArray(d.song.tempo) || d.song.tempo.length !== 1) errs.push('tempo map: ' + JSON.stringify(d.song.tempo));
+  if (bpmAt(d, 0) !== 150) errs.push('bpmAt=' + bpmAt(d, 0));
+  // the v3 scalar is kept in sync so the previously deployed build can still
+  // open files written here
+  if (d.song.bpm !== 150) errs.push('legacy mirror=' + d.song.bpm);
+  window.__chipseq.store.undo();
+  return errs.length === 0 || errs.join('; ');
+})()`);
+
+await check('a mid-song tempo change is declared in doc.uses', `(async () => {
+  const { setTempo } = await import('/js/core/doc.js');
+  const store = window.__chipseq.store;
+  store.commit('test tempo map', ['song'], (d) => setTempo(d, 200, 384));
+  const d = store.getDoc();
+  const declared = (d.uses || []).includes('tempoMap');
+  // an older build would read the mirror and play one tempo throughout,
+  // which is why this has to be announced rather than assumed harmless
+  const mirrorStillFirst = d.song.bpm === d.song.tempo[0].bpm;
+  store.undo();
+  const cleared = !(store.getDoc().uses || []).includes('tempoMap');
+  return (declared && mirrorStillFirst && cleared)
+    || 'declared=' + declared + ' mirror=' + mirrorStillFirst + ' cleared=' + cleared;
+})()`);
+
+await check('unsupported features are reported, never dropped', `(async () => {
+  const { unsupportedFeatures, migrate } = await import('/js/core/doc.js');
+  const raw = JSON.stringify({ ...window.__chipseq.store.getDoc(), uses: ['harmonics', 'effects@1'], futureBlock: { kind: 'x', v: 1 } });
+  const doc = migrate(JSON.parse(raw));
+  const missing = unsupportedFeatures(doc);
+  return (missing.length === 1 && missing[0] === 'effects@1' && !!doc.futureBlock)
+    || JSON.stringify({ missing, kept: !!doc.futureBlock });
+})()`);
+
 // ---- WAV render: structure, level and the non-clipping master ----
 // Rendered audio is checked by measurement rather than byte-comparison: the
 // WaveShaper's behaviour depends on the Chromium build, so a byte golden
