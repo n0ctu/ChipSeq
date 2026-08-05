@@ -16,7 +16,7 @@ const modules = [
   // would only surface as an empty card at runtime
   'ui/tools-panel.js', 'ui/tools/manifest.js',
   'ui/tools/harmonics.js', 'ui/tools/transpose.js', 'ui/tools/instrument.js',
-  'ui/tools/envelope-editor.js',
+  'ui/tools/envelope-editor.js', 'ui/tools/mixer.js',
   'ui/midi-import-dialog.js', 'ui/export-dialog.js',
   'ui/icons.js', 'ui/panel-resize.js', 'ui/trimmer.js',
 ];

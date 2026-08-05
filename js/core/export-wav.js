@@ -3,7 +3,8 @@
 
 import { flattenSong, clipEventsToRegion } from './flatten.js';
 import { scheduleNote, getInstrument } from './instruments.js';
-import { buildOutputGraph, applyLimiter } from './graph.js';
+import { buildGraph, applyLimiter } from './graph.js';
+import { needsStereo } from './doc.js';
 import { tickToSeconds } from './doc.js';
 
 const SAMPLE_RATE = 44100;
@@ -37,14 +38,18 @@ export async function renderWav(doc, opts = {}) {
     lengthS = endS + maxRelease + 0.3;
   }
 
-  const ctx = new OfflineAudioContext(1, Math.ceil(SAMPLE_RATE * lengthS), SAMPLE_RATE);
+  // Stereo ONLY when something is actually panned, so an unpanned project
+  // renders the same mono file it always did - same size, same bytes, half
+  // the disk of a stereo file carrying two identical channels.
+  const channels = needsStereo(doc) ? 2 : 1;
+  const ctx = new OfflineAudioContext(channels, Math.ceil(SAMPLE_RATE * lengthS), SAMPLE_RATE);
   // Same output stage as playback, but rendered UNSHAPED: the clipper is
   // applied to the finished buffer instead, which is the only way to read the
   // true pre-limiter peak (an intermediate node can't be tapped offline).
-  const { master } = buildOutputGraph(ctx, doc, { limiter: false });
+  const graph = buildGraph(ctx, doc, { limiter: false });
   for (const ev of events) {
     if (ev.durationTicks <= 0) continue;
-    scheduleNote(ctx, master, getInstrument(doc, ev.instrumentId), {
+    scheduleNote(ctx, graph.nodeFor(ev.trackId), getInstrument(doc, ev.instrumentId), {
       pitch: ev.pitch,
       startTime: at(ev.startTick),
       stopTime: at(ev.startTick + ev.durationTicks),
@@ -63,8 +68,11 @@ export async function renderWav(doc, opts = {}) {
 }
 
 export function encodeWav(audioBuffer) {
-  const samples = audioBuffer.getChannelData(0);
-  const dataSize = samples.length * 2;
+  const channels = audioBuffer.numberOfChannels;
+  const data = [];
+  for (let c = 0; c < channels; c++) data.push(audioBuffer.getChannelData(c));
+  const frames = data[0].length;
+  const dataSize = frames * channels * 2;
   const buf = new ArrayBuffer(44 + dataSize);
   const view = new DataView(buf);
 
@@ -78,18 +86,21 @@ export function encodeWav(audioBuffer) {
   writeStr(12, 'fmt ');
   view.setUint32(16, 16, true); // fmt chunk size
   view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, 1, true); // mono
+  view.setUint16(22, channels, true);
   view.setUint32(24, audioBuffer.sampleRate, true);
-  view.setUint32(28, audioBuffer.sampleRate * 2, true); // byte rate
-  view.setUint16(32, 2, true); // block align
+  view.setUint32(28, audioBuffer.sampleRate * channels * 2, true); // byte rate
+  view.setUint16(32, channels * 2, true); // block align
   view.setUint16(34, 16, true); // bits per sample
   writeStr(36, 'data');
   view.setUint32(40, dataSize, true);
 
+  // Interleaved frames: L R L R ... - what every player expects.
   let offset = 44;
-  for (let i = 0; i < samples.length; i++, offset += 2) {
-    const s = Math.max(-1, Math.min(1, samples[i]));
-    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  for (let i = 0; i < frames; i++) {
+    for (let c = 0; c < channels; c++, offset += 2) {
+      const s = Math.max(-1, Math.min(1, data[c][i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    }
   }
   return new Blob([buf], { type: 'audio/wav' });
 }

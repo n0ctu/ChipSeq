@@ -181,7 +181,7 @@ export function flattenSong(doc) {
         // flattens to exactly the same stream it always did.
         if (note.detune) extra.detune = note.detune;
         if (note.lfo) extra.lfo = note.lfo;
-        events.push({ ...ev, instrumentId, noteId: note.id, ...extra });
+        events.push({ ...ev, trackId: track.id, instrumentId, noteId: note.id, ...extra });
       }
     }
   }

@@ -20,7 +20,7 @@
 //           starts open.
 //   label - short context line, shown open or closed.
 
-import { activeTrack, getTrack, DEFAULT_INSTRUMENTS } from '../../core/doc.js';
+import { activeTrack, getTrack, trackGain, trackPan, DEFAULT_INSTRUMENTS } from '../../core/doc.js';
 
 // Selected notes, computed straight from the stores. Deliberately not routed
 // through roll.interactions so status() has no dependency on the piano roll
@@ -69,6 +69,26 @@ export const TOOLS = [
     // closed until asked for.
     status: (ctx) => ({ on: false, label: (transposeScope(ctx) || {}).label || '' }),
     load: () => import('./transpose.js'),
+  },
+  {
+    id: 'mixer',
+    name: 'Mixer',
+    // Poly only: mono plays one voice, so there is nothing to balance.
+    when: (ctx) => ctx.store.getDoc().mode === 'poly' && ctx.store.getDoc().tracks.length > 0,
+    status: (ctx) => {
+      const tracks = ctx.store.getDoc().tracks;
+      const touched = tracks.filter((t) => trackGain(t) !== 1 || trackPan(t) !== 0 || t.solo);
+      const solo = tracks.filter((t) => t.solo).length;
+      return {
+        on: touched.length > 0,
+        label: solo
+          ? `${solo} soloed`
+          : touched.length
+            ? `${touched.length} adjusted`
+            : `${tracks.length} track${tracks.length === 1 ? '' : 's'}`,
+      };
+    },
+    load: () => import('./mixer.js'),
   },
   {
     id: 'instrument',
