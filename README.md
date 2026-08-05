@@ -44,8 +44,12 @@ plus Duty for PWM instruments. Gain starts expanded (baseline 100%); the rest
 sit collapsed as slim read-only previews and expand on click (clicking a
 collapsed lane never edits anything). In an expanded lane: click adds a
 keyframe, drag moves it, double-click cycles the curve (step / linear /
-ease), right-click deletes. ADSR/duty values are absolute overrides of the
-instrument's setting (dashed baseline = the current value); values are
+ease), right-click deletes. Levels read as percentages, where 0% is silence
+and 100% is unity - the gain lane goes to 150%, with a dashed "100%" line
+marking unity and any keyframe above it drawn in the warning colour, because
+that is where the master limiter starts working. ADSR/duty values are
+absolute overrides of the instrument's setting (dashed baseline = the
+current value); values are
 sampled per note event - every arp step reads the curve independently, so
 fast arps become smooth sweeps - and held notes get true intra-note gain
 ramps. Poly-only; mono and the `.h`/`.fmf` exports ignore automation

@@ -989,5 +989,48 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(limiterConfig({ master: { limiter: { ceilingDb: -6 } } }).kneeDb === cfg.kneeDb, 'partial overrides keep defaults');
 }
 
+// ---- level display units ----
+{
+  const { toPercent, fromPercent, formatPercent, formatSeconds, formatRaw, isHot, formatter, HOT_ABOVE }
+    = await import('../js/core/units.js');
+  const { AUTOMATION_PARAMS } = await import('../js/core/automation.js');
+
+  assert(formatPercent(0) === '0%', 'silence reads as 0%');
+  assert(formatPercent(1) === '100%', 'unity reads as 100%');
+  assert(formatPercent(0.35) === '35%', 'the default Square gain reads as 35%');
+  assert(formatPercent(1.5) === '150%', 'boost above unity is displayable');
+
+  // The display layer must never round-trip a value into a different one -
+  // a slider drag would otherwise walk a level away from where it was left.
+  let stable = true;
+  for (let p = 0; p <= 150; p++) if (Math.round(toPercent(fromPercent(p))) !== p) stable = false;
+  assert(stable, 'percent -> linear -> percent is stable across the range');
+
+  // Unity is the boundary, not a hot value: 100% must not be flagged.
+  assert(isHot(HOT_ABOVE) === false, 'exactly unity is not hot');
+  assert(isHot(1.0000000001) === false, 'float noise at unity is not hot');
+  assert(isHot(1.01) === true, 'above unity is hot');
+  assert(isHot(0.5) === false, 'below unity is not hot');
+
+  assert(formatSeconds(0.002) === '2 ms', 'short times read in ms');
+  assert(formatSeconds(0.25) === '0.25 s', 'longer times read in seconds');
+  assert(formatter('percent') === formatPercent, 'formatter resolves by name');
+  assert(formatter('nope') === formatRaw, 'an unknown display name degrades to raw');
+
+  // The params table declares a display name; fmt is derived from it, so the
+  // two can never disagree the way a hand-written pair could.
+  for (const [name, meta] of Object.entries(AUTOMATION_PARAMS)) {
+    assert(typeof meta.fmt === 'function', `${name} has a derived formatter`);
+    assert(meta.fmt === formatter(meta.display), `${name} fmt matches its display descriptor`);
+  }
+  assert(AUTOMATION_PARAMS.gain.fmt(1) === '100%', 'gain lane reads in percent');
+  assert(AUTOMATION_PARAMS.attack.fmt(0.05) === '50 ms', 'time lanes read in ms');
+  // Gain reaches past unity so a quiet track can be pushed; the master
+  // limiter is what makes that safe rather than a clipping hazard.
+  assert(AUTOMATION_PARAMS.gain.max > HOT_ABOVE, 'the gain lane allows boost above unity');
+  assert(AUTOMATION_PARAMS.gain.hot === true, 'the gain lane is marked as flaggable');
+  assert(!AUTOMATION_PARAMS.duty.hot, 'duty is not a level and is never flagged');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
