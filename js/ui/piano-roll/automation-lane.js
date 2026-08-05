@@ -11,6 +11,7 @@ import {
 } from '../../core/doc.js';
 import { getInstrument } from '../../core/instruments.js';
 import { AUTOMATION_PARAMS, LANE_ORDER, sampleAutomation } from '../../core/automation.js';
+import { HOT_ABOVE, isHot } from '../../core/units.js';
 import { trackColor } from './render.js';
 
 const MASTER_H = 18;
@@ -225,7 +226,9 @@ export function initAutomationLane({ store, uiStore, canvas }) {
             const x = tickToX(ui, p.tick);
             if (x < -6 || x > w + 6) continue;
             const y = valueToY(lane, lane.param, p.value);
-            ctx.fillStyle = color;
+            // a keyframe above unity is deliberate boost - colour it so the
+            // reason a mix needs limiting is visible in the lane itself
+            ctx.fillStyle = meta.hot && isHot(p.value) ? theme.warn : color;
             ctx.fillRect(x - 3, y - 3, 6, 6);
             ctx.strokeStyle = theme.noteBorder;
             ctx.lineWidth = 1;
@@ -234,9 +237,30 @@ export function initAutomationLane({ store, uiStore, canvas }) {
         }
       }
 
+      // Unity reference, drawn ON TOP of the envelope so the curve's fill
+      // can't hide it. The gain lane reaches past 100% so a quiet track can
+      // be pushed - without a marked unity line "how loud is this?" would be
+      // guesswork, since the top of the lane is no longer the nominal maximum.
+      if (lane.expanded && meta.hot && meta.max > HOT_ABOVE) {
+        const yUnity = valueToY(lane, lane.param, HOT_ABOVE);
+        ctx.strokeStyle = theme.textDim;
+        ctx.globalAlpha = 0.55;
+        ctx.setLineDash([2, 3]);
+        ctx.beginPath();
+        ctx.moveTo(0, yUnity + 0.5);
+        ctx.lineTo(w, yUnity + 0.5);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = theme.textDim;
+        ctx.font = '9px ' + font;
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(meta.fmt(HOT_ABOVE), 4, yUnity - 1);
+        ctx.globalAlpha = 1;
+      }
+
       // dragged value label
       if (dragging && ui.autoDrag.label) {
-        ctx.fillStyle = theme.text;
+        ctx.fillStyle = meta.hot && isHot(ui.autoDrag.point.value) ? theme.warn : theme.text;
         ctx.font = 'bold 10px ' + font;
         ctx.textBaseline = 'bottom';
         ctx.fillText(ui.autoDrag.label.text, ui.autoDrag.label.x + 8, ui.autoDrag.label.y - 4);

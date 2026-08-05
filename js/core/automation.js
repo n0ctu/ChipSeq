@@ -4,19 +4,26 @@
 // describes the segment LEAVING the point) or { tick, instrumentId } for the
 // step-only instrument lane. Points are sorted by tick, one per tick.
 
+import { formatter } from './units.js';
+
 // Single source of truth for parameter ranges/formatting (core + UI).
 // def null = resolved from the effective instrument (adsrKey / duty).
-const pct = (v) => Math.round(v * 100) + '%';
-const secs = (v) => (v >= 0.1 ? v.toFixed(2) + ' s' : Math.round(v * 1000) + ' ms');
-
+//
+// `display` names a formatter in units.js rather than carrying one, so the
+// choice of unit stays data. `hot: true` marks the lanes where exceeding
+// unity is meaningful - gain can be pushed past 100% (the master limiter
+// keeps the result from clipping), which the UI flags rather than forbids.
 export const AUTOMATION_PARAMS = {
-  gain: { label: 'Gain', min: 0, max: 1, def: 1, fmt: pct },
-  attack: { label: 'Attack', min: 0, max: 0.3, def: null, adsrKey: 'a', fmt: secs },
-  decay: { label: 'Decay', min: 0, max: 0.5, def: null, adsrKey: 'd', fmt: secs },
-  sustain: { label: 'Sustain', min: 0, max: 1, def: null, adsrKey: 's', fmt: pct },
-  release: { label: 'Release', min: 0, max: 0.8, def: null, adsrKey: 'r', fmt: secs },
-  duty: { label: 'Duty', min: 0.05, max: 0.5, def: null, fmt: pct },
+  gain: { label: 'Gain', min: 0, max: 1.5, def: 1, display: 'percent', hot: true },
+  attack: { label: 'Attack', min: 0, max: 0.3, def: null, adsrKey: 'a', display: 'seconds' },
+  decay: { label: 'Decay', min: 0, max: 0.5, def: null, adsrKey: 'd', display: 'seconds' },
+  sustain: { label: 'Sustain', min: 0, max: 1, def: null, adsrKey: 's', display: 'percent' },
+  release: { label: 'Release', min: 0, max: 0.8, def: null, adsrKey: 'r', display: 'seconds' },
+  duty: { label: 'Duty', min: 0.05, max: 0.5, def: null, display: 'percent' },
 };
+
+// fmt is derived, not declared, so a param can never disagree with itself.
+for (const meta of Object.values(AUTOMATION_PARAMS)) meta.fmt = formatter(meta.display);
 
 // Lane stacking order in the UI; duty only applies to PWM instruments.
 export const LANE_ORDER = ['gain', 'attack', 'decay', 'sustain', 'release', 'duty'];

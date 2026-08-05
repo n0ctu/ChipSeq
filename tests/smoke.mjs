@@ -1019,6 +1019,22 @@ await check('slider release (change) commits the value', `(() => {
   el.dispatchEvent(new Event('change', { bubbles: true }));
   return window.__chipseq.store.getDoc().tracks[0].instrument.gain === 0.8 || window.__chipseq.store.getDoc().tracks[0].instrument.gain;
 })()`);
+// Levels read as percentages, and boost past unity is allowed but flagged -
+// the master limiter is what makes going over safe rather than forbidden.
+await check('gain above unity is allowed and flagged as hot', `(() => {
+  const el = document.querySelector('#instrument-body #in-gain');
+  const label = document.querySelector('#instrument-body #in-gain-label');
+  if (Number(el.max) <= 100) return 'slider still capped at ' + el.max;
+  el.value = '130';
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  const hot = label.classList.contains('hot');
+  const text = label.textContent;
+  el.value = '80';
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  const cool = label.classList.contains('hot');
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  return (text === '130%' && hot && !cool) || 'text=' + text + ' hot=' + hot + ' cool=' + cool;
+})()`);
 await evaluate(`document.querySelector('#instrument-body #in-audition').click()`);
 await sleep(100);
 await check('audition toggle stops the loop', `!window.__chipseq.engine.isAuditioning()`);
@@ -1060,16 +1076,23 @@ await check('automation stack open by default with gain expanded', `(() => {
     && btns.some((t) => t.startsWith('Gain')) && !btns.some((t) => t.startsWith('Duty'))
     && rows.endsWith('142px') || btns.join(',') + ' rows=' + rows;
 })()`);
-await check('click in expanded gain lane adds a keyframe', `(() => {
+// The lane's y<->value mapping follows the param's declared range, so the
+// expected value is derived rather than hard-coded - the gain lane's range
+// grew to allow boost above unity and a literal 0.5 here would have silently
+// become wrong rather than failing loudly.
+await check('click in expanded gain lane adds a keyframe', `(async () => {
+  const { AUTOMATION_PARAMS } = await import('/js/core/automation.js');
+  const { min, max } = AUTOMATION_PARAMS.gain;
   const c = document.getElementById('auto-canvas');
   const r = c.getBoundingClientRect();
-  // gain lane occupies y 18..78; y=48 = mid = 50%
+  // gain lane occupies y 18..78 with 6px padding; y=48 is its vertical middle
   for (const type of ['mousedown', 'mouseup']) {
     (type === 'mousedown' ? c : window).dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: r.left + 100, clientY: r.top + 48, button: 0 }));
   }
+  const expected = min + (max - min) * 0.5;
   const lane = (window.__chipseq.store.getDoc().tracks[0].automation || {}).gain || [];
-  return lane.length === 1 && lane[0].tick === 192 && Math.abs(lane[0].value - 0.5) < 0.06
-    || JSON.stringify(lane);
+  return lane.length === 1 && lane[0].tick === 192 && Math.abs(lane[0].value - expected) < 0.06
+    || JSON.stringify(lane) + ' expected~' + expected;
 })()`);
 await check('click on a collapsed lane only expands it (no edit)', `(() => {
   const c = document.getElementById('auto-canvas');
@@ -1110,27 +1133,31 @@ await check('dragging moves a gain keyframe', `(() => {
   const lane = window.__chipseq.store.getDoc().tracks[0].automation.gain;
   return lane.length === 1 && lane[0].tick === 288 || JSON.stringify(lane);
 })()`);
-await check('double-click cycles curve, undo reverts', `(() => {
+await check('double-click cycles curve, undo reverts', `(async () => {
+  const { AUTOMATION_PARAMS } = await import('/js/core/automation.js');
+  const { min, max } = AUTOMATION_PARAMS.gain;
   const c = document.getElementById('auto-canvas');
   const r = c.getBoundingClientRect();
   const ui = window.__chipseq.uiStore.state;
   const lane0 = window.__chipseq.store.getDoc().tracks[0].automation.gain[0];
   const x = r.left + lane0.tick * ui.pxPerTick;
   // recompute point y from its value in the gain lane (y 18..78, pad 6)
-  const y = r.top + 18 + 6 + (1 - lane0.value) * 48;
+  const y = r.top + 18 + 6 + (1 - (lane0.value - min) / (max - min)) * 48;
   c.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: x, clientY: y }));
   const after = window.__chipseq.store.getDoc().tracks[0].automation.gain[0].curve;
   window.__chipseq.store.undo();
   const reverted = window.__chipseq.store.getDoc().tracks[0].automation.gain[0].curve;
   return after === 'ease' && reverted === 'linear' || after + '/' + reverted;
 })()`);
-await check('right-click deletes a keyframe', `(() => {
+await check('right-click deletes a keyframe', `(async () => {
+  const { AUTOMATION_PARAMS } = await import('/js/core/automation.js');
+  const { min, max } = AUTOMATION_PARAMS.gain;
   const c = document.getElementById('auto-canvas');
   const r = c.getBoundingClientRect();
   const ui = window.__chipseq.uiStore.state;
   const lane0 = window.__chipseq.store.getDoc().tracks[0].automation.gain[0];
   const x = r.left + lane0.tick * ui.pxPerTick;
-  const y = r.top + 18 + 6 + (1 - lane0.value) * 48;
+  const y = r.top + 18 + 6 + (1 - (lane0.value - min) / (max - min)) * 48;
   c.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: x, clientY: y, button: 2 }));
   const lane = window.__chipseq.store.getDoc().tracks[0].automation.gain;
   return lane.length === 0 || JSON.stringify(lane);

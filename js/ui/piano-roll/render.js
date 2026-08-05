@@ -24,6 +24,7 @@ export function readTheme() {
     accent: v('--accent'),
     playhead: v('--playhead'),
     danger: v('--danger'),
+    warn: v('--warn'),
     noteBorder: v('--note-border'),
     trackColors: [1, 2, 3, 4, 5, 6, 7, 8].map((i) => v('--track-' + i)),
   };

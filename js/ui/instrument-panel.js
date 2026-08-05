@@ -9,6 +9,7 @@
 import { getTrack, uid } from '../core/doc.js';
 import { promptDialog } from './dialogs.js';
 import { initSectionFold, updateEmptyHint } from './sections.js';
+import { formatPercent, formatSeconds, isHot } from '../core/units.js';
 
 const WAVES = [
   ['square', 'Square'],
@@ -73,7 +74,7 @@ export function initInstrumentPanel({ store, uiStore, engine }) {
     if (btn) btn.classList.toggle('active', engine.isAuditioning());
   }
 
-  const fmtS = (v) => (v >= 0.1 ? v.toFixed(2) + ' s' : Math.round(v * 1000) + ' ms');
+  const fmtS = formatSeconds; // same formatter the automation lanes use
 
   function render() {
     const doc = store.getDoc();
@@ -98,7 +99,7 @@ export function initInstrumentPanel({ store, uiStore, engine }) {
         </div>
       </div>
       ${inst.wave === 'custom' ? `
-      <div class="harm-field">Duty cycle <span id="in-duty-label">${Math.round(duty * 100)}%</span>
+      <div class="harm-field">Duty cycle <span id="in-duty-label">${formatPercent(duty)}</span>
         <div class="harm-row"><input type="range" id="in-duty" min="5" max="50" step="1" value="${Math.round(duty * 100)}" /></div>
       </div>` : ''}
       <div class="harm-field">Attack <span id="in-a-label">${fmtS(inst.adsr.a)}</span>
@@ -107,14 +108,15 @@ export function initInstrumentPanel({ store, uiStore, engine }) {
       <div class="harm-field">Decay <span id="in-d-label">${fmtS(inst.adsr.d)}</span>
         <div class="harm-row"><input type="range" id="in-d" min="0" max="500" step="5" value="${Math.round(inst.adsr.d * 1000)}" /></div>
       </div>
-      <div class="harm-field">Sustain <span id="in-s-label">${Math.round(inst.adsr.s * 100)}%</span>
+      <div class="harm-field">Sustain <span id="in-s-label">${formatPercent(inst.adsr.s)}</span>
         <div class="harm-row"><input type="range" id="in-s" min="0" max="100" step="1" value="${Math.round(inst.adsr.s * 100)}" /></div>
       </div>
       <div class="harm-field">Release <span id="in-r-label">${fmtS(inst.adsr.r)}</span>
         <div class="harm-row"><input type="range" id="in-r" min="0" max="800" step="5" value="${Math.round(inst.adsr.r * 1000)}" /></div>
       </div>
-      <div class="harm-field">Gain <span id="in-gain-label">${Math.round(inst.gain * 100)}%</span>
-        <div class="harm-row"><input type="range" id="in-gain" min="5" max="100" step="1" value="${Math.round(inst.gain * 100)}" /></div>
+      <div class="harm-field">Gain <span id="in-gain-label" class="${isHot(inst.gain) ? 'hot' : ''}">${formatPercent(inst.gain)}</span>
+        <div class="harm-row"><input type="range" id="in-gain" min="5" max="150" step="1" value="${Math.round(inst.gain * 100)}"
+          title="100% is unity - above that the master limiter starts working" /></div>
       </div>
       <div class="btn-pair">
         <button class="btn btn-toggle ${engine.isAuditioning() ? 'active' : ''}" id="in-audition"
@@ -132,25 +134,31 @@ export function initInstrumentPanel({ store, uiStore, engine }) {
 
     // Sliders: 'input' updates the live patch + label (audible via the
     // audition loop, no undo entries); 'change' commits once on release.
-    const slider = (id, toPatch, toLabel) => {
+    // isHotAt: optional - flags a slider value that pushes past unity, so a
+    // boosted gain reads as deliberate rather than as a number that happens
+    // to be large.
+    const slider = (id, toPatch, toLabel, isHotAt = null) => {
       const el = body.querySelector('#' + id);
       if (!el) return;
       const label = body.querySelector('#' + id + '-label');
       el.addEventListener('input', () => {
         livePatch = { ...(livePatch || {}), ...toPatch(Number(el.value)) };
-        if (label) label.textContent = toLabel(Number(el.value));
+        if (label) {
+          label.textContent = toLabel(Number(el.value));
+          if (isHotAt) label.classList.toggle('hot', isHotAt(Number(el.value)));
+        }
       });
       el.addEventListener('change', () => {
         applyPatch(toPatch(Number(el.value)));
         auditionOnce();
       });
     };
-    slider('in-duty', (v) => ({ duty: v / 100 }), (v) => v + '%');
+    slider('in-duty', (v) => ({ duty: v / 100 }), (v) => formatPercent(v / 100));
     slider('in-a', (v) => ({ adsr: { ...inst.adsr, a: v / 1000 } }), (v) => fmtS(v / 1000));
     slider('in-d', (v) => ({ adsr: { ...inst.adsr, d: v / 1000 } }), (v) => fmtS(v / 1000));
-    slider('in-s', (v) => ({ adsr: { ...inst.adsr, s: v / 100 } }), (v) => v + '%');
+    slider('in-s', (v) => ({ adsr: { ...inst.adsr, s: v / 100 } }), (v) => formatPercent(v / 100));
     slider('in-r', (v) => ({ adsr: { ...inst.adsr, r: v / 1000 } }), (v) => fmtS(v / 1000));
-    slider('in-gain', (v) => ({ gain: v / 100 }), (v) => v + '%');
+    slider('in-gain', (v) => ({ gain: v / 100 }), (v) => formatPercent(v / 100), (v) => isHot(v / 100));
 
     body.querySelector('#in-audition').addEventListener('click', () => {
       setAuditionLoop(!engine.isAuditioning());
