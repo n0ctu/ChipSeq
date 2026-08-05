@@ -20,7 +20,7 @@
 //           starts open.
 //   label - short context line, shown open or closed.
 
-import { activeTrack, getTrack } from '../../core/doc.js';
+import { activeTrack, getTrack, DEFAULT_INSTRUMENTS } from '../../core/doc.js';
 
 // Selected notes, computed straight from the stores. Deliberately not routed
 // through roll.interactions so status() has no dependency on the piano roll
@@ -73,19 +73,28 @@ export const TOOLS = [
   {
     id: 'instrument',
     name: 'Instrument',
+    // Always available in poly - there is always an active track, and the
+    // card costs nothing while collapsed. It edits the ACTIVE track, so it
+    // follows the editing focus rather than a separate "which one did I last
+    // pick for" pointer.
     when: (ctx) => {
       const doc = ctx.store.getDoc();
-      return doc.mode === 'poly' && !!getTrack(doc, ctx.uiStore.state.instrumentTrackId);
+      return doc.mode === 'poly' && !!activeTrack(doc);
     },
+    // "In play" means the sound has been taken somewhere of its own: either
+    // fine-tuned into a Custom config, or switched to a saved preset. The
+    // three stock instruments are the baseline, so a track using one has
+    // nothing to show and the card stays out of the way.
     status: (ctx) => {
       const doc = ctx.store.getDoc();
-      const track = getTrack(doc, ctx.uiStore.state.instrumentTrackId);
+      const track = activeTrack(doc);
       if (!track) return { on: false, label: '' };
       const custom = !!track.instrument;
       const inst = custom
         ? track.instrument
         : doc.instruments.find((i) => i.id === track.instrumentId) || doc.instruments[0];
-      return { on: custom, label: `${track.name} - ${custom ? 'Custom' : inst.name}` };
+      const stock = DEFAULT_INSTRUMENTS.some((i) => i.id === track.instrumentId);
+      return { on: custom || !stock, label: `${track.name} - ${custom ? 'Custom' : inst.name}` };
     },
     load: () => import('./instrument.js'),
   },

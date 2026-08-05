@@ -208,9 +208,14 @@ initTracksPanel({
   store,
   uiStore,
   onInstrumentPicker: (trackId) => {
-    uiStore.update('instrument', (s) => {
-      s.instrumentTrackId = trackId;
-    });
+    // The Instrument card edits the active track, so picking an instrument
+    // for a row focuses that row too - otherwise the sidebar would show one
+    // track's sound while you edited another's.
+    if (store.getDoc().activeTrackId !== trackId) {
+      store.commit('switch track', ['tracks'], (d) => {
+        d.activeTrackId = trackId;
+      });
+    }
     toolsPanel.reveal('instrument');
   },
   onImportTracks: () => {

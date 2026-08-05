@@ -30,9 +30,9 @@ deploy from the repository root).
   Overlapping notes are flagged red (press `N` to cycle, status bar offers
   Auto-fix); mono exports are blocked until they're resolved.
 - **Poly** - multiple tracks with instruments, exports `.wav`. Besides the
-  square / sine / sawtooth presets, the **Instrument** tool (opens in the
-  sidebar when you use a track's instrument picker) edits wave (incl.
-  triangle and PWM with duty cycle), full ADSR envelope and gain. Edits make
+  square / sine / sawtooth presets, the **Instrument** tool (always in the
+  sidebar, editing the active track) sets wave (incl. triangle and PWM with
+  duty cycle), full ADSR envelope and gain. Edits make
   the track "Custom" until saved as a named preset, which then appears in
   every track's picker and travels in the project file.
 
@@ -190,7 +190,11 @@ fails CI instead of at runtime.
 The tools themselves: **Harmonics** (below), **Transpose** - bulk pitch moves,
 ±1 octave, ±1 semitone, ±1 *scale degree* (stays in the song key), plus "snap
 chromatic notes to key" for cleanup after imports or key changes - and
-**Instrument** (poly only), opened by a track's instrument picker.
+**Instrument** (poly), which edits the active track and is therefore always
+present: collapsed while the track uses a stock Square/Sine/Saw, opening
+itself once the sound is fine-tuned into a Custom config or switched to a
+saved preset. A track's instrument picker focuses that track and reveals the
+card for the session, without pinning it open for good.
 
 ## Arpeggios (the fun part)
 

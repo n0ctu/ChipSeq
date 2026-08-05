@@ -6,7 +6,7 @@
 // always plays the current values - slider drags are audible live via a
 // transient patch that only becomes an undoable commit on release.
 
-import { getTrack, uid } from '../../core/doc.js';
+import { getTrack, activeTrack, uid } from '../../core/doc.js';
 import { promptDialog } from '../dialogs.js';
 import { formatPercent, formatSeconds, isHot } from '../../core/units.js';
 
@@ -19,8 +19,9 @@ const WAVES = [
 ];
 
 // Mounted by tools-panel.js on first expand; the manifest owns the header.
-// Opening the card for a particular track is the panel's reveal('instrument')
-// - this module just renders whatever ui.instrumentTrackId points at.
+// Edits the ACTIVE track, so the card always shows the instrument of whatever
+// you are working on - the tracks panel's picker switches the active track
+// and asks the panel to reveal this card.
 export function mount(body, { store, uiStore, engine }) {
   const ui = uiStore.state;
 
@@ -29,8 +30,8 @@ export function mount(body, { store, uiStore, engine }) {
 
   function target() {
     const doc = store.getDoc();
-    if (doc.mode !== 'poly' || !ui.instrumentTrackId) return null;
-    return getTrack(doc, ui.instrumentTrackId);
+    if (doc.mode !== 'poly') return null;
+    return activeTrack(doc);
   }
 
   function effective(doc, track) {
@@ -50,7 +51,7 @@ export function mount(body, { store, uiStore, engine }) {
 
   // Any edit turns the track's instrument into an inline Custom config.
   function applyPatch(patch) {
-    const trackId = ui.instrumentTrackId;
+    const trackId = store.getDoc().activeTrackId;
     livePatch = null;
     store.commit('edit instrument', ['tracks'], (doc) => {
       const t = getTrack(doc, trackId);
@@ -161,7 +162,7 @@ export function mount(body, { store, uiStore, engine }) {
     });
 
     body.querySelector('#in-save').addEventListener('click', async () => {
-      const trackId = ui.instrumentTrackId;
+      const trackId = store.getDoc().activeTrackId;
       const name = await promptDialog('Preset name', '');
       if (!name) return;
       store.commit('save instrument preset', ['tracks'], (doc2) => {
@@ -177,6 +178,5 @@ export function mount(body, { store, uiStore, engine }) {
 
   // Called by the tracks panel when an instrument picker is used.
   store.subscribe(['tracks', 'song', 'doc'], render);
-  uiStore.subscribe(['instrument'], render);
   render();
 }

@@ -1037,7 +1037,15 @@ await check('dragging the handle resizes the tracks panel and persists', `(() =>
 // ---- instrument tool (poly): picker opens section, custom config, preset ----
 await evaluate(`document.querySelector('#seg-mode [data-mode="poly"]').click()`);
 await sleep(200);
-await check('instrument section hidden before picker use', `document.getElementById('sec-instrument').hidden`);
+// The card is always there in poly - but collapsed, because a stock Square
+// is the baseline and there is nothing to show yet.
+await check('instrument card present but closed on a stock instrument', `(() => {
+  const sec = document.getElementById('sec-instrument');
+  const status = sec.querySelector('.tool-status');
+  return (!sec.hidden && !sec.classList.contains('open') && !status.classList.contains('on')
+    && /Square|Sine|Saw/.test(status.textContent))
+    || 'hidden=' + sec.hidden + ' open=' + sec.classList.contains('open') + ' status=' + status.textContent;
+})()`);
 await evaluate(`(() => {
   const sel = document.querySelector('#track-list .track-row select');
   sel.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
@@ -1056,6 +1064,16 @@ await check('editing makes the track instrument Custom', `(() => {
   const sel = document.querySelector('#track-list .track-row select');
   return t.instrument && t.instrument.wave === 'triangle' && sel.value === '__custom'
     || JSON.stringify(t.instrument) + ' sel=' + sel.value;
+})()`);
+// Fine-tuned into a Custom config, the tool is now genuinely "in play", so
+// auto mode opens the card on its own - proven by clearing every explicit
+// and forced state first, so only status().on can be responsible.
+await check('a fine-tuned instrument makes the card open itself', `(() => {
+  document.getElementById('tools-reset').click();
+  const sec = document.getElementById('sec-instrument');
+  const status = sec.querySelector('.tool-status');
+  return (sec.classList.contains('open') && status.classList.contains('on') && /Custom/.test(status.textContent))
+    || 'open=' + sec.classList.contains('open') + ' status=' + status.textContent;
 })()`);
 await check('custom instrument flows into playback events', `(async () => {
   const { flattenSong } = await import('/js/core/flatten.js');
