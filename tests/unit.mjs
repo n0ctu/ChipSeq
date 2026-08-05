@@ -989,6 +989,161 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(limiterConfig({ master: { limiter: { ceilingDb: -6 } } }).kneeDb === cfg.kneeDb, 'partial overrides keep defaults');
 }
 
+// ---- polyphony normalization ----
+{
+  const {
+    DEFAULT_NORMALIZE, normalizeConfig, trackExponent, polyphonyTimeline,
+    countAt, smooth, predictPeak,
+  } = await import('../js/core/normalize.js');
+  const { flattenSong } = await import('../js/core/flatten.js');
+  const { getInstrument } = await import('../js/core/instruments.js');
+  const { createTrack: mkTrack } = await import('../js/core/doc.js');
+
+  // ---- the timeline ----
+  {
+    const evs = [
+      { startTick: 0, durationTicks: 100, trackId: 'a' },
+      { startTick: 50, durationTicks: 100, trackId: 'a' },
+      { startTick: 50, durationTicks: 20, trackId: 'b' },
+    ];
+    const line = polyphonyTimeline(evs);
+    assert(countAt(line, 0) === 1, 'one voice at the start');
+    assert(countAt(line, 50) === 3, 'three where they overlap');
+    assert(countAt(line, 70) === 2, 'back to two when the short one ends');
+    assert(countAt(line, 100) === 1, 'and one when the first ends');
+    assert(countAt(line, 150) === 0, 'silence after the last');
+    assert(countAt(line, -5) === 0, 'before the first onset is silence');
+    assert(polyphonyTimeline([]).length === 0, 'no events, no timeline');
+    assert(countAt([], 10) === 0, 'an empty timeline counts nothing');
+    // zero-length events cannot sound, so they must not raise the count
+    assert(countAt(polyphonyTimeline([{ startTick: 0, durationTicks: 0, trackId: 'a' }]), 0) === 0,
+      'a zero-length event is not a voice');
+  }
+
+  // ---- smoothing is zero-phase ----
+  {
+    const step = [1, 1, 1, 1, 0, 0, 0, 0];
+    const out = smooth(step, 5, 20);
+    assert(out[3] < 1, 'the fall begins BEFORE the step - smoothing reads ahead');
+    assert(out[4] > 0, 'and continues after it');
+    assert(out[0] > out[7], 'the overall direction is preserved');
+    assert(smooth(step, 5, 0) === step, 'zero smoothing is a pass-through');
+  }
+
+  // ---- config ----
+  {
+    assert(normalizeConfig({}).enabled === true, 'normalization is on by default');
+    assert(normalizeConfig({ master: { normalize: { song: 0.8 } } }).song === 0.8, 'overrides merge');
+    assert(normalizeConfig({ master: { normalize: { song: 0.8 } } }).track === DEFAULT_NORMALIZE.track,
+      'and leave the rest at defaults');
+    const cfg = normalizeConfig({});
+    assert(trackExponent(cfg, {}) === cfg.track, 'a track follows the song setting');
+    assert(trackExponent(cfg, { normalize: false }) === 0, 'a track can opt out');
+    assert(trackExponent(cfg, { normalize: 0.9 }) === 0.9, 'or set its own exponent');
+    assert(trackExponent(cfg, { normalize: 5 }) === 1, 'which is clamped');
+  }
+
+  // ---- the headline behaviour ----
+  const build = (cfg, notes) => {
+    const d = createProject({ name: 'norm', mode: 'poly' });
+    d.master = { normalize: { ...DEFAULT_NORMALIZE, ...cfg } };
+    const tid = d.tracks[0].id;
+    for (const [pitch, start, dur] of notes) {
+      addNote(d, tid, createNote({ pitch, startTick: start, durationTicks: dur }));
+    }
+    return d;
+  };
+  const levelOf = (ev) => (ev.gainCurve ? ev.gainCurve[0] : ev.gainMul ?? 1);
+
+  {
+    // one note for a bar, then four for a bar: k=0.5 halves the four.
+    const doc = build({ track: 0, song: 0.5, smoothMs: 0 },
+      [[60, 0, 384], [60, 384, 384], [64, 384, 384], [67, 384, 384], [71, 384, 384]]);
+    const evs = flattenSong(doc).events;
+    const solo = evs.find((e) => e.startTick === 0);
+    const stack = evs.filter((e) => e.startTick === 384);
+    assert(Math.abs(levelOf(solo) - 1) < 1e-6, 'a lone voice is left at full level');
+    assert(stack.every((e) => Math.abs(levelOf(e) - 0.5) < 1e-3), 'four voices are scaled by 4^-0.5');
+    // the sparse part not being taxed is the whole reason this is not one
+    // global number
+    assert(levelOf(solo) > levelOf(stack[0]) * 1.9, 'the thin part keeps its level');
+  }
+
+  {
+    // k=1 makes a stack exactly as loud as one note; k=0 disables it.
+    const flat = flattenSong(build({ track: 0, song: 1, smoothMs: 0 },
+      [[60, 0, 384], [64, 0, 384], [67, 0, 384], [71, 0, 384]])).events;
+    assert(flat.every((e) => Math.abs(levelOf(e) - 0.25) < 1e-3), 'k=1 is constant sum');
+    const off = flattenSong(build({ track: 0, song: 0, smoothMs: 0 },
+      [[60, 0, 384], [64, 0, 384]])).events;
+    assert(off.every((e) => !('gainMul' in e) || e.gainMul === 1), 'k=0 leaves levels alone');
+    const disabled = flattenSong(build({ enabled: false, smoothMs: 0 },
+      [[60, 0, 384], [64, 0, 384]])).events;
+    assert(disabled.every((e) => !('gainMul' in e)), 'disabled touches nothing at all');
+  }
+
+  {
+    // The bug that hid for three rounds of debugging: a note spanning a dense
+    // moment has the SAME factor at both ends, and checking only the ends
+    // declared it constant - so it sailed through the chord at full level.
+    const doc = build({ track: 0, song: 0.5, smoothMs: 0 },
+      [[48, 0, 768], [60, 336, 96], [64, 336, 96], [67, 336, 96]]);
+    const evs = flattenSong(doc).events;
+    const held = evs.find((e) => e.durationTicks === 768);
+    assert(!!held.gainCurve, 'a note spanning a chord gets a curve, not a constant');
+    const min = Math.min(...held.gainCurve);
+    assert(min < 0.55, 'and genuinely ducks while the chord sounds: ' + min.toFixed(3));
+    assert(Math.max(...held.gainCurve) > 0.95, 'while keeping full level either side');
+  }
+
+  {
+    // Per-track and song stages answer different questions and multiply.
+    const d = createProject({ name: 'two', mode: 'poly' });
+    d.master = { normalize: { ...DEFAULT_NORMALIZE, track: 0.5, song: 0.5, smoothMs: 0 } };
+    const a = d.tracks[0];
+    const b = mkTrack({ name: 'B', role: 'melody', instrumentId: 'sine' });
+    d.tracks.push(b);
+    for (const p of [60, 64]) addNote(d, a.id, createNote({ pitch: p, startTick: 0, durationTicks: 384 }));
+    addNote(d, b.id, createNote({ pitch: 48, startTick: 0, durationTicks: 384 }));
+    const evs = flattenSong(d).events;
+    const onA = evs.find((e) => e.trackId === a.id);
+    const onB = evs.find((e) => e.trackId === b.id);
+    // A: 2 in its track, 3 in the song -> 2^-0.5 * 3^-0.5
+    // B: 1 in its track, 3 in the song ->        3^-0.5
+    assert(Math.abs(levelOf(onA) - Math.pow(2, -0.5) * Math.pow(3, -0.5)) < 1e-3, 'both stages apply');
+    assert(Math.abs(levelOf(onB) - Math.pow(3, -0.5)) < 1e-3, 'a lone voice gets only the song stage');
+    // and a track can opt out of its own stage while still following the song
+    b.normalize = false;
+    const evs2 = flattenSong(d).events;
+    const onB2 = evs2.find((e) => e.trackId === b.id);
+    assert(Math.abs(levelOf(onB2) - Math.pow(3, -0.5)) < 1e-3, 'opting out keeps the song stage');
+  }
+
+  {
+    // Mono must be untouched - this is what keeps .h/.fmf and the badge
+    // preview out of reach of any of it.
+    const d = createProject({ name: 'mono', mode: 'mono' });
+    d.master = { normalize: { ...DEFAULT_NORMALIZE, song: 1, track: 1 } };
+    const tid = d.tracks[0].id;
+    addNote(d, tid, createNote({ pitch: 60, startTick: 0, durationTicks: 96 }));
+    addNote(d, tid, createNote({ pitch: 64, startTick: 96, durationTicks: 96 }));
+    const evs = flattenSong(d).events;
+    assert(evs.every((e) => !('gainMul' in e) && !e.gainCurve), 'mono events carry no normalization');
+  }
+
+  // ---- predictPeak ----
+  {
+    const doc = build({ enabled: false }, [[60, 0, 384], [64, 0, 384], [67, 0, 384]]);
+    const p = predictPeak(doc, flattenSong(doc).events, (ev) => getInstrument(doc, ev.instrumentId), 1);
+    assert(p.voices === 3, 'the loudest moment counts its voices');
+    assert(p.tick === 0, 'and reports where it is');
+    const one = build({ enabled: false }, [[60, 0, 384]]);
+    const p1 = predictPeak(one, flattenSong(one).events, (ev) => getInstrument(one, ev.instrumentId), 1);
+    assert(Math.abs(p.peak - p1.peak * 3) < 1e-6, 'three voices sum to three times one');
+    eq(predictPeak(doc, [], () => null), { peak: 0, tick: 0, voices: 0 }, 'no events, no peak');
+  }
+}
+
 // ---- per-track mix: gain, pan, solo ----
 {
   const {

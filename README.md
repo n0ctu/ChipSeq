@@ -55,6 +55,41 @@ fast arps become smooth sweeps - and held notes get true intra-note gain
 ramps. Poly-only; mono and the `.h`/`.fmf` exports ignore automation
 entirely.
 
+## Levels (polyphony normalization)
+
+Voices sum linearly, so with the default instrument gain **three simultaneous
+notes already reach the limiter's knee** - a polyphonic sequencer that starts
+distorting on the fourth note is mis-calibrated. Measured on the shipped
+demos, Tetris and Bad Apple had been running about +5 dB into the limiter
+since they were made.
+
+The **Levels** card fixes it by scaling voices by `N^-k` in two stages, where
+N is how many voices are sounding:
+
+- **track** - how many voices does *this* track have right now? Balances a
+  chord against a single note within one instrument.
+- **song** - how many are sounding *anywhere* right now? Balances the whole
+  arrangement against a solo passage.
+
+`k` is the dial: `0` is off (voices sum, as before), `0.5` is equal power
+(four voices are twice one voice, not four times) and `1` is constant sum (a
+chord is exactly as loud as one note). A single global "turn it down" number
+was rejected deliberately - it makes a sparse melody quiet to accommodate one
+dense bar elsewhere. Because the factor follows what is actually sounding, a
+solo passage has N=1 and is multiplied by exactly 1.
+
+**Smoothing** is the other dial and it matters more than it looks: the factor
+changes in steps, and a step in gain is a click, but too much smoothing lets
+short dense hits through. Bad Apple's notes run 18-109 ms, and 30 ms of
+smoothing let a six-voice stack back over full scale where 10 ms held it
+under. The card shows the predicted peak with and without normalization so a
+setting can be judged by number as well as by ear.
+
+All of it is a pure function of the flattened score, so it is deterministic
+and preview still equals export. **Mono is never touched** - one voice has
+nothing to normalize - which is what keeps `.h`/`.fmf` and the badge-accurate
+preview out of reach of any of it.
+
 ## Mixing
 
 Every track gets its own node in the audio graph - `buildGraph` in

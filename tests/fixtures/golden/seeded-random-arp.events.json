@@ -6,7 +6,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-0"
+  "noteId": "golden-note-0",
+  "gainMul": 1
  },
  {
   "pitch": 60,
@@ -15,7 +16,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-0"
+  "noteId": "golden-note-0",
+  "gainMul": 1
  },
  {
   "pitch": 72,
@@ -24,7 +26,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-0"
+  "noteId": "golden-note-0",
+  "gainMul": 1
  },
  {
   "pitch": 64,
@@ -33,7 +36,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-0"
+  "noteId": "golden-note-0",
+  "gainMul": 1
  },
  {
   "pitch": 79,
@@ -42,7 +46,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-0"
+  "noteId": "golden-note-0",
+  "gainMul": 1
  },
  {
   "pitch": 67,
@@ -51,7 +56,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-0"
+  "noteId": "golden-note-0",
+  "gainMul": 1
  },
  {
   "pitch": 67,
@@ -60,7 +66,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-0"
+  "noteId": "golden-note-0",
+  "gainMul": 1
  },
  {
   "pitch": 64,
@@ -69,7 +76,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-0"
+  "noteId": "golden-note-0",
+  "gainMul": 1
  },
  {
   "pitch": 60,
@@ -78,7 +86,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-0"
+  "noteId": "golden-note-0",
+  "gainMul": 1
  },
  {
   "pitch": 67,
@@ -87,7 +96,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-0"
+  "noteId": "golden-note-0",
+  "gainMul": 1
  },
  {
   "pitch": 64,
@@ -96,7 +106,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-0"
+  "noteId": "golden-note-0",
+  "gainMul": 1
  },
  {
   "pitch": 76,
@@ -105,7 +116,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-0"
+  "noteId": "golden-note-0",
+  "gainMul": 1
  },
  {
   "pitch": 64,
@@ -114,7 +126,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-0"
+  "noteId": "golden-note-0",
+  "gainMul": 1
  },
  {
   "pitch": 64,
@@ -123,7 +136,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-0"
+  "noteId": "golden-note-0",
+  "gainMul": 1
  },
  {
   "pitch": 64,
@@ -132,7 +146,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-0"
+  "noteId": "golden-note-0",
+  "gainMul": 1
  },
  {
   "pitch": 64,
@@ -141,7 +156,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-0"
+  "noteId": "golden-note-0",
+  "gainMul": 1
  },
  {
   "pitch": 76,
@@ -150,7 +166,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-1"
+  "noteId": "golden-note-1",
+  "gainMul": 1
  },
  {
   "pitch": 80,
@@ -159,7 +176,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-1"
+  "noteId": "golden-note-1",
+  "gainMul": 1
  },
  {
   "pitch": 68,
@@ -168,7 +186,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-1"
+  "noteId": "golden-note-1",
+  "gainMul": 1
  },
  {
   "pitch": 83,
@@ -177,7 +196,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-1"
+  "noteId": "golden-note-1",
+  "gainMul": 1
  },
  {
   "pitch": 64,
@@ -186,7 +206,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-1"
+  "noteId": "golden-note-1",
+  "gainMul": 1
  },
  {
   "pitch": 80,
@@ -195,7 +216,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-1"
+  "noteId": "golden-note-1",
+  "gainMul": 1
  },
  {
   "pitch": 68,
@@ -204,7 +226,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-1"
+  "noteId": "golden-note-1",
+  "gainMul": 1
  },
  {
   "pitch": 83,
@@ -213,7 +236,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-1"
+  "noteId": "golden-note-1",
+  "gainMul": 1
  },
  {
   "pitch": 83,
@@ -222,7 +246,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-1"
+  "noteId": "golden-note-1",
+  "gainMul": 1
  },
  {
   "pitch": 80,
@@ -231,7 +256,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-1"
+  "noteId": "golden-note-1",
+  "gainMul": 1
  },
  {
   "pitch": 76,
@@ -240,7 +266,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-1"
+  "noteId": "golden-note-1",
+  "gainMul": 1
  },
  {
   "pitch": 80,
@@ -249,7 +276,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-1"
+  "noteId": "golden-note-1",
+  "gainMul": 1
  },
  {
   "pitch": 76,
@@ -258,7 +286,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-1"
+  "noteId": "golden-note-1",
+  "gainMul": 1
  },
  {
   "pitch": 80,
@@ -267,7 +296,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-1"
+  "noteId": "golden-note-1",
+  "gainMul": 1
  },
  {
   "pitch": 80,
@@ -276,7 +306,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-1"
+  "noteId": "golden-note-1",
+  "gainMul": 1
  },
  {
   "pitch": 80,
@@ -285,7 +316,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-1"
+  "noteId": "golden-note-1",
+  "gainMul": 1
  },
  {
   "pitch": 72,
@@ -294,7 +326,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-2"
+  "noteId": "golden-note-2",
+  "gainMul": 1
  },
  {
   "pitch": 87,
@@ -303,7 +336,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-2"
+  "noteId": "golden-note-2",
+  "gainMul": 1
  },
  {
   "pitch": 68,
@@ -312,7 +346,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-2"
+  "noteId": "golden-note-2",
+  "gainMul": 1
  },
  {
   "pitch": 72,
@@ -321,7 +356,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-2"
+  "noteId": "golden-note-2",
+  "gainMul": 1
  },
  {
   "pitch": 84,
@@ -330,7 +366,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-2"
+  "noteId": "golden-note-2",
+  "gainMul": 1
  },
  {
   "pitch": 80,
@@ -339,7 +376,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-2"
+  "noteId": "golden-note-2",
+  "gainMul": 1
  },
  {
   "pitch": 68,
@@ -348,7 +386,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-2"
+  "noteId": "golden-note-2",
+  "gainMul": 1
  },
  {
   "pitch": 72,
@@ -357,7 +396,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-2"
+  "noteId": "golden-note-2",
+  "gainMul": 1
  },
  {
   "pitch": 72,
@@ -366,7 +406,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-2"
+  "noteId": "golden-note-2",
+  "gainMul": 1
  },
  {
   "pitch": 87,
@@ -375,7 +416,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-2"
+  "noteId": "golden-note-2",
+  "gainMul": 1
  },
  {
   "pitch": 87,
@@ -384,7 +426,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-2"
+  "noteId": "golden-note-2",
+  "gainMul": 1
  },
  {
   "pitch": 75,
@@ -393,7 +436,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-2"
+  "noteId": "golden-note-2",
+  "gainMul": 1
  },
  {
   "pitch": 87,
@@ -402,7 +446,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-2"
+  "noteId": "golden-note-2",
+  "gainMul": 1
  },
  {
   "pitch": 80,
@@ -411,7 +456,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-2"
+  "noteId": "golden-note-2",
+  "gainMul": 1
  },
  {
   "pitch": 68,
@@ -420,7 +466,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-2"
+  "noteId": "golden-note-2",
+  "gainMul": 1
  },
  {
   "pitch": 68,
@@ -429,7 +476,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-2"
+  "noteId": "golden-note-2",
+  "gainMul": 1
  },
  {
   "pitch": 79,
@@ -438,7 +486,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-3"
+  "noteId": "golden-note-3",
+  "gainMul": 1
  },
  {
   "pitch": 88,
@@ -447,7 +496,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-3"
+  "noteId": "golden-note-3",
+  "gainMul": 1
  },
  {
   "pitch": 88,
@@ -456,7 +506,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-3"
+  "noteId": "golden-note-3",
+  "gainMul": 1
  },
  {
   "pitch": 76,
@@ -465,7 +516,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-3"
+  "noteId": "golden-note-3",
+  "gainMul": 1
  },
  {
   "pitch": 84,
@@ -474,7 +526,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-3"
+  "noteId": "golden-note-3",
+  "gainMul": 1
  },
  {
   "pitch": 91,
@@ -483,7 +536,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-3"
+  "noteId": "golden-note-3",
+  "gainMul": 1
  },
  {
   "pitch": 79,
@@ -492,7 +546,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-3"
+  "noteId": "golden-note-3",
+  "gainMul": 1
  },
  {
   "pitch": 84,
@@ -501,7 +556,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-3"
+  "noteId": "golden-note-3",
+  "gainMul": 1
  },
  {
   "pitch": 91,
@@ -510,7 +566,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-3"
+  "noteId": "golden-note-3",
+  "gainMul": 1
  },
  {
   "pitch": 91,
@@ -519,7 +576,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-3"
+  "noteId": "golden-note-3",
+  "gainMul": 1
  },
  {
   "pitch": 76,
@@ -528,7 +586,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-3"
+  "noteId": "golden-note-3",
+  "gainMul": 1
  },
  {
   "pitch": 88,
@@ -537,7 +596,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-3"
+  "noteId": "golden-note-3",
+  "gainMul": 1
  },
  {
   "pitch": 88,
@@ -546,7 +606,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-3"
+  "noteId": "golden-note-3",
+  "gainMul": 1
  },
  {
   "pitch": 72,
@@ -555,7 +616,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-3"
+  "noteId": "golden-note-3",
+  "gainMul": 1
  },
  {
   "pitch": 79,
@@ -564,7 +626,8 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-3"
+  "noteId": "golden-note-3",
+  "gainMul": 1
  },
  {
   "pitch": 72,
@@ -573,6 +636,7 @@
   "velocity": 100,
   "trackId": "golden-track",
   "instrumentId": "badge",
-  "noteId": "golden-note-3"
+  "noteId": "golden-note-3",
+  "gainMul": 1
  }
 ]

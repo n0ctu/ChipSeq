@@ -1,6 +1,6 @@
 # chipseq-golden digest v1
 # artifact exceeds 32768 bytes - compared by hash, head/tail for context
-bytes:  310640
-sha256: 96a147c0e378dcab0782972323a9643d2925caea8e0ff1603059f1f036900f5e
-head:   {\n \"warnings\": [],\n \"events\": [\n  {\n   \"pitch\": 40,\n   \"startTick\": 0,\n   \"durationTicks\": 48,\n   \"velocity\": 100,\n   \"trackId\": \"a7290cea-79c9-4f9f-b185-c330625a88a4\",\n   \"instrumentId\": \"track:a7290cea-79c9-4f9f-b185-c330625a88a4\",\n   \"noteId\": \"c2f5f935-d1bb-4d06-8fc2-f9abfaa63190\"\n  },\n  {\n   \"p
-tail:   6d-431c-8774-5d5428bb89c5\"\n  },\n  {\n   \"pitch\": 88,\n   \"startTick\": 21120,\n   \"durationTicks\": 384,\n   \"velocity\": 100,\n   \"trackId\": \"d4303650-9978-40cb-973c-38e389f01a5a\",\n   \"instrumentId\": \"track:d4303650-9978-40cb-973c-38e389f01a5a\",\n   \"noteId\": \"a90f7071-02e6-445d-9026-c070a6f7060d\"\n  }\n ]\n}\n
+bytes:  840644
+sha256: 3aa0e8a1dafb27b6bbb024077d90da4a2ef70142de5f9f261e46ffefdec6ca70
+head:   {\n \"warnings\": [],\n \"events\": [\n  {\n   \"pitch\": 40,\n   \"startTick\": 0,\n   \"durationTicks\": 48,\n   \"velocity\": 100,\n   \"trackId\": \"a7290cea-79c9-4f9f-b185-c330625a88a4\",\n   \"instrumentId\": \"track:a7290cea-79c9-4f9f-b185-c330625a88a4\",\n   \"noteId\": \"c2f5f935-d1bb-4d06-8fc2-f9abfaa63190\",\n   \"gainCurve
+tail:   14\n  },\n  {\n   \"pitch\": 88,\n   \"startTick\": 21120,\n   \"durationTicks\": 384,\n   \"velocity\": 100,\n   \"trackId\": \"d4303650-9978-40cb-973c-38e389f01a5a\",\n   \"instrumentId\": \"track:d4303650-9978-40cb-973c-38e389f01a5a\",\n   \"noteId\": \"a90f7071-02e6-445d-9026-c070a6f7060d\",\n   \"gainMul\": 0.158114\n  }\n ]\n}\n
