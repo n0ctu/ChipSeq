@@ -1411,6 +1411,79 @@ await check('home lists all projects incl. the previous one', `(() => {
     && document.querySelectorAll('#recent-list .recent-item').length === 3 || text;
 })()`);
 
+// ---- referential integrity through the real UI ----
+await check('deleting the marked track re-points the markers', `(async () => {
+  const { createTrack, getTrack } = await import('/js/core/doc.js');
+  const store = window.__chipseq.store;
+  let repaired = null;
+  const off = store.on('doc-repaired', (w) => (repaired = w));
+  // add a track, point every marker at it, then delete it
+  let victimId = null;
+  store.commit('add victim', ['tracks'], (d) => {
+    const t = createTrack({ name: 'Victim', role: 'melody', instrumentId: 'sine' });
+    d.tracks.push(t);
+    victimId = t.id;
+    d.activeTrackId = t.id;
+    d.melodyTrackId = t.id;
+    d.chordTrackId = t.id;
+  });
+  store.commit('delete victim', ['tracks'], (d) => {
+    d.tracks = d.tracks.filter((t) => t.id !== victimId);
+  });
+  const d = store.getDoc();
+  off();
+  const errs = [];
+  if (!getTrack(d, d.activeTrackId)) errs.push('active dangling');
+  if (!getTrack(d, d.melodyTrackId)) errs.push('melody dangling');
+  if (d.chordTrackId !== null) errs.push('chord not cleared: ' + d.chordTrackId);
+  if (!repaired || !repaired.length) errs.push('no repair reported');
+  store.undo();
+  store.undo();
+  return errs.length === 0 || errs.join('; ');
+})()`);
+
+// ---- storage that never throws ----
+// Runs LAST: once persist degrades it stays degraded for the page's lifetime,
+// which is exactly the behaviour under test but would upset anything after it.
+await check('a full quota degrades gracefully instead of throwing', `(async () => {
+  const original = Storage.prototype.setItem;
+  Storage.prototype.setItem = function () {
+    throw Object.assign(new Error('full'), { name: 'QuotaExceededError' });
+  };
+  try {
+    const { isDegraded, saveProject } = await import('/js/core/persist.js');
+    const doc = window.__chipseq.store.getDoc();
+    let threw = false;
+    let durable = true;
+    try { durable = saveProject(doc); } catch { threw = true; }
+    // The app has to keep FUNCTIONING while storage is dead - edits still
+    // apply, undo still works, the in-memory project is intact. (Which screen
+    // happens to be showing at this point in the suite is irrelevant.)
+    const before = window.__chipseq.store.getDoc().name;
+    window.__chipseq.store.commit('edit while full', ['song'], (d) => { d.name = 'edited while full'; });
+    const applied = window.__chipseq.store.getDoc().name === 'edited while full';
+    window.__chipseq.store.undo();
+    const undone = window.__chipseq.store.getDoc().name === before;
+    const errs = [];
+    if (threw) errs.push('saveProject threw');
+    if (durable !== false) errs.push('claimed a durable save');
+    if (!isDegraded()) errs.push('not marked degraded');
+    if (!applied) errs.push('edit did not apply');
+    if (!undone) errs.push('undo broke');
+    return errs.length === 0 || errs.join('; ');
+  } finally {
+    Storage.prototype.setItem = original;
+  }
+})()`);
+
+await check('the status bar says it is not saving', `(async () => {
+  // the autosave debounce has to run for the message to appear
+  await new Promise((r) => setTimeout(r, 700));
+  const el = document.getElementById('st-save');
+  return (el.classList.contains('warn') && /not saving/.test(el.textContent))
+    || 'class=' + el.className + ' text=' + JSON.stringify(el.textContent);
+})()`);
+
 // ---- console errors ----
 if (consoleErrors.length) {
   fail++;

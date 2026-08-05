@@ -1,13 +1,15 @@
 // Draggable resize handles for the side panels; widths persist across
 // sessions in localStorage.
 
+import { readRaw, writeRaw } from '../core/persist.js';
+
 const KEY = 'chipseq.v1.panelw';
 const MIN_W = 130;
 const MAX_W = 480;
 
 function loadWidths() {
   try {
-    const w = JSON.parse(localStorage.getItem(KEY)) || {};
+    const w = JSON.parse(readRaw(KEY)) || {};
     // legacy key from before the panel was renamed to "harmonics"
     if (w.arp && !w.harmonics) w.harmonics = w.arp;
     return w;
@@ -50,7 +52,7 @@ export function initPanelResizers() {
         const saved = loadWidths();
         saved[cfg.key] = w;
         try {
-          localStorage.setItem(KEY, JSON.stringify(saved));
+          writeRaw(KEY, JSON.stringify(saved));
         } catch {}
       };
       window.addEventListener('mousemove', move);
@@ -63,7 +65,7 @@ export function initPanelResizers() {
       const saved = loadWidths();
       delete saved[cfg.key];
       try {
-        localStorage.setItem(KEY, JSON.stringify(saved));
+        writeRaw(KEY, JSON.stringify(saved));
       } catch {}
     });
   }

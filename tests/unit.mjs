@@ -989,6 +989,224 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(limiterConfig({ master: { limiter: { ceilingDb: -6 } } }).kneeDb === cfg.kneeDb, 'partial overrides keep defaults');
 }
 
+// ---- storage that never throws ----
+// persist.js touches localStorage/document/window, none of which exist here,
+// so this runs against minimal stubs. The point is the failure behaviour: an
+// editor must not die because a browser refuses to store things.
+{
+  const store = new Map();
+  let mode = 'ok'; // 'ok' | 'security' | 'quota'
+  globalThis.localStorage = {
+    getItem(k) {
+      if (mode === 'security') throw Object.assign(new Error('denied'), { name: 'SecurityError' });
+      return store.has(k) ? store.get(k) : null;
+    },
+    setItem(k, v) {
+      if (mode === 'security') throw Object.assign(new Error('denied'), { name: 'SecurityError' });
+      if (mode === 'quota') throw Object.assign(new Error('full'), { name: 'QuotaExceededError' });
+      store.set(k, v);
+    },
+    removeItem(k) {
+      if (mode !== 'ok') throw Object.assign(new Error('denied'), { name: 'SecurityError' });
+      store.delete(k);
+    },
+  };
+  globalThis.document = { addEventListener() {} };
+  globalThis.window = { addEventListener() {} };
+
+  const persist = await import('../js/core/persist.js');
+
+  // Healthy path first, so the degraded assertions below mean something.
+  const doc = createProject({ name: 'Saveable', mode: 'mono' });
+  assert(persist.saveProject(doc) === true, 'a healthy store reports a durable save');
+  assert(persist.isDegraded() === false, 'a healthy store is not degraded');
+  assert(persist.loadProject(doc.id).name === 'Saveable', 'the project reads back');
+  assert(persist.listProjects().length === 1, 'the index lists it');
+  assert(persist.lastOpenId() === doc.id, 'lastOpen points at it');
+
+  // A corrupt entry must read as absent rather than throw into the boot path.
+  store.set('chipseq.v1.index', '{not json');
+  eq(persist.listProjects(), [], 'a corrupt index reads as empty');
+  store.set('chipseq.v1.proj.' + doc.id, 'garbage');
+  assert(persist.loadProject(doc.id) === null, 'a corrupt project reads as missing');
+
+  // Now the quota fills up mid-session.
+  mode = 'quota';
+  let reason = null;
+  persist.onStorageDegraded((r) => (reason = r));
+  const doc2 = createProject({ name: 'Too big', mode: 'mono' });
+  let threw = false;
+  let durable = true;
+  try {
+    durable = persist.saveProject(doc2);
+  } catch {
+    threw = true;
+  }
+  assert(!threw, 'a full quota does not throw at the caller');
+  assert(durable === false, 'and the caller is told the save was not durable');
+  assert(persist.isDegraded() === true, 'the store is marked degraded');
+  assert(reason === 'storage is full', 'the reason is reported: ' + reason);
+
+  // Degraded does NOT mean broken: the open project must keep working, in
+  // memory, for the rest of the session.
+  assert(persist.loadProject(doc2.id).name === 'Too big', 'a degraded store still serves this session');
+  assert(persist.listProjects().some((p) => p.id === doc2.id), 'and still lists it');
+  assert(store.has('chipseq.v1.proj.' + doc2.id) === false, 'nothing was written durably');
+
+  // Crucially, it must never delete someone else's project to make room.
+  assert(store.has('chipseq.v1.proj.' + doc.id), 'an existing project is never evicted to free space');
+
+  // Reads keep working after a hard SecurityError too.
+  mode = 'security';
+  let readThrew = false;
+  try {
+    persist.listProjects();
+    persist.lastOpenId();
+    persist.loadPresets();
+    persist.savePresets([{ name: 'x' }]);
+  } catch {
+    readThrew = true;
+  }
+  assert(!readThrew, 'a locked-down store never throws on read or write');
+  eq(persist.loadPresets(), [{ name: 'x' }], 'presets round-trip through the in-memory fallback');
+
+  delete globalThis.localStorage;
+  delete globalThis.document;
+  delete globalThis.window;
+}
+
+// ---- referential invariants ----
+{
+  const { enforceInvariants, normalizeDoc, createTrack, getTrack } = await import('../js/core/doc.js');
+  const { createStore } = await import('../js/core/store.js');
+
+  const twoTrack = () => {
+    const d = createProject({ name: 'inv', mode: 'poly' });
+    const extra = createTrack({ name: 'Second', role: 'melody', instrumentId: 'sine' });
+    d.tracks.push(extra);
+    return { d, extra };
+  };
+
+  // A clean document must be left completely alone - a pass that "repairs"
+  // healthy projects would rewrite everyone's files on load.
+  {
+    const { d } = twoTrack();
+    const before = JSON.stringify(d);
+    eq(enforceInvariants(d), [], 'a well-formed project needs no repairs');
+    assert(JSON.stringify(d) === before, 'a well-formed project is not modified');
+  }
+
+  // Deleting a track: the markers follow, without the call site doing it.
+  {
+    const { d, extra } = twoTrack();
+    d.activeTrackId = extra.id;
+    d.melodyTrackId = extra.id;
+    d.chordTrackId = extra.id;
+    d.tracks = d.tracks.filter((t) => t.id !== extra.id);
+    const warnings = enforceInvariants(d);
+    assert(d.activeTrackId === d.tracks[0].id, 'a dangling active track is re-pointed');
+    assert(d.melodyTrackId === d.tracks[0].id, 'a dangling melody marker is re-pointed');
+    assert(d.chordTrackId === null, 'a dangling chords marker becomes null, not a guess');
+    assert(warnings.length === 3, 'each repair is reported: ' + JSON.stringify(warnings));
+  }
+
+  // The melody marker should prefer something audible.
+  {
+    const { d, extra } = twoTrack();
+    d.tracks[0].role = 'muted';
+    d.melodyTrackId = 'gone';
+    enforceInvariants(d);
+    assert(d.melodyTrackId === extra.id, 'a re-pointed melody marker skips muted tracks');
+  }
+
+  // Muting the melody track is a legitimate thing to do; the marker must NOT
+  // wander off on its own (moving markers behind the user's back is exactly
+  // the behaviour that was reported as a bug once already).
+  {
+    const { d } = twoTrack();
+    d.melodyTrackId = d.tracks[0].id;
+    d.tracks[0].role = 'muted';
+    eq(enforceInvariants(d), [], 'muting the melody track is not treated as damage');
+    assert(d.melodyTrackId === d.tracks[0].id, 'the melody marker stays where the user put it');
+  }
+
+  // Instrument references may never dangle.
+  {
+    const { d } = twoTrack();
+    d.tracks[0].instrumentId = 'deleted-preset';
+    const warnings = enforceInvariants(d);
+    assert(d.tracks[0].instrumentId === 'badge', 'an orphaned instrument falls back to Square');
+    assert(warnings.length === 1 && /no longer exists/.test(warnings[0]), 'the fallback is reported');
+  }
+  {
+    const { d } = twoTrack();
+    d.tracks[0].instrumentId = 'track:' + d.tracks[0].id;
+    d.tracks[0].instrument = null; // the virtual id resolves to nothing
+    enforceInvariants(d);
+    assert(d.tracks[0].instrumentId === 'badge', 'a custom id with no config falls back');
+  }
+  {
+    const { d, extra } = twoTrack();
+    d.tracks[0].instrumentId = 'track:' + extra.id; // another track's config
+    d.tracks[0].instrument = null;
+    enforceInvariants(d);
+    assert(d.tracks[0].instrumentId === 'badge', 'a custom id borrowed from another track falls back');
+  }
+
+  // Structural minimums.
+  {
+    const d = createProject({ name: 'empty', mode: 'mono' });
+    d.tracks = [];
+    enforceInvariants(d);
+    assert(d.tracks.length === 1, 'a track-less project gets one back');
+    assert(getTrack(d, d.activeTrackId) && getTrack(d, d.melodyTrackId), 'and the markers point at it');
+  }
+  {
+    const d = createProject({ name: 'noinst', mode: 'mono' });
+    d.instruments = [];
+    enforceInvariants(d);
+    assert(d.instruments.length >= 3, 'an empty instrument list is restored');
+    assert(d.instruments.some((i) => i.id === 'badge'), 'the badge square is always present');
+  }
+  {
+    const d = createProject({ name: 'nobadge', mode: 'mono' });
+    d.instruments = d.instruments.filter((i) => i.id !== 'badge');
+    enforceInvariants(d);
+    assert(d.instruments[0].id === 'badge', 'a missing badge square is restored - mono forces it');
+  }
+
+  // The store runs the pass on every path, so a snapshot restored by undo is
+  // repaired too - history can never reintroduce a dangling reference.
+  {
+    const { d, extra } = twoTrack();
+    d.activeTrackId = extra.id;
+    d.melodyTrackId = extra.id; // the markers point at the track about to go
+    const store = createStore(d);
+    let reported = null;
+    store.on('doc-repaired', (w) => (reported = w));
+    store.commit('delete track', ['tracks'], (doc2) => {
+      doc2.tracks = doc2.tracks.filter((t) => t.id !== extra.id);
+    });
+    assert(reported && reported.length >= 1, 'the store reports repairs it had to make');
+    store.undo();
+    assert(getTrack(store.getDoc(), store.getDoc().melodyTrackId), 'undo restores a well-formed document');
+    store.redo();
+    assert(getTrack(store.getDoc(), store.getDoc().melodyTrackId), 'redo does too');
+  }
+  {
+    // setDoc is the project-open path: a corrupt file must be repaired there
+    const store = createStore(createProject({ name: 'x', mode: 'mono' }));
+    const broken = createProject({ name: 'broken', mode: 'mono' });
+    broken.activeTrackId = 'nope';
+    broken.melodyTrackId = 'nope';
+    let reported = null;
+    store.on('doc-repaired', (w) => (reported = w));
+    store.setDoc(broken);
+    assert(reported && reported.length === 2, 'opening a corrupt project reports the repairs');
+    assert(getTrack(store.getDoc(), store.getDoc().activeTrackId), 'and the document is usable');
+  }
+}
+
 // ---- tempo / meter maps ----
 {
   const {

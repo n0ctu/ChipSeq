@@ -103,6 +103,33 @@ A multi-entry map is declared in `doc.uses` precisely because a reader that
 falls back to the mirror plays one tempo throughout - which sounds fine and is
 wrong, the worst kind of failure.
 
+## Integrity and resilience
+
+**Every id in the document names something that exists.** `enforceInvariants`
+runs inside the store on every commit, project open, undo and redo, so
+"well-formed" is a property of every snapshot rather than something each call
+site has to remember - deleting a track just deletes the track, and the
+active/melody/chord markers are re-pointed for it. Orphaned instrument
+references fall back to Square, a track-less or instrument-less project is
+given the minimum back, and `chordTrackId` stays a soft reference that may be
+null. Only *actual* repairs are reported (via `doc-repaired`, shown in the
+status bar), so a healthy project is never touched and the pass can run
+constantly without becoming noise.
+
+Deliberately not enforced: a **muted melody track**. It is a legitimate thing
+to do, and moving the M marker in response would repeat an annoyance that was
+already reported once - markers do not wander on their own.
+
+**Storage can fail at any moment, and the editor does not care.** Private
+modes and restricted iframes throw `SecurityError` on the first access; a full
+quota throws `QuotaExceededError` on a write that used to work. Every
+localStorage access goes through wrappers in `js/core/persist.js` that never
+throw: on failure the app degrades to an in-memory store, keeps the open
+project fully editable for the rest of the session, and the status bar says
+`not saving - storage is full` (a persistent message, not a flash - every later
+edit is also not being saved). It never deletes another project to make room,
+and a corrupt entry reads as absent rather than throwing into the boot path.
+
 ## Output level
 
 Playback and the `.wav` exporter share one output stage (`js/core/graph.js`),

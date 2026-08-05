@@ -3,6 +3,7 @@
 import { ticksPerBeat, ticksPerBar } from '../core/doc.js';
 import { noteName } from '../core/music.js';
 import { APP_VERSION } from '../core/version.js';
+import { onStorageDegraded } from '../core/persist.js';
 
 export function initStatusBar({ store, uiStore, conflicts, roll, engine }) {
   const $ = (id) => document.getElementById(id);
@@ -78,11 +79,29 @@ export function initStatusBar({ store, uiStore, conflicts, roll, engine }) {
 
   const save = document.getElementById('st-save');
   store.on('saved', () => {
+    if (save.classList.contains('warn')) return; // never overwrite "not saving"
     save.textContent = 'saved';
     setTimeout(() => (save.textContent = ''), 1500);
   });
+  // A repaired reference changed the project, so say so - the alternative is
+  // a file that quietly differs from what the user left behind.
+  store.on('doc-repaired', (warnings) => {
+    if (save.classList.contains('warn')) return; // "not saving" outranks this
+    save.textContent = '⚠ ' + warnings[0] + (warnings.length > 1 ? ` (+${warnings.length - 1} more)` : '');
+    setTimeout(() => (save.textContent = ''), 6000);
+  });
+  // Storage that stopped working is a persistent condition, not an event:
+  // once it is reported the message stays put, because every later edit is
+  // also not being saved and the user needs that on screen, not for 3 seconds.
+  const reportNotSaving = (reason) => {
+    save.textContent = `⚠ not saving - ${reason}`;
+    save.classList.add('warn');
+  };
+  onStorageDegraded(reportNotSaving);
   store.on('storage-error', (err) => {
-    save.textContent = '⚠ save failed: ' + (err && err.name === 'QuotaExceededError' ? 'storage full - delete old projects' : 'storage error');
+    reportNotSaving(
+      err && err.name === 'QuotaExceededError' ? 'storage is full - delete old projects' : (err && err.message) || 'storage error'
+    );
   });
 
   render();
