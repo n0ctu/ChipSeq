@@ -993,7 +993,7 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
 {
   const {
     migrate, bpmAt, timeSigAt, tickToSeconds, secondsToTick, setTempo, setTimeSig,
-    ticksPerBeat, ticksPerBar, syncLegacyFields, normalizeDoc,
+    ticksPerBeat, ticksPerBar, syncLegacyFields, normalizeDoc, unsupportedFeatures,
   } = await import('../js/core/doc.js');
 
   const d = createProject({ name: 'tempo', mode: 'poly' });
@@ -1104,7 +1104,26 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   normalizeDoc(fromFuture);
   assert(!fromFuture.uses.includes('harmonics'), 'a known-but-absent feature is recomputed away');
 
-  const { unsupportedFeatures } = await import('../js/core/doc.js');
+  // A file from a FUTURE build must open, not be refused. Throwing here made
+  // rules 2 and 3 unreachable: the document never got far enough for its
+  // unknown blocks to be preserved or for doc.uses to explain itself.
+  const future = createProject({ name: 'from the future', mode: 'poly' });
+  future.version = 99;
+  future.someV99Block = { kind: 'timewarp', v: 1 };
+  const opened = migrate(JSON.parse(JSON.stringify(future)));
+  assert(opened.version === 99, 'a newer file keeps its own version - we did not upgrade it');
+  assert(!!opened.someV99Block, 'a newer file keeps its unknown blocks');
+  assert(unsupportedFeatures(opened).includes('schema@99'), 'the schema level itself is reported');
+  assert(bpmAt(opened, 0) === 120, 'a newer file is still playable');
+
+  // The mirrors earn their keep in this direction too: a future version that
+  // restructured song.tempo must still yield a usable tempo instead of
+  // crashing on an undefined map.
+  const restructured = { song: { bpm: 175, timeSig: { num: 7, den: 8 } }, ppq: PPQ };
+  assert(bpmAt(restructured, 0) === 175, 'a missing tempo map falls back to the legacy scalar');
+  assert(timeSigAt(restructured, 0).den === 8, 'a missing meter map falls back too');
+  assert(Math.abs(tickToSeconds(restructured, 96) - 60 / 175) < 1e-12, 'the fallback drives tick->time');
+
   eq(unsupportedFeatures({ uses: [] }), [], 'nothing declared, nothing unsupported');
   eq(unsupportedFeatures({ uses: ['harmonics', 'automation'] }), [], 'known features are supported');
   eq(unsupportedFeatures({ uses: ['effects@1'] }), ['effects@1'], 'an unknown feature is reported');
