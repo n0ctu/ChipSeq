@@ -999,7 +999,7 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
 
   const ctxFor = (doc, ui = {}) => ({
     store: { getDoc: () => doc },
-    uiStore: { state: { selection: new Set(), selectionTrackId: null, instrumentTrackId: null, ...ui } },
+    uiStore: { state: { selection: new Set(), selectionTrackId: null, ...ui } },
   });
 
   assert(TOOLS.length >= 3, 'the manifest lists the tools');
@@ -1049,19 +1049,40 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     assert(st.label === '1/1 arp', 'and counts them: ' + st.label);
   }
 
-  // Instrument: only in poly, only for the track the picker pointed at.
+  // Instrument: available in poly whenever there is an active track, which is
+  // always - the card is cheap while collapsed, and hiding it would mean the
+  // sound of the track you are editing is only reachable via a dropdown.
   {
-    assert(byId.instrument.when(ctxFor(doc)) === false, 'instrument needs a target track');
-    const ctx = ctxFor(doc, { instrumentTrackId: trackId });
-    assert(byId.instrument.when(ctx) === true, 'a picked track makes it applicable');
+    const ctx = ctxFor(doc);
+    assert(byId.instrument.when(ctx) === true, 'instrument applies to the active track');
+
+    // The three stock instruments are the baseline: nothing to show, so the
+    // card stays closed.
     assert(byId.instrument.status(ctx).on === false, 'a stock instrument is not "configured"');
+    assert(byId.instrument.status(ctx).label.includes('Square'), 'the label names the instrument');
+    doc.tracks[0].instrumentId = 'sine';
+    assert(byId.instrument.status(ctx).on === false, 'nor is another stock instrument');
+    doc.tracks[0].instrumentId = 'saw';
+    assert(byId.instrument.status(ctx).on === false, 'nor the third');
+
+    // A saved preset means someone built that sound deliberately.
+    doc.instruments.push({ id: 'my-preset', name: 'Bell', wave: 'sine', adsr: {}, gain: 0.5 });
+    doc.tracks[0].instrumentId = 'my-preset';
+    const preset = byId.instrument.status(ctx);
+    assert(preset.on === true, 'a saved preset lights the indicator');
+    assert(preset.label.includes('Bell'), 'and names it: ' + preset.label);
+
+    // So does a fine-tuned Custom config.
+    doc.tracks[0].instrumentId = 'badge';
     doc.tracks[0].instrument = { id: 'track:' + trackId, name: 'Custom', wave: 'square', adsr: {}, gain: 1 };
-    assert(byId.instrument.status(ctx).on === true, 'a Custom instrument lights the indicator');
+    const custom = byId.instrument.status(ctx);
+    assert(custom.on === true, 'a Custom instrument lights the indicator');
+    assert(custom.label.includes('Custom'), 'and says so: ' + custom.label);
     doc.tracks[0].instrument = null;
+    doc.instruments.pop();
 
     const mono = createProject({ name: 'mono', mode: 'mono' });
-    assert(byId.instrument.when(ctxFor(mono, { instrumentTrackId: mono.tracks[0].id })) === false,
-      'the instrument tool is poly-only');
+    assert(byId.instrument.when(ctxFor(mono)) === false, 'the instrument tool is poly-only');
   }
 
   // Transpose keeps nothing, so it must never claim to be in play - that is

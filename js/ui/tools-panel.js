@@ -41,8 +41,16 @@ export function initToolsPanel(ctx) {
   let folds = loadFolds();
   const saveFolds = () => writeRaw(KEY, JSON.stringify(folds));
 
-  // Auto (absent) follows the tool's own status; an explicit choice wins.
+  // Cards another part of the UI asked to open (the instrument picker). This
+  // is a SESSION override, not a preference: pinning a card open forever
+  // because someone once used a dropdown would quietly disable the
+  // open-when-configured behaviour it is meant to complement.
+  const forced = new Set();
+
+  // Auto (absent) follows the tool's own status; an explicit choice wins;
+  // a reveal() outranks both until the user says otherwise.
   function shouldBeOpen(tool, status) {
+    if (forced.has(tool.id)) return true;
     const explicit = folds[tool.id];
     return explicit === undefined ? !!status.on : !!explicit;
   }
@@ -82,7 +90,8 @@ export function initToolsPanel(ctx) {
     cards.set(tool.id, card);
 
     head.addEventListener('click', () => {
-      // An explicit toggle leaves auto mode for good.
+      // An explicit toggle leaves auto mode for good, and clears any reveal.
+      forced.delete(tool.id);
       folds[tool.id] = !section.classList.contains('open');
       saveFolds();
       render();
@@ -91,6 +100,7 @@ export function initToolsPanel(ctx) {
 
   resetBtn.addEventListener('click', () => {
     folds = {};
+    forced.clear();
     saveFolds();
     render();
   });
@@ -146,8 +156,7 @@ export function initToolsPanel(ctx) {
     reveal(id) {
       const card = cards.get(id);
       if (!card) return;
-      folds[id] = true;
-      saveFolds();
+      forced.add(id);
       render();
       card.section.scrollIntoView({ block: 'nearest' });
     },
