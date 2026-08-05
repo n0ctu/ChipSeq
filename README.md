@@ -55,6 +55,46 @@ fast arps become smooth sweeps - and held notes get true intra-note gain
 ramps. Poly-only; mono and the `.h`/`.fmf` exports ignore automation
 entirely.
 
+## Envelopes and modulation
+
+There used to be two systems for "a value that moves over time" - ADSR
+(note-relative, gain only, rendered as Web Audio ramps) and automation lanes
+(song-absolute, sampled per event) - and because ramps and
+`setValueCurveAtTime` cannot share an `AudioParam`, gain automation needed a
+**second gain node**. That node was the tell: two things were being combined
+in the node *graph* when they should be combined in the *value* domain.
+
+`js/core/modulation.js` does the multiplying, so a voice now uses **one gain
+node**. Two paths, chosen by whether anything actually varies:
+
+- **ramps** - only the envelope moves and it is ADSR-shaped. Scheduled as
+  exact Web Audio ramps, so the badge's 2 ms attack lands on the sample it
+  should. This is the common case, and it is bit-for-bit what it always was.
+- **curve** - a gain lane varies across the note, or the envelope was drawn
+  freehand. Instrument gain x velocity x envelope x lane are sampled together
+  into one array covering the whole voice, release tail included. Sampling is
+  by *time* (0.5 ms), not by a fixed points-per-note budget, because the
+  latter smears a 2 ms attack away on any note longer than a second.
+
+The **envelope** is one shape with two editors. The four ADSR sliders drive it
+while it stays ADSR-shaped; drag a point on the canvas into something they
+cannot express and the shape is stored explicitly as
+`instrument.env = {kind:'env', v:1, points, sustainIndex, timeBase:'sec'}` -
+following the extension-block rule, so no migration - and the sliders grey out
+rather than rounding your curve back into four numbers. "Reset to ADSR" drops
+the block and the sliders come back exactly as they were. Points up to the
+sustain index are measured from note onset; the rest are measured from note
+off. A note shorter than its own attack releases from wherever it actually
+got to, not from a sustain level it never reached.
+
+The four ADSR **automation lanes are unchanged** - they still override
+a/d/s/r per event, now by feeding the envelope generator instead of a parallel
+code path.
+
+`note.detune` (cents) and `note.lfo` are live targets, which is what makes
+vibrato and portamento data rather than deferred features; only the editing UI
+is missing.
+
 ## Growing the file format
 
 Three rules keep `.tune.json` extensible without breaking files. The point of

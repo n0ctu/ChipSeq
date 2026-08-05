@@ -1,6 +1,6 @@
-// Instrument section of the tools sidebar (poly mode). Appears once a
-// track's instrument picker was used; edits produce a per-track "Custom"
-// config which can be saved as a project-wide preset.
+// Instrument card in the tools sidebar (poly mode). Always present, editing
+// the active track; edits produce a per-track "Custom" config which can be
+// saved as a project-wide preset.
 //
 // The Audition button is a TOGGLE: while on, a reference note repeats and
 // always plays the current values - slider drags are audible live via a
@@ -9,6 +9,8 @@
 import { getTrack, activeTrack, uid } from '../../core/doc.js';
 import { promptDialog } from '../dialogs.js';
 import { formatPercent, formatSeconds, isHot } from '../../core/units.js';
+import { envToAdsr, isAdsrShaped, effectiveEnvelope } from '../../core/modulation.js';
+import { initEnvelopeEditor } from './envelope-editor.js';
 
 const WAVES = [
   ['square', 'Square'],
@@ -61,6 +63,15 @@ export function mount(body, { store, uiStore, engine }) {
     });
   }
 
+  // Store the cheapest representation that is faithful: four numbers while
+  // the shape is ADSR, an explicit envelope block once it is not. Keeps
+  // ordinary projects free of a field they do not need, and means "reset to
+  // ADSR" is just clearing it.
+  function envPatch(env) {
+    const adsr = envToAdsr(env);
+    return adsr ? { adsr, env: null } : { env };
+  }
+
   function auditionOnce() {
     if (engine.isAuditioning()) return; // the loop already plays the latest values
     const track = target();
@@ -88,6 +99,13 @@ export function mount(body, { store, uiStore, engine }) {
     const inst = effective(doc, track);
     const isCustom = !!track.instrument;
     const duty = inst.duty ?? 0.25;
+    // One shape, two ways to edit it. While it is still ADSR-shaped the
+    // sliders drive it; once it is drawn into something they cannot express,
+    // they grey out rather than silently rounding the curve back to four
+    // numbers.
+    const env = effectiveEnvelope(inst);
+    const adsrView = envToAdsr(env) || { a: 0, d: 0, s: 1, r: 0 };
+    const drawn = !isAdsrShaped(env);
 
     body.innerHTML = `
       <div class="harm-field">Wave
@@ -99,17 +117,22 @@ export function mount(body, { store, uiStore, engine }) {
       <div class="harm-field">Duty cycle <span id="in-duty-label">${formatPercent(duty)}</span>
         <div class="harm-row"><input type="range" id="in-duty" min="5" max="50" step="1" value="${Math.round(duty * 100)}" /></div>
       </div>` : ''}
-      <div class="harm-field">Attack <span id="in-a-label">${fmtS(inst.adsr.a)}</span>
-        <div class="harm-row"><input type="range" id="in-a" min="0" max="300" step="1" value="${Math.round(inst.adsr.a * 1000)}" /></div>
+      <div class="harm-field">Envelope
+        <span class="tool-ctx" id="in-env-mode">${drawn ? 'drawn' : 'ADSR'}</span>
+        <canvas id="in-env" class="env-canvas" title="Drag a point to shape the envelope; double-click the curve to add one, right-click a point to remove it"></canvas>
+        ${drawn ? '<button class="btn" id="in-env-reset">Reset to ADSR</button>' : ''}
       </div>
-      <div class="harm-field">Decay <span id="in-d-label">${fmtS(inst.adsr.d)}</span>
-        <div class="harm-row"><input type="range" id="in-d" min="0" max="500" step="5" value="${Math.round(inst.adsr.d * 1000)}" /></div>
+      <div class="harm-field${drawn ? ' disabled' : ''}">Attack <span id="in-a-label">${fmtS(adsrView.a)}</span>
+        <div class="harm-row"><input type="range" id="in-a" min="0" max="300" step="1" value="${Math.round(adsrView.a * 1000)}" /></div>
       </div>
-      <div class="harm-field">Sustain <span id="in-s-label">${formatPercent(inst.adsr.s)}</span>
-        <div class="harm-row"><input type="range" id="in-s" min="0" max="100" step="1" value="${Math.round(inst.adsr.s * 100)}" /></div>
+      <div class="harm-field${drawn ? ' disabled' : ''}">Decay <span id="in-d-label">${fmtS(adsrView.d)}</span>
+        <div class="harm-row"><input type="range" id="in-d" min="0" max="500" step="5" value="${Math.round(adsrView.d * 1000)}" /></div>
       </div>
-      <div class="harm-field">Release <span id="in-r-label">${fmtS(inst.adsr.r)}</span>
-        <div class="harm-row"><input type="range" id="in-r" min="0" max="800" step="5" value="${Math.round(inst.adsr.r * 1000)}" /></div>
+      <div class="harm-field${drawn ? ' disabled' : ''}">Sustain <span id="in-s-label">${formatPercent(adsrView.s)}</span>
+        <div class="harm-row"><input type="range" id="in-s" min="0" max="100" step="1" value="${Math.round(adsrView.s * 100)}" /></div>
+      </div>
+      <div class="harm-field${drawn ? ' disabled' : ''}">Release <span id="in-r-label">${fmtS(adsrView.r)}</span>
+        <div class="harm-row"><input type="range" id="in-r" min="0" max="800" step="5" value="${Math.round(adsrView.r * 1000)}" /></div>
       </div>
       <div class="harm-field">Gain <span id="in-gain-label" class="${isHot(inst.gain) ? 'hot' : ''}">${formatPercent(inst.gain)}</span>
         <div class="harm-row"><input type="range" id="in-gain" min="5" max="150" step="1" value="${Math.round(inst.gain * 100)}"
@@ -120,6 +143,34 @@ export function mount(body, { store, uiStore, engine }) {
           title="Loop a reference note - parameter changes are heard live">Audition</button>
         <button class="btn" id="in-save" ${isCustom ? '' : 'disabled'} title="${isCustom ? 'Save as a preset for all tracks of this project' : 'Modify a parameter first'}">Save as preset…</button>
       </div>`;
+
+    // The envelope canvas edits the same shape the sliders do. Dragging feeds
+    // a live patch (audible through the audition loop, no undo entries) and
+    // only the release commits, exactly like the sliders.
+    const envCanvas = body.querySelector('#in-env');
+    if (envCanvas) {
+      let liveEnv = env;
+      initEnvelopeEditor(envCanvas, {
+        getEnv: () => liveEnv,
+        onChange: (next) => {
+          liveEnv = next;
+          livePatch = { ...(livePatch || {}), ...envPatch(next) };
+          const mode = body.querySelector('#in-env-mode');
+          if (mode) mode.textContent = isAdsrShaped(next) ? 'ADSR' : 'drawn';
+        },
+        onCommit: (next) => applyPatch(envPatch(next)),
+      });
+    }
+    const resetEnv = body.querySelector('#in-env-reset');
+    if (resetEnv) {
+      resetEnv.addEventListener('click', () => {
+        // Just drop the block. envPatch() never overwrites `adsr` while a
+        // drawn shape is in force, so the four numbers from before the
+        // drawing are still there waiting - resetting must restore those,
+        // not the zeros a non-ADSR shape reads back as.
+        applyPatch({ env: null });
+      });
+    }
 
     body.querySelector('#in-wave').addEventListener('click', (e) => {
       const btn = e.target.closest('[data-v]');

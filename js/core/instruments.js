@@ -1,6 +1,9 @@
 // Voice scheduling shared by live playback and offline WAV rendering.
 
 import { pitchToFreq } from './music.js';
+import {
+  effectiveEnvelope, envToAdsr, isAdsrShaped, releaseTime, buildGainCurve,
+} from './modulation.js';
 
 // PWM Fourier series: imag[k] = (2/(k*pi)) * sin(k*pi*duty)
 export function dutyHarmonics(duty, n = 32) {
@@ -40,15 +43,34 @@ function getPeriodicWave(ctx, instrument, dutyOverride = null) {
 }
 
 // Schedule one note into any BaseAudioContext (live or offline).
-// Automation extras: gainMul scales the whole note; gainCurve morphs the
-// level across the note's span (applied on a SEPARATE gain node - ADSR ramps
-// and setValueCurveAtTime may not share one AudioParam); duty overrides the
-// pulse width for PWM instruments.
+//
+// ONE gain node, always. There used to be two - ADSR ramps on the first and
+// the automation lane's value curve on a second, because those cannot share
+// an AudioParam. They no longer have to: when both are moving they are
+// multiplied together in modulation.js and handed over as a single curve.
+//
+// Two paths, chosen by whether anything actually varies:
+//
+//   ramps  nothing but the envelope moves, and it is ADSR-shaped. Scheduled
+//          as exact Web Audio ramps - the badge's 2 ms attack lands on the
+//          sample it should, which no sampled curve can promise.
+//   curve  a gain lane varies across the note, or the envelope was drawn
+//          freehand. One merged array covers the whole voice, release tail
+//          included.
+//
+// opts: gainMul scales the note; gainCurve is the lane sampled across the
+// note's span (from flatten); duty overrides the pulse width; adsr overrides
+// the envelope per event (the ADSR automation lanes); detune shifts pitch in
+// cents; lfo adds periodic detune (vibrato).
 export function scheduleNote(
   ctx,
   destination,
   instrument,
-  { pitch, startTime, stopTime, velocity = 100, gainMul = 1, gainCurve = null, duty = null, adsr = null }
+  {
+    pitch, startTime, stopTime, velocity = 100,
+    gainMul = 1, gainCurve = null, duty = null, adsr = null,
+    detune = 0, lfo = null,
+  }
 ) {
   const osc = ctx.createOscillator();
   if (instrument.wave === 'custom') {
@@ -58,36 +80,57 @@ export function scheduleNote(
   }
   osc.frequency.value = pitchToFreq(pitch);
 
-  const gain = ctx.createGain();
-  const { a, d, s, r } = adsr ? { ...instrument.adsr, ...adsr } : instrument.adsr;
+  const env = effectiveEnvelope(instrument, adsr);
   const peak = instrument.gain * gainMul * (velocity / 127);
-  const dur = stopTime - startTime;
+  const hold = Math.max(0, stopTime - startTime);
+  const release = Math.max(releaseTime(env), 0.001);
 
-  gain.gain.setValueAtTime(0, startTime);
-  const attackEnd = startTime + Math.min(a, dur);
-  gain.gain.linearRampToValueAtTime(peak, attackEnd);
-  let sustainLevel = peak;
-  if (d > 0 && s < 1 && attackEnd + d < stopTime) {
-    sustainLevel = peak * s;
-    gain.gain.linearRampToValueAtTime(sustainLevel, attackEnd + d);
+  const gain = ctx.createGain();
+  const laneVaries = gainCurve && gainCurve.length >= 2 && hold > 0;
+
+  if (!laneVaries && isAdsrShaped(env)) {
+    const { a, d, s } = envToAdsr(env);
+    gain.gain.setValueAtTime(0, startTime);
+    const attackEnd = startTime + Math.min(a, hold);
+    gain.gain.linearRampToValueAtTime(peak, attackEnd);
+    let sustainLevel = peak;
+    if (d > 0 && s < 1 && attackEnd + d < stopTime) {
+      sustainLevel = peak * s;
+      gain.gain.linearRampToValueAtTime(sustainLevel, attackEnd + d);
+    }
+    gain.gain.setValueAtTime(sustainLevel, stopTime);
+    gain.gain.linearRampToValueAtTime(0, stopTime + release);
+  } else {
+    // The lane arrives sampled evenly across [startTime, stopTime]; read it
+    // back by position so the merge does not care how many points it has.
+    const laneAt = laneVaries
+      ? (t) => {
+          const u = hold > 0 ? Math.min(1, Math.max(0, t / hold)) : 0;
+          const i = Math.min(gainCurve.length - 1, Math.round(u * (gainCurve.length - 1)));
+          return gainCurve[i];
+        }
+      : null;
+    const { curve, duration } = buildGainCurve({ env, peak, holdSec: hold, laneAt, tailSec: release });
+    gain.gain.setValueCurveAtTime(curve, startTime, duration);
   }
-  gain.gain.setValueAtTime(sustainLevel, stopTime);
-  gain.gain.linearRampToValueAtTime(0, stopTime + Math.max(r, 0.001));
 
-  let tail = gain;
-  if (gainCurve && gainCurve.length >= 2 && dur > 0) {
-    const auto = ctx.createGain();
-    // setValueCurveAtTime must not overlap ANY other event on this param -
-    // it defines the start value itself and holds the final value after.
-    auto.gain.setValueCurveAtTime(gainCurve, startTime, dur);
-    gain.connect(auto);
-    tail = auto;
+  if (detune) osc.detune.value = detune;
+  if (lfo && lfo.depth) {
+    // Vibrato as a real oscillator on osc.detune - cheaper and more accurate
+    // than sampling it into the pitch, and it costs two nodes only when used.
+    const mod = ctx.createOscillator();
+    mod.frequency.value = lfo.rate ?? 5;
+    const depth = ctx.createGain();
+    depth.gain.value = lfo.depth;
+    mod.connect(depth).connect(osc.detune);
+    mod.start(startTime + (lfo.delay ?? 0));
+    mod.stop(stopTime + release + 0.001);
   }
 
   osc.connect(gain);
-  tail.connect(destination);
+  gain.connect(destination);
   osc.start(startTime);
-  osc.stop(stopTime + Math.max(r, 0.001) + 0.001);
+  osc.stop(stopTime + release + 0.001);
   return osc;
 }
 

@@ -53,6 +53,8 @@ export async function renderWav(doc, opts = {}) {
       gainCurve: ev.gainCurve ?? null,
       duty: ev.duty ?? null,
       adsr: ev.adsr ?? null,
+      detune: ev.detune ?? 0,
+      lfo: ev.lfo ?? null,
     });
   }
   const buffer = await ctx.startRendering();

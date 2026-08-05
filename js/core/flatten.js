@@ -176,6 +176,11 @@ export function flattenSong(doc) {
           }
           if (Object.keys(adsr).length) extra.adsr = adsr;
         }
+        // Fine pitch in cents, carried per event so every arp step inherits
+        // it. Only attached when actually set, so a document without detune
+        // flattens to exactly the same stream it always did.
+        if (note.detune) extra.detune = note.detune;
+        if (note.lfo) extra.lfo = note.lfo;
         events.push({ ...ev, instrumentId, noteId: note.id, ...extra });
       }
     }

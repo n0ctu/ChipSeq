@@ -6,7 +6,7 @@ const modules = [
   'core/version.js', 'core/music.js', 'core/doc.js', 'core/store.js',
   'core/persist.js', 'core/harmonics.js', 'core/flatten.js', 'core/instruments.js',
   'core/engine.js', 'core/midi-import.js', 'core/export-wav.js', 'core/export-h.js', 'core/automation.js',
-  'core/export-fmf.js', 'core/graph.js', 'core/units.js',
+  'core/export-fmf.js', 'core/graph.js', 'core/units.js', 'core/modulation.js',
   'ui/ui-store.js', 'ui/dialogs.js', 'ui/conflicts.js', 'ui/trimmer.js',
   'ui/piano-roll/coords.js', 'ui/piano-roll/render.js', 'ui/piano-roll/interactions.js',
   'ui/piano-roll/automation-lane.js',
@@ -16,6 +16,7 @@ const modules = [
   // would only surface as an empty card at runtime
   'ui/tools-panel.js', 'ui/tools/manifest.js',
   'ui/tools/harmonics.js', 'ui/tools/transpose.js', 'ui/tools/instrument.js',
+  'ui/tools/envelope-editor.js',
   'ui/midi-import-dialog.js', 'ui/export-dialog.js',
   'ui/icons.js', 'ui/panel-resize.js', 'ui/trimmer.js',
 ];

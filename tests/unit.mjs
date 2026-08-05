@@ -989,6 +989,117 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(limiterConfig({ master: { limiter: { ceilingDb: -6 } } }).kneeDb === cfg.kneeDb, 'partial overrides keep defaults');
 }
 
+// ---- modulation: one shape for ADSR and drawn envelopes ----
+{
+  const {
+    adsrToEnv, envToAdsr, isAdsrShaped, effectiveEnvelope, sampleEnvelope,
+    releaseTime, buildGainCurve, sampleLfo, CURVE_STEP_S,
+  } = await import('../js/core/modulation.js');
+
+  const adsr = { a: 0.1, d: 0.2, s: 0.5, r: 0.3 };
+  const env = adsrToEnv(adsr);
+
+  // The sliders and a drawn curve must be the same data, or they would drift.
+  eq(envToAdsr(env), adsr, 'ADSR round-trips through the envelope shape');
+  assert(isAdsrShaped(env) === true, 'a generated envelope is recognised as ADSR-shaped');
+  assert(releaseTime(env) === 0.3, 'release time comes off the post-sustain points');
+
+  // A shape the four sliders cannot express must NOT be rounded back into
+  // them - that is how the UI knows to grey them out instead of lying.
+  const drawn = { ...env, points: [...env.points, { t: 0.5, value: 0.2, curve: 'linear' }] };
+  assert(envToAdsr(drawn) === null, 'a drawn shape does not pretend to be ADSR');
+  assert(isAdsrShaped(drawn) === false, 'and is reported as not ADSR-shaped');
+  const eased = { ...env, points: env.points.map((p, i) => (i === 1 ? { ...p, curve: 'ease' } : p)) };
+  assert(envToAdsr(eased) === null, 'a curved segment is not ADSR either');
+
+  // Held long enough to reach sustain.
+  const hold = 2;
+  assert(sampleEnvelope(env, 0, hold) === 0, 'starts silent');
+  assert(Math.abs(sampleEnvelope(env, 0.05, hold) - 0.5) < 1e-9, 'ramps up through the attack');
+  assert(Math.abs(sampleEnvelope(env, 0.1, hold) - 1) < 1e-9, 'peaks at the end of the attack');
+  assert(Math.abs(sampleEnvelope(env, 0.2, hold) - 0.75) < 1e-9, 'decays toward sustain');
+  assert(Math.abs(sampleEnvelope(env, 0.3, hold) - 0.5) < 1e-9, 'reaches the sustain level');
+  assert(Math.abs(sampleEnvelope(env, 1.5, hold) - 0.5) < 1e-9, 'holds it for as long as the note lasts');
+  assert(Math.abs(sampleEnvelope(env, hold + 0.15, hold) - 0.25) < 1e-9, 'releases from the sustain level');
+  assert(Math.abs(sampleEnvelope(env, hold + 0.3, hold)) < 1e-9, 'and reaches silence');
+  assert(sampleEnvelope(env, hold + 5, hold) === 0, 'and stays there');
+
+  // The case worth having a model for: a note SHORTER than its own attack.
+  // Release must start from where the envelope actually got to. Starting from
+  // the sustain level it never reached would jump the level UP at note-off -
+  // an audible click, and a loud one on a slow pad.
+  {
+    const shortHold = 0.05; // half-way up a 0.1 s attack
+    const atOff = sampleEnvelope(env, shortHold, shortHold);
+    assert(Math.abs(atOff - 0.5) < 1e-9, 'a short note ends half-way up the attack');
+    const justAfter = sampleEnvelope(env, shortHold + 0.0001, shortHold);
+    assert(justAfter <= atOff + 1e-6, 'the level never jumps up at note-off');
+    assert(Math.abs(sampleEnvelope(env, shortHold + 0.15, shortHold) - 0.25) < 1e-6,
+      'the release is scaled to where the note actually was');
+    assert(Math.abs(sampleEnvelope(env, shortHold + 0.3, shortHold)) < 1e-9, 'and still ends silent');
+  }
+
+  // A percussive envelope (sustain 0) must not divide by its own zero.
+  {
+    const perc = adsrToEnv({ a: 0.001, d: 0.05, s: 0, r: 0.01 });
+    const v = sampleEnvelope(perc, 0.2, 0.5);
+    assert(v === 0 && Number.isFinite(v), 'a zero-sustain envelope decays to silence, not NaN');
+    assert(Number.isFinite(sampleEnvelope(perc, 0.55, 0.5)), 'and releases finitely');
+  }
+
+  // An event-level ADSR override (what the automation lanes sample) feeds the
+  // envelope generator rather than a parallel code path.
+  {
+    const inst = { adsr, gain: 1 };
+    assert(envToAdsr(effectiveEnvelope(inst)).a === 0.1, 'the instrument envelope is used by default');
+    assert(envToAdsr(effectiveEnvelope(inst, { a: 0.5 })).a === 0.5, 'a lane override wins');
+    assert(envToAdsr(effectiveEnvelope(inst, { a: 0.5 })).d === 0.2, 'and leaves the rest alone');
+    const withDrawn = { adsr, gain: 1, env: drawn };
+    assert(effectiveEnvelope(withDrawn) === drawn, 'an explicitly drawn envelope overrides the sliders');
+  }
+
+  // ---- the merged curve ----
+  {
+    const flat = buildGainCurve({ env, peak: 0.5, holdSec: 1 });
+    assert(flat.curve.length > 2, 'a curve is produced');
+    assert(Math.abs(flat.duration - 1.3) < 1e-9, 'it spans the note AND its release tail');
+    assert(flat.curve[0] === 0, 'it starts silent');
+    assert(flat.curve[flat.curve.length - 1] === 0, 'and ends silent, so the voice cannot hang');
+    const peakIdx = flat.curve.indexOf(Math.max(...flat.curve));
+    assert(Math.abs(peakIdx * (flat.duration / (flat.curve.length - 1)) - 0.1) < 0.005,
+      'the peak lands at the end of the attack');
+    assert(Math.abs(Math.max(...flat.curve) - 0.5) < 1e-6, 'and reaches instrument gain x velocity');
+
+    // Resolution has to resolve the sharpest thing in the shape: the badge's
+    // attack is 2 ms, so a fixed points-per-note budget would smear it away
+    // on any long note.
+    const badge = adsrToEnv({ a: 0.002, d: 0, s: 1, r: 0.002 });
+    const long = buildGainCurve({ env: badge, peak: 1, holdSec: 8 });
+    const step = long.duration / (long.curve.length - 1);
+    assert(step <= CURVE_STEP_S + 1e-12, 'sampling is by time, not by a fixed point count');
+    assert(long.curve[Math.round(0.002 / step)] > 0.99, 'a 2 ms attack still reaches full level');
+
+    // The song-absolute lane multiplies the note-relative envelope - in the
+    // value domain, which is the whole point of this module.
+    const half = buildGainCurve({ env, peak: 1, holdSec: 1, laneAt: () => 0.5 });
+    const plain = buildGainCurve({ env, peak: 1, holdSec: 1 });
+    let sameShape = true;
+    for (let i = 0; i < half.curve.length; i++) {
+      if (Math.abs(half.curve[i] - plain.curve[i] * 0.5) > 1e-6) sameShape = false;
+    }
+    assert(sameShape, 'a constant lane scales the envelope exactly');
+
+    const ramp = buildGainCurve({ env, peak: 1, holdSec: 1, laneAt: (t) => Math.min(1, t) });
+    assert(ramp.curve[10] < plain.curve[10], 'a rising lane starts below the plain envelope');
+  }
+
+  // LFO: reserved for vibrato, tested so adding the UI is a UI job.
+  assert(sampleLfo(null, 1) === 0, 'no LFO is silence');
+  assert(sampleLfo({ rate: 5, depth: 50, delay: 0.2 }, 0.1) === 0, 'the delay holds it off');
+  assert(Math.abs(sampleLfo({ rate: 1, depth: 100 }, 0.25) - 100) < 1e-9, 'a quarter cycle is full depth');
+  assert(Math.abs(sampleLfo({ rate: 1, depth: 100 }, 0.75) + 100) < 1e-9, 'three quarters is full negative');
+}
+
 // ---- tool manifest ----
 // The manifest must be usable with nothing but the two stores: no DOM, no
 // piano roll, no tool module loaded. That is exactly what lets a COLLAPSED
