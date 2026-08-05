@@ -11,6 +11,8 @@
 // state, which would let realtime and offline renders drift apart, and
 // preview === export is the invariant the whole app rests on.
 
+import { trackGain, trackPan, needsStereo } from './doc.js';
+
 // Level of the summed mix before the clipper. Unchanged from the engine's
 // original master so existing projects keep their balance.
 export const MASTER_GAIN = 0.9;
@@ -102,6 +104,56 @@ export function buildOutputGraph(ctx, doc, { metronome = false, limiter = true }
     metro.connect(ctx.destination);
   }
   return { master, metro, limited: tail !== master };
+}
+
+// The full graph: one node per track, feeding the shared output stage.
+//
+//   voices -> track gain [-> pan] -> master -> limiter -> destination
+//
+// Giving every track its own node is the step that makes pan possible at all,
+// turns per-track level into an audio operation rather than a number baked
+// into each voice, and leaves the seam a stems export would need.
+//
+// Both the engine and the WAV renderer call this, so a track's level cannot
+// mean one thing live and another in the file.
+export function buildGraph(ctx, doc, opts = {}) {
+  const out = buildOutputGraph(ctx, doc, opts);
+  return { ...out, ...buildTrackNodes(ctx, doc, out.master) };
+}
+
+// Just the per-track layer, so the engine can rebuild it when tracks are
+// added, removed or panned without tearing down the output stage (and with
+// it the limiter and the peak tap the UI reads).
+export function buildTrackNodes(ctx, doc, master) {
+  const trackNodes = new Map();
+  const nodes = []; // everything to disconnect on rebuild, panners included
+  const stereo = ctx.destination.channelCount > 1 && needsStereo(doc);
+
+  for (const track of doc.tracks) {
+    const node = ctx.createGain();
+    node.gain.value = trackGain(track);
+    const pan = trackPan(track);
+    // A StereoPannerNode is inserted ONLY when it will do something. At
+    // pan 0 it still applies the -3 dB centre law and, downmixed into a mono
+    // render, that would quietly make every unpanned export 3 dB quieter.
+    if (stereo && pan !== 0 && ctx.createStereoPanner) {
+      const panner = ctx.createStereoPanner();
+      panner.pan.value = pan;
+      node.connect(panner);
+      panner.connect(master);
+      nodes.push(panner);
+    } else {
+      node.connect(master);
+    }
+    nodes.push(node);
+    trackNodes.set(track.id, node);
+  }
+
+  // Anything whose track we cannot resolve still has to be heard, not
+  // silently dropped - a missing node would turn a routing bug into silence.
+  const nodeFor = (trackId) => trackNodes.get(trackId) || master;
+
+  return { trackNodes, nodeFor, stereo, disconnect: () => nodes.forEach((n) => n.disconnect()) };
 }
 
 // Measure a rendered buffer and apply the clipper to it in place.

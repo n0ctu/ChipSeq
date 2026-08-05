@@ -5,7 +5,7 @@ import { flattenSong } from './flatten.js';
 import { scheduleNote, getInstrument } from './instruments.js';
 import { ticksPerBeat, ticksPerBar, songEndTick, tickToSeconds, secondsToTick } from './doc.js';
 import { createEmitter } from './store.js';
-import { buildOutputGraph } from './graph.js';
+import { buildGraph, buildTrackNodes } from './graph.js';
 
 const SCHEDULE_INTERVAL_MS = 25;
 const LOOKAHEAD_S = 0.12;
@@ -22,6 +22,7 @@ export function createEngine(store) {
   let metroGain = null;
   let peakTap = null;
   let peakBuf = null;
+  let graph = null;
 
   let playing = false;
   let timer = null;
@@ -44,7 +45,7 @@ export function createEngine(store) {
       // to the same defaults - but whoever exposes it must rebuild (or retune)
       // this chain when the document changes, or a per-project ceiling would
       // silently keep whatever the first-opened project had.
-      const graph = buildOutputGraph(audioCtx, store.getDoc(), { metronome: true });
+      graph = buildGraph(audioCtx, store.getDoc(), { metronome: true });
       masterGain = graph.master;
       metroGain = graph.metro;
       peakTap = audioCtx.createAnalyser();
@@ -128,7 +129,7 @@ export function createEngine(store) {
           continue;
         }
         if (stop > start) {
-          const node = scheduleNote(audioCtx, masterGain, getInstrument(doc, ev.instrumentId), {
+          const node = scheduleNote(audioCtx, graph.nodeFor(ev.trackId), getInstrument(doc, ev.instrumentId), {
             pitch: ev.pitch,
             startTime: start,
             stopTime: stop,
@@ -226,6 +227,16 @@ export function createEngine(store) {
     if (playing) refreshEvents(getPlayheadTick());
   });
 
+  // The per-track layer follows the document: a new track needs a node, a
+  // deleted one must stop being fed, and pan can only be applied by a node
+  // that exists. Rebuilt rather than patched - it is a handful of nodes, and
+  // inserting or removing a panner means rewiring anyway.
+  store.subscribe(['tracks', 'doc'], () => {
+    if (!audioCtx || !graph) return;
+    graph.disconnect();
+    Object.assign(graph, buildTrackNodes(audioCtx, store.getDoc(), graph.master));
+  });
+
   // Re-flatten mid-playback when the document changes (edit while playing).
   store.subscribe(['notes', 'tracks', 'song', 'harmonics', 'automation', 'doc'], () => {
     if (!playing) return;
@@ -310,6 +321,8 @@ export function createEngine(store) {
     getPlayheadTick,
     previewNote,
     previewEvents,
+    // The live node for a track, so a mixer drag is audible before it commits.
+    trackNode: (trackId) => (graph ? graph.trackNodes.get(trackId) : null),
     setAudition,
     getPeak,
     isAuditioning: () => !!auditionTimer,

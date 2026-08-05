@@ -4,6 +4,7 @@
   "startTick": 0,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-0"
  },
@@ -12,6 +13,7 @@
   "startTick": 24,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-0"
  },
@@ -20,6 +22,7 @@
   "startTick": 48,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-0"
  },
@@ -28,6 +31,7 @@
   "startTick": 72,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-0"
  },
@@ -36,6 +40,7 @@
   "startTick": 96,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-0"
  },
@@ -44,6 +49,7 @@
   "startTick": 120,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-0"
  },
@@ -52,6 +58,7 @@
   "startTick": 144,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-0"
  },
@@ -60,6 +67,7 @@
   "startTick": 168,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-0"
  },
@@ -68,6 +76,7 @@
   "startTick": 192,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-0"
  },
@@ -76,6 +85,7 @@
   "startTick": 216,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-0"
  },
@@ -84,6 +94,7 @@
   "startTick": 240,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-0"
  },
@@ -92,6 +103,7 @@
   "startTick": 264,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-0"
  },
@@ -100,6 +112,7 @@
   "startTick": 288,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-0"
  },
@@ -108,6 +121,7 @@
   "startTick": 312,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-0"
  },
@@ -116,6 +130,7 @@
   "startTick": 336,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-0"
  },
@@ -124,6 +139,7 @@
   "startTick": 360,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-0"
  },
@@ -132,6 +148,7 @@
   "startTick": 384,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-1"
  },
@@ -140,6 +157,7 @@
   "startTick": 408,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-1"
  },
@@ -148,6 +166,7 @@
   "startTick": 432,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-1"
  },
@@ -156,6 +175,7 @@
   "startTick": 456,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-1"
  },
@@ -164,6 +184,7 @@
   "startTick": 480,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-1"
  },
@@ -172,6 +193,7 @@
   "startTick": 504,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-1"
  },
@@ -180,6 +202,7 @@
   "startTick": 528,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-1"
  },
@@ -188,6 +211,7 @@
   "startTick": 552,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-1"
  },
@@ -196,6 +220,7 @@
   "startTick": 576,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-1"
  },
@@ -204,6 +229,7 @@
   "startTick": 600,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-1"
  },
@@ -212,6 +238,7 @@
   "startTick": 624,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-1"
  },
@@ -220,6 +247,7 @@
   "startTick": 648,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-1"
  },
@@ -228,6 +256,7 @@
   "startTick": 672,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-1"
  },
@@ -236,6 +265,7 @@
   "startTick": 696,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-1"
  },
@@ -244,6 +274,7 @@
   "startTick": 720,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-1"
  },
@@ -252,6 +283,7 @@
   "startTick": 744,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-1"
  },
@@ -260,6 +292,7 @@
   "startTick": 768,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-2"
  },
@@ -268,6 +301,7 @@
   "startTick": 792,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-2"
  },
@@ -276,6 +310,7 @@
   "startTick": 816,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-2"
  },
@@ -284,6 +319,7 @@
   "startTick": 840,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-2"
  },
@@ -292,6 +328,7 @@
   "startTick": 864,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-2"
  },
@@ -300,6 +337,7 @@
   "startTick": 888,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-2"
  },
@@ -308,6 +346,7 @@
   "startTick": 912,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-2"
  },
@@ -316,6 +355,7 @@
   "startTick": 936,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-2"
  },
@@ -324,6 +364,7 @@
   "startTick": 960,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-2"
  },
@@ -332,6 +373,7 @@
   "startTick": 984,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-2"
  },
@@ -340,6 +382,7 @@
   "startTick": 1008,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-2"
  },
@@ -348,6 +391,7 @@
   "startTick": 1032,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-2"
  },
@@ -356,6 +400,7 @@
   "startTick": 1056,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-2"
  },
@@ -364,6 +409,7 @@
   "startTick": 1080,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-2"
  },
@@ -372,6 +418,7 @@
   "startTick": 1104,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-2"
  },
@@ -380,6 +427,7 @@
   "startTick": 1128,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-2"
  },
@@ -388,6 +436,7 @@
   "startTick": 1152,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-3"
  },
@@ -396,6 +445,7 @@
   "startTick": 1176,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-3"
  },
@@ -404,6 +454,7 @@
   "startTick": 1200,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-3"
  },
@@ -412,6 +463,7 @@
   "startTick": 1224,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-3"
  },
@@ -420,6 +472,7 @@
   "startTick": 1248,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-3"
  },
@@ -428,6 +481,7 @@
   "startTick": 1272,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-3"
  },
@@ -436,6 +490,7 @@
   "startTick": 1296,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-3"
  },
@@ -444,6 +499,7 @@
   "startTick": 1320,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-3"
  },
@@ -452,6 +508,7 @@
   "startTick": 1344,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-3"
  },
@@ -460,6 +517,7 @@
   "startTick": 1368,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-3"
  },
@@ -468,6 +526,7 @@
   "startTick": 1392,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-3"
  },
@@ -476,6 +535,7 @@
   "startTick": 1416,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-3"
  },
@@ -484,6 +544,7 @@
   "startTick": 1440,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-3"
  },
@@ -492,6 +553,7 @@
   "startTick": 1464,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-3"
  },
@@ -500,6 +562,7 @@
   "startTick": 1488,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-3"
  },
@@ -508,6 +571,7 @@
   "startTick": 1512,
   "durationTicks": 22,
   "velocity": 100,
+  "trackId": "golden-track",
   "instrumentId": "badge",
   "noteId": "golden-note-3"
  }

@@ -6,6 +6,7 @@
    "startTick": 0,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "cbc499f7-0b6a-4757-bfc4-5ab44aae7e26"
   },
@@ -14,6 +15,7 @@
    "startTick": 24,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "cbc499f7-0b6a-4757-bfc4-5ab44aae7e26"
   },
@@ -22,6 +24,7 @@
    "startTick": 48,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "cbc499f7-0b6a-4757-bfc4-5ab44aae7e26"
   },
@@ -30,6 +33,7 @@
    "startTick": 72,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "cbc499f7-0b6a-4757-bfc4-5ab44aae7e26"
   },
@@ -38,6 +42,7 @@
    "startTick": 96,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "cbc499f7-0b6a-4757-bfc4-5ab44aae7e26"
   },
@@ -46,6 +51,7 @@
    "startTick": 120,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "cbc499f7-0b6a-4757-bfc4-5ab44aae7e26"
   },
@@ -54,6 +60,7 @@
    "startTick": 144,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "cbc499f7-0b6a-4757-bfc4-5ab44aae7e26"
   },
@@ -62,6 +69,7 @@
    "startTick": 168,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "cbc499f7-0b6a-4757-bfc4-5ab44aae7e26"
   },
@@ -70,6 +78,7 @@
    "startTick": 192,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "f8146991-0ffc-4f35-8502-33ec34789d1a"
   },
@@ -78,6 +87,7 @@
    "startTick": 216,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "f8146991-0ffc-4f35-8502-33ec34789d1a"
   },
@@ -86,6 +96,7 @@
    "startTick": 240,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "f8146991-0ffc-4f35-8502-33ec34789d1a"
   },
@@ -94,6 +105,7 @@
    "startTick": 264,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "f8146991-0ffc-4f35-8502-33ec34789d1a"
   },
@@ -102,6 +114,7 @@
    "startTick": 288,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "f8146991-0ffc-4f35-8502-33ec34789d1a"
   },
@@ -110,6 +123,7 @@
    "startTick": 312,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "f8146991-0ffc-4f35-8502-33ec34789d1a"
   },
@@ -118,6 +132,7 @@
    "startTick": 336,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "f8146991-0ffc-4f35-8502-33ec34789d1a"
   },
@@ -126,6 +141,7 @@
    "startTick": 360,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "f8146991-0ffc-4f35-8502-33ec34789d1a"
   },
@@ -134,6 +150,7 @@
    "startTick": 384,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "444cd7ed-b353-49a8-b015-70d3c4b8f347"
   },
@@ -142,6 +159,7 @@
    "startTick": 408,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "444cd7ed-b353-49a8-b015-70d3c4b8f347"
   },
@@ -150,6 +168,7 @@
    "startTick": 432,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "444cd7ed-b353-49a8-b015-70d3c4b8f347"
   },
@@ -158,6 +177,7 @@
    "startTick": 456,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "444cd7ed-b353-49a8-b015-70d3c4b8f347"
   },
@@ -166,6 +186,7 @@
    "startTick": 480,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "444cd7ed-b353-49a8-b015-70d3c4b8f347"
   },
@@ -174,6 +195,7 @@
    "startTick": 504,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "444cd7ed-b353-49a8-b015-70d3c4b8f347"
   },
@@ -182,6 +204,7 @@
    "startTick": 528,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "444cd7ed-b353-49a8-b015-70d3c4b8f347"
   },
@@ -190,6 +213,7 @@
    "startTick": 552,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "444cd7ed-b353-49a8-b015-70d3c4b8f347"
   },
@@ -198,6 +222,7 @@
    "startTick": 576,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "192b8dd7-deac-4bb8-9e2a-85a513c0134f"
   },
@@ -206,6 +231,7 @@
    "startTick": 600,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "026372e9-f132-4404-9693-4b5e80d4c318"
   },
@@ -214,6 +240,7 @@
    "startTick": 624,
    "durationTicks": 24,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "e753b1da-2ed2-4ba2-89cc-163011dd5848"
   },
@@ -222,6 +249,7 @@
    "startTick": 648,
    "durationTicks": 120,
    "velocity": 100,
+   "trackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
    "instrumentId": "badge",
    "noteId": "c553f6ec-4364-40f9-b0ce-3dc17231b602"
   }

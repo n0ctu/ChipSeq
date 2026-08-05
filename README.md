@@ -55,6 +55,27 @@ fast arps become smooth sweeps - and held notes get true intra-note gain
 ramps. Poly-only; mono and the `.h`/`.fmf` exports ignore automation
 entirely.
 
+## Mixing
+
+Every track gets its own node in the audio graph - `buildGraph` in
+`js/core/graph.js`, called identically by playback and the WAV renderer - so
+per-track **gain** and **pan** are audio operations rather than numbers baked
+into each voice. The **Mixer** card in the sidebar edits both (gain as a
+percentage, pan as `L50`/`C`/`R100`), plus **solo**.
+
+Exports go stereo **only when something is actually panned**; an unpanned
+project renders the same mono file it always did. A `StereoPannerNode` is
+likewise only inserted when it will do something, because at pan 0 it still
+applies the -3 dB centre law - downmixed into a mono render, that would have
+made every unpanned export quietly 3 dB quieter.
+
+Mute and solo stay *flatten-time* filters rather than becoming node gains:
+routing a muted track through a zero-gain node would mean scheduling and
+rendering audio nobody can hear - 5650 notes of it in the Bad Apple demo - to
+save a re-flatten that costs nothing. Solo beats mute-by-omission, and mono
+ignores all of it: the melody track is the voice, which is what keeps `.h` and
+`.fmf` out of reach of the mixer entirely.
+
 ## Envelopes and modulation
 
 There used to be two systems for "a value that moves over time" - ADSR

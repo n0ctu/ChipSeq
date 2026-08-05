@@ -1214,6 +1214,26 @@ await check('preset offered in the other track picker too', `(() => {
   const other = sels[1];
   return other && [...other.options].some((o) => o.textContent === 'NES Triangle') || 'options missing';
 })()`);
+await check('the mixer card edits track gain through the UI', `(async () => {
+  const store = window.__chipseq.store;
+  const before = store.getDoc().tracks[0].gain;
+  const sec = document.getElementById('sec-mixer');
+  if (!sec || sec.hidden) return 'mixer card missing';
+  if (!sec.classList.contains('open')) sec.querySelector('.tool-card-head').click();
+  await new Promise((r) => setTimeout(r, 250));
+  const slider = document.querySelector('#mixer-body input[data-act="gain"]');
+  if (!slider) return 'no gain slider';
+  slider.value = '60';
+  slider.dispatchEvent(new Event('input', { bubbles: true }));
+  const uncommitted = store.getDoc().tracks[0].gain === before;
+  slider.dispatchEvent(new Event('change', { bubbles: true }));
+  const committed = store.getDoc().tracks[0].gain === 0.6;
+  const label = document.querySelector('#mixer-body .mix-val').textContent;
+  store.undo();
+  return (uncommitted && committed && label === '60%')
+    || 'uncommitted=' + uncommitted + ' committed=' + committed + ' label=' + label;
+})()`);
+
 await check('default instrument renamed to plain Square', `(() => {
   const sel = document.querySelectorAll('#track-list .track-row select')[0];
   const names = [...sel.options].map((o) => o.textContent);
@@ -1684,6 +1704,59 @@ await check('detune shifts the rendered pitch', `(async () => {
   const up = await zeroCrossings(modDoc((d) => { d.tracks[0].notes[0].detune = 1200; }));
   // an octave up is twice the frequency, so roughly twice the crossings
   return (up > base * 1.7 && up < base * 2.3) || 'base=' + base + ' up=' + up;
+})()`);
+
+// ---- mixer: per-track nodes, rendered ----
+await check('track gain is applied by the graph, not baked into voices', `(async () => {
+  ${WAV_HELPERS}
+  ${MOD_DOC}
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const full = await renderWav(modDoc(() => {}));
+  const half = await renderWav(modDoc((d) => { d.tracks[0].gain = 0.5; }));
+  const a = (await readWav(full.blob)).peak;
+  const b = (await readWav(half.blob)).peak;
+  const ratio = b / a;
+  return (ratio > 0.45 && ratio < 0.55) || 'full=' + a.toFixed(4) + ' half=' + b.toFixed(4) + ' ratio=' + ratio.toFixed(3);
+})()`);
+
+// Stereo only when something is panned: an unpanned project must keep
+// rendering the same mono file it always did.
+await check('an unpanned project still renders mono', `(async () => {
+  ${WAV_HELPERS}
+  ${MOD_DOC}
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const w = await readWav((await renderWav(modDoc(() => {}))).blob);
+  return (w.channels === 1 && w.blockAlign === 2 && w.dataSize === w.sampleCount * 2)
+    || 'ch=' + w.channels + ' align=' + w.blockAlign;
+})()`);
+
+await check('a panned track renders stereo, weighted to that side', `(async () => {
+  ${MOD_DOC}
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const { blob } = await renderWav(modDoc((d) => { d.tracks[0].pan = -1; }));
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  const dv = new DataView(buf.buffer);
+  const channels = dv.getUint16(22, true);
+  if (channels !== 2) return 'channels=' + channels;
+  // interleaved L R L R - measure each side's energy separately
+  const frames = new Int16Array(buf.buffer, 44, (buf.length - 44) / 2);
+  let left = 0, right = 0;
+  for (let i = 0; i + 1 < frames.length; i += 2) {
+    left += (frames[i] / 32768) ** 2;
+    right += (frames[i + 1] / 32768) ** 2;
+  }
+  return (left > right * 20 && right >= 0) || 'left=' + left.toFixed(2) + ' right=' + right.toFixed(2);
+})()`);
+
+await check('solo silences everything else', `(async () => {
+  ${MOD_DOC}
+  const { flattenSong } = await import('/js/core/flatten.js');
+  const doc = modDoc((d) => {
+    d.tracks.push({ id: 'mod2', name: 'other', role: 'melody', instrumentId: 'sine', solo: true,
+      notes: [{ id: 'mn2', pitch: 60, startTick: 0, durationTicks: 384, velocity: 100, harmonics: null }] });
+  });
+  const ids = new Set(flattenSong(doc).events.map((e) => e.trackId));
+  return (ids.size === 1 && ids.has('mod2')) || [...ids].join(',');
 })()`);
 
 // ---- referential integrity through the real UI ----

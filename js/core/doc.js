@@ -468,12 +468,44 @@ export function melodyTrack(doc) {
 }
 
 // Tracks audible in the current mode.
+// Tracks audible in the current mode. Solo wins over mute, as everywhere:
+// soloing is "let me hear only this", and having to unmute the thing you
+// just soloed would be nonsense.
+//
+// Mute and solo stay FLATTEN-TIME filters rather than becoming node gains.
+// Routing muted tracks through a zero-gain node would mean scheduling and
+// rendering audio nobody hears - 5650 notes of it in the Bad Apple demo -
+// to save a re-flatten that costs nothing.
 export function playableTracks(doc) {
   if (doc.mode === 'mono') {
     const t = melodyTrack(doc);
     return t ? [t] : [];
   }
+  const soloed = doc.tracks.filter((t) => t.solo && t.role !== 'muted');
+  if (soloed.length) return soloed;
   return doc.tracks.filter((t) => t.role !== 'muted');
+}
+
+// ---- per-track mix ----
+// Additive fields with sane defaults, so a project that never touches the
+// mixer is byte-identical to one from before it existed.
+export const TRACK_GAIN_DEFAULT = 1;
+export const TRACK_PAN_DEFAULT = 0;
+
+export function trackGain(track) {
+  const g = track && track.gain;
+  return typeof g === 'number' ? Math.max(0, Math.min(1.5, g)) : TRACK_GAIN_DEFAULT;
+}
+
+export function trackPan(track) {
+  const p = track && track.pan;
+  return typeof p === 'number' ? Math.max(-1, Math.min(1, p)) : TRACK_PAN_DEFAULT;
+}
+
+// Does anything in this project need a stereo field? Mono stays mono, so
+// existing exports keep the size and shape they always had.
+export function needsStereo(doc) {
+  return doc.mode === 'poly' && doc.tracks.some((t) => trackPan(t) !== 0);
 }
 
 // Both take an optional tick so they follow the meter map. Callers that pass

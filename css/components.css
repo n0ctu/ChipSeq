@@ -232,6 +232,29 @@
 .btn-pair { display: flex; gap: 6px; }
 .btn-pair .btn { flex: 1; }
 
+/* mixer tool */
+.mix-row { display: flex; flex-direction: column; gap: 3px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.mix-row:last-child { border-bottom: none; }
+/* a track that cannot be heard right now - muted, or not the soloed one */
+.mix-row.silenced { opacity: 0.45; }
+.mix-head { display: flex; align-items: center; gap: 6px; }
+.mix-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.mix-solo {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 11px;
+  padding: 0 5px;
+  color: var(--text-dim);
+}
+.mix-solo.on { color: var(--accent); border-color: var(--accent-dim); background: var(--bg-3); }
+.mix-ctl { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); }
+.mix-ctl label { width: 30px; flex: none; }
+.mix-ctl input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.mix-val { width: 38px; text-align: right; font-family: var(--font-mono); color: var(--text); }
+.mix-val.hot { color: var(--warn); }
+
 /* envelope editor (instrument tool) */
 .env-canvas {
   width: 100%;

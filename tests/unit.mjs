@@ -989,6 +989,62 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(limiterConfig({ master: { limiter: { ceilingDb: -6 } } }).kneeDb === cfg.kneeDb, 'partial overrides keep defaults');
 }
 
+// ---- per-track mix: gain, pan, solo ----
+{
+  const {
+    trackGain, trackPan, needsStereo, playableTracks, createTrack,
+  } = await import('../js/core/doc.js');
+  const { formatPan } = await import('../js/ui/tools/mixer.js');
+
+  const doc = createProject({ name: 'mix', mode: 'poly' });
+  const a = doc.tracks[0];
+  const b = createTrack({ name: 'B', role: 'melody', instrumentId: 'sine' });
+  const c = createTrack({ name: 'C', role: 'melody', instrumentId: 'saw' });
+  doc.tracks.push(b, c);
+
+  // Additive with defaults: a project that never opened the mixer behaves
+  // exactly as it did before the mixer existed.
+  assert(trackGain(a) === 1 && trackPan(a) === 0, 'untouched tracks are unity and centred');
+  assert(needsStereo(doc) === false, 'and need no second channel');
+  assert(trackGain({ gain: 2 }) === 1.5, 'gain is clamped to the slider range');
+  assert(trackGain({ gain: -1 }) === 0, 'and cannot go negative');
+  assert(trackPan({ pan: -9 }) === -1 && trackPan({ pan: 9 }) === 1, 'pan is clamped to the field');
+  assert(trackGain({ gain: 'loud' }) === 1, 'a non-number falls back to the default');
+
+  b.pan = -0.5;
+  assert(needsStereo(doc) === true, 'one panned track makes the render stereo');
+  const mono = createProject({ name: 'm', mode: 'mono' });
+  mono.tracks[0].pan = 1;
+  assert(needsStereo(mono) === false, 'mono stays mono however it is panned');
+  b.pan = 0;
+
+  // Solo beats mute-by-omission: "let me hear only this".
+  eq(playableTracks(doc).map((t) => t.name), [a.name, 'B', 'C'], 'everything plays by default');
+  b.solo = true;
+  eq(playableTracks(doc).map((t) => t.name), ['B'], 'a soloed track plays alone');
+  c.solo = true;
+  eq(playableTracks(doc).map((t) => t.name), ['B', 'C'], 'several soloed tracks play together');
+  b.role = 'muted';
+  eq(playableTracks(doc).map((t) => t.name), ['C'], 'muting a soloed track still silences it');
+  b.role = 'melody';
+  b.solo = false;
+  c.solo = false;
+  a.role = 'muted';
+  eq(playableTracks(doc).map((t) => t.name), ['B', 'C'], 'mute alone still works');
+  a.role = 'melody';
+
+  // Mono ignores all of it - the melody track is the voice, full stop, which
+  // is what keeps .h and .fmf out of reach of any of this.
+  mono.tracks[0].solo = false;
+  mono.tracks[0].role = 'muted';
+  eq(playableTracks(mono).map((t) => t.name), ['Lead'], 'mono plays its melody track regardless');
+
+  assert(formatPan(0) === 'C', 'centre reads as C');
+  assert(formatPan(-0.5) === 'L50', 'left reads as L50');
+  assert(formatPan(1) === 'R100', 'hard right reads as R100');
+  assert(formatPan(0.001) === 'C', 'a hair off centre still reads as centre');
+}
+
 // ---- modulation: one shape for ADSR and drawn envelopes ----
 {
   const {
