@@ -5,6 +5,7 @@ import { flattenSong } from './flatten.js';
 import { scheduleNote, getInstrument } from './instruments.js';
 import { ticksPerBeat, ticksPerBar, songEndTick } from './doc.js';
 import { createEmitter } from './store.js';
+import { buildOutputGraph } from './graph.js';
 
 const SCHEDULE_INTERVAL_MS = 25;
 const LOOKAHEAD_S = 0.12;
@@ -19,6 +20,8 @@ export function createEngine(store) {
   let audioCtx = null;
   let masterGain = null;
   let metroGain = null;
+  let peakTap = null;
+  let peakBuf = null;
 
   let playing = false;
   let timer = null;
@@ -33,15 +36,39 @@ export function createEngine(store) {
   function ensureCtx() {
     if (!audioCtx) {
       audioCtx = new AudioContext();
-      masterGain = audioCtx.createGain();
-      masterGain.gain.value = 0.9;
-      masterGain.connect(audioCtx.destination);
-      metroGain = audioCtx.createGain();
-      metroGain.gain.value = 0.25;
-      metroGain.connect(audioCtx.destination);
+      // The same builder the WAV exporter uses, so preview and export share
+      // one output stage - including the clipper that keeps the mix under
+      // 0 dBFS. The pre-limiter tap feeds the status-bar clip indicator.
+      //
+      // The graph is built once and outlives project switches. That is fine
+      // today because the limiter block has no UI and every project resolves
+      // to the same defaults - but whoever exposes it must rebuild (or retune)
+      // this chain when the document changes, or a per-project ceiling would
+      // silently keep whatever the first-opened project had.
+      const graph = buildOutputGraph(audioCtx, store.getDoc(), { metronome: true });
+      masterGain = graph.master;
+      metroGain = graph.metro;
+      peakTap = audioCtx.createAnalyser();
+      peakTap.fftSize = 2048;
+      masterGain.connect(peakTap); // tap only - peakTap has no output
+      peakBuf = new Float32Array(peakTap.fftSize);
     }
     if (audioCtx.state === 'suspended') audioCtx.resume();
     return audioCtx;
+  }
+
+  // Highest absolute sample seen in the analyser's most recent window, taken
+  // BEFORE the clipper so the UI can say the mix is too hot rather than just
+  // showing a level that the limiter has already flattened to the ceiling.
+  function getPeak() {
+    if (!peakTap) return 0;
+    peakTap.getFloatTimeDomainData(peakBuf);
+    let peak = 0;
+    for (let i = 0; i < peakBuf.length; i++) {
+      const a = Math.abs(peakBuf[i]);
+      if (a > peak) peak = a;
+    }
+    return peak;
   }
 
   function tickToTime(tick) {
@@ -279,6 +306,7 @@ export function createEngine(store) {
     previewNote,
     previewEvents,
     setAudition,
+    getPeak,
     isAuditioning: () => !!auditionTimer,
     ensureCtx,
     on: emitter.on,

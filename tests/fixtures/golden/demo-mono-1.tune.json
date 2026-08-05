@@ -1,0 +1,166 @@
+{
+  "schema": "chipseq-tune",
+  "version": 3,
+  "id": "516d0895-2347-42b8-8aba-6948ef9e5e08",
+  "name": "Demo Mono",
+  "mode": "mono",
+  "ppq": 96,
+  "song": {
+    "bpm": 180,
+    "timeSig": {
+      "num": 4,
+      "den": 4
+    },
+    "key": {
+      "tonic": 0,
+      "mode": "major"
+    }
+  },
+  "instruments": [
+    {
+      "id": "badge",
+      "name": "Square",
+      "wave": "square",
+      "harmonics": null,
+      "duty": null,
+      "adsr": {
+        "a": 0.002,
+        "d": 0,
+        "s": 1,
+        "r": 0.002
+      },
+      "gain": 0.35
+    },
+    {
+      "id": "sine",
+      "name": "Sine",
+      "wave": "sine",
+      "harmonics": null,
+      "duty": null,
+      "adsr": {
+        "a": 0.005,
+        "d": 0.03,
+        "s": 0.8,
+        "r": 0.04
+      },
+      "gain": 0.5
+    },
+    {
+      "id": "saw",
+      "name": "Sawtooth",
+      "wave": "sawtooth",
+      "harmonics": null,
+      "duty": null,
+      "adsr": {
+        "a": 0.005,
+        "d": 0.03,
+        "s": 0.8,
+        "r": 0.04
+      },
+      "gain": 0.35
+    }
+  ],
+  "tracks": [
+    {
+      "id": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
+      "name": "Lead",
+      "role": "melody",
+      "instrumentId": "badge",
+      "notes": [
+        {
+          "id": "cbc499f7-0b6a-4757-bfc4-5ab44aae7e26",
+          "pitch": 60,
+          "startTick": 0,
+          "durationTicks": 192,
+          "velocity": 100,
+          "harmonics": {
+            "mode": "arp",
+            "stepsPerBeat": 4,
+            "pattern": "updown",
+            "octaves": 2,
+            "gate": 1,
+            "chordType": "autoKey",
+            "anchor": "above",
+            "octaveShift": 0
+          }
+        },
+        {
+          "id": "f8146991-0ffc-4f35-8502-33ec34789d1a",
+          "pitch": 56,
+          "startTick": 192,
+          "durationTicks": 192,
+          "velocity": 100,
+          "harmonics": {
+            "mode": "arp",
+            "stepsPerBeat": 4,
+            "pattern": "updown",
+            "octaves": 2,
+            "gate": 1,
+            "chordType": "autoKey",
+            "anchor": "above",
+            "octaveShift": 0
+          }
+        },
+        {
+          "id": "444cd7ed-b353-49a8-b015-70d3c4b8f347",
+          "pitch": 70,
+          "startTick": 384,
+          "durationTicks": 192,
+          "velocity": 100,
+          "harmonics": {
+            "mode": "arp",
+            "stepsPerBeat": 4,
+            "pattern": "updown",
+            "octaves": 2,
+            "gate": 1,
+            "chordType": "autoKey",
+            "anchor": "above",
+            "octaveShift": 0
+          }
+        },
+        {
+          "id": "192b8dd7-deac-4bb8-9e2a-85a513c0134f",
+          "pitch": 60,
+          "startTick": 576,
+          "durationTicks": 24,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "026372e9-f132-4404-9693-4b5e80d4c318",
+          "pitch": 64,
+          "startTick": 600,
+          "durationTicks": 24,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "e753b1da-2ed2-4ba2-89cc-163011dd5848",
+          "pitch": 60,
+          "startTick": 624,
+          "durationTicks": 24,
+          "velocity": 100,
+          "harmonics": null
+        },
+        {
+          "id": "c553f6ec-4364-40f9-b0ce-3dc17231b602",
+          "pitch": 84,
+          "startTick": 648,
+          "durationTicks": 120,
+          "velocity": 100,
+          "harmonics": null
+        }
+      ]
+    }
+  ],
+  "chordTrackId": null,
+  "activeTrackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef",
+  "loop": null,
+  "grid": {
+    "snapTicks": 24,
+    "triplet": false
+  },
+  "createdAt": "2026-08-03T21:25:57.255Z",
+  "updatedAt": "2026-08-04T06:42:41.918Z",
+  "melodyTrackId": "a66e23f5-a597-4292-a490-c130fe6aa5ef"
+}

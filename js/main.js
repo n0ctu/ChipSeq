@@ -189,7 +189,7 @@ const actions = initToolbar({
   },
 });
 
-initStatusBar({ store, uiStore, conflicts, roll });
+initStatusBar({ store, uiStore, conflicts, roll, engine });
 const instrumentPanel = initInstrumentPanel({ store, uiStore, engine });
 initTracksPanel({
   store,

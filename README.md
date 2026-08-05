@@ -51,6 +51,27 @@ fast arps become smooth sweeps - and held notes get true intra-note gain
 ramps. Poly-only; mono and the `.h`/`.fmf` exports ignore automation
 entirely.
 
+## Output level
+
+Playback and the `.wav` exporter share one output stage (`js/core/graph.js`),
+so what you hear is what you get - they used to differ, with exports rendering
+about 1 dB hotter than the preview because only the engine applied the master
+gain.
+
+That stage ends in a soft clipper, so the downmix can never leave the master
+above 0 dBFS: below -3 dBFS it is exactly transparent, above that it bends
+smoothly toward a -0.1 dBFS ceiling. A stateless `WaveShaper` is used rather
+than a compressor precisely because it behaves identically in realtime and
+offline rendering.
+
+Because a limited mix still *sounds* clean, the level is also reported: the
+export dialog shows the peak and warns when the mix only fit because it was
+shaped ("Mix peaks at +3.2 dB…"), and the status bar flags playback that goes
+over. Both read the peak *before* the clipper, which is the number you need to
+act on. The limiter is stored per project as
+`master.limiter = {kind, v, enabled, ceilingDb, kneeDb}`; there is no UI switch
+yet, but the data supports one.
+
 ## The tools sidebar
 
 The right sidebar is context-sensitive: with notes selected it offers
@@ -171,14 +192,29 @@ In the grid: plain drag marquee-selects, a plain click just moves the cursor.
 No frameworks here either - plain Node scripts in `tests/` (Node 22+):
 
 ```sh
-node tests/unit.mjs        # 150 core-logic tests (arps, chords, exporters, MIDI, migrations)
+node tests/unit.mjs        # core-logic tests (arps, chords, exporters, MIDI, migrations, limiter)
 node tests/check.mjs       # imports every ES module to catch syntax errors
-node tests/smoke.mjs       # 90 browser tests driving the real UI headlessly
+node tests/golden.mjs      # byte-compares exporter + pipeline output against fixtures
+node tests/smoke.mjs       # browser tests driving the real UI headlessly
 node tests/live-check.mjs  # verifies a deployed instance (defaults to the GitHub Pages URL)
 ```
 
 The browser suites need a Chromium binary - they auto-detect Playwright's
 cache and common system paths, or set `CHROME_BIN=/path/to/chrome`.
+
+`golden.mjs` is the regression net for "preview = export = badge": it pins the
+migrated document, the flattened event stream and the `.h`/`.fmf` text for
+every shipped demo, plus a determinism check (the same document must always
+flatten identically) and a forward-compatibility check (unknown blocks in a
+`.tune.json` survive a load/save round-trip untouched). Artifacts over 32 kB
+are stored as a hash with head/tail context instead of in full. After a
+*deliberate* output change, regenerate with `node tests/golden.mjs --update`
+and review the diff in its own commit - never inside a feature commit, or an
+unintended change can hide in the noise.
+
+Rendered audio is deliberately not byte-compared: `WaveShaper` behaviour
+varies between Chromium builds, so the browser suite asserts peak, RMS,
+duration and RIFF structure instead.
 
 ## Hacking
 

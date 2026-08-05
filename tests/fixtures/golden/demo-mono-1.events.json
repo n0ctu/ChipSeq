@@ -1,0 +1,229 @@
+{
+ "warnings": [],
+ "events": [
+  {
+   "pitch": 60,
+   "startTick": 0,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "cbc499f7-0b6a-4757-bfc4-5ab44aae7e26"
+  },
+  {
+   "pitch": 64,
+   "startTick": 24,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "cbc499f7-0b6a-4757-bfc4-5ab44aae7e26"
+  },
+  {
+   "pitch": 67,
+   "startTick": 48,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "cbc499f7-0b6a-4757-bfc4-5ab44aae7e26"
+  },
+  {
+   "pitch": 72,
+   "startTick": 72,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "cbc499f7-0b6a-4757-bfc4-5ab44aae7e26"
+  },
+  {
+   "pitch": 76,
+   "startTick": 96,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "cbc499f7-0b6a-4757-bfc4-5ab44aae7e26"
+  },
+  {
+   "pitch": 79,
+   "startTick": 120,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "cbc499f7-0b6a-4757-bfc4-5ab44aae7e26"
+  },
+  {
+   "pitch": 76,
+   "startTick": 144,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "cbc499f7-0b6a-4757-bfc4-5ab44aae7e26"
+  },
+  {
+   "pitch": 72,
+   "startTick": 168,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "cbc499f7-0b6a-4757-bfc4-5ab44aae7e26"
+  },
+  {
+   "pitch": 56,
+   "startTick": 192,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "f8146991-0ffc-4f35-8502-33ec34789d1a"
+  },
+  {
+   "pitch": 60,
+   "startTick": 216,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "f8146991-0ffc-4f35-8502-33ec34789d1a"
+  },
+  {
+   "pitch": 63,
+   "startTick": 240,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "f8146991-0ffc-4f35-8502-33ec34789d1a"
+  },
+  {
+   "pitch": 68,
+   "startTick": 264,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "f8146991-0ffc-4f35-8502-33ec34789d1a"
+  },
+  {
+   "pitch": 72,
+   "startTick": 288,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "f8146991-0ffc-4f35-8502-33ec34789d1a"
+  },
+  {
+   "pitch": 75,
+   "startTick": 312,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "f8146991-0ffc-4f35-8502-33ec34789d1a"
+  },
+  {
+   "pitch": 72,
+   "startTick": 336,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "f8146991-0ffc-4f35-8502-33ec34789d1a"
+  },
+  {
+   "pitch": 68,
+   "startTick": 360,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "f8146991-0ffc-4f35-8502-33ec34789d1a"
+  },
+  {
+   "pitch": 70,
+   "startTick": 384,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "444cd7ed-b353-49a8-b015-70d3c4b8f347"
+  },
+  {
+   "pitch": 74,
+   "startTick": 408,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "444cd7ed-b353-49a8-b015-70d3c4b8f347"
+  },
+  {
+   "pitch": 77,
+   "startTick": 432,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "444cd7ed-b353-49a8-b015-70d3c4b8f347"
+  },
+  {
+   "pitch": 82,
+   "startTick": 456,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "444cd7ed-b353-49a8-b015-70d3c4b8f347"
+  },
+  {
+   "pitch": 86,
+   "startTick": 480,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "444cd7ed-b353-49a8-b015-70d3c4b8f347"
+  },
+  {
+   "pitch": 89,
+   "startTick": 504,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "444cd7ed-b353-49a8-b015-70d3c4b8f347"
+  },
+  {
+   "pitch": 86,
+   "startTick": 528,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "444cd7ed-b353-49a8-b015-70d3c4b8f347"
+  },
+  {
+   "pitch": 82,
+   "startTick": 552,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "444cd7ed-b353-49a8-b015-70d3c4b8f347"
+  },
+  {
+   "pitch": 60,
+   "startTick": 576,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "192b8dd7-deac-4bb8-9e2a-85a513c0134f"
+  },
+  {
+   "pitch": 64,
+   "startTick": 600,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "026372e9-f132-4404-9693-4b5e80d4c318"
+  },
+  {
+   "pitch": 60,
+   "startTick": 624,
+   "durationTicks": 24,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "e753b1da-2ed2-4ba2-89cc-163011dd5848"
+  },
+  {
+   "pitch": 84,
+   "startTick": 648,
+   "durationTicks": 120,
+   "velocity": 100,
+   "instrumentId": "badge",
+   "noteId": "c553f6ec-4364-40f9-b0ce-3dc17231b602"
+  }
+ ]
+}

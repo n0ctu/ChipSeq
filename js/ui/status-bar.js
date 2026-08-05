@@ -4,7 +4,7 @@ import { ticksPerBeat, ticksPerBar } from '../core/doc.js';
 import { noteName } from '../core/music.js';
 import { APP_VERSION } from '../core/version.js';
 
-export function initStatusBar({ store, uiStore, conflicts, roll }) {
+export function initStatusBar({ store, uiStore, conflicts, roll, engine }) {
   const $ = (id) => document.getElementById(id);
   const ui = uiStore.state;
 
@@ -51,6 +51,30 @@ export function initStatusBar({ store, uiStore, conflicts, roll }) {
 
   store.subscribe(['notes', 'tracks', 'song', 'doc'], render);
   uiStore.subscribe(['cursor', 'selection', 'view'], render);
+
+  // Clip indicator: the master limiter means a hot mix still sounds clean, so
+  // without this the only symptom would be a vaguely squashed preview. The
+  // peak is read before the limiter and latched briefly - a single overshoot
+  // lasts a few milliseconds and would otherwise be impossible to notice.
+  if (engine) {
+    const clip = $('st-clip');
+    let poll = null;
+    let latchUntil = 0;
+    engine.on('playstate', ({ playing }) => {
+      if (poll) clearInterval(poll);
+      poll = null;
+      if (!playing) {
+        clip.textContent = '';
+        return;
+      }
+      latchUntil = 0;
+      poll = setInterval(() => {
+        const now = performance.now();
+        if (engine.getPeak() > 1) latchUntil = now + 1500;
+        clip.textContent = now < latchUntil ? '⚠ mix over 0 dB' : '';
+      }, 100);
+    });
+  }
 
   const save = document.getElementById('st-save');
   store.on('saved', () => {

@@ -911,5 +911,83 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(trackPitchCenter(weighted) === 48, 'duration-weighted median');
 }
 
+// ---- output stage / limiter ----
+{
+  const { softClip, softClipCurve, applyLimiter, limiterConfig, dbToLin, DEFAULT_LIMITER }
+    = await import('../js/core/graph.js');
+  const cfg = DEFAULT_LIMITER;
+  const T = dbToLin(cfg.kneeDb);
+  const C = dbToLin(cfg.ceilingDb);
+
+  // Below the knee the limiter must be exactly transparent - a soft clipper
+  // that colours quiet material would change every existing project.
+  assert(softClip(0, cfg) === 0, 'silence stays silent');
+  assert(softClip(0.5, cfg) === 0.5, 'below the knee is unity');
+  assert(softClip(-0.5, cfg) === -0.5, 'below the knee is unity (negative)');
+  assert(softClip(T, cfg) === T, 'exactly at the knee is still unity');
+
+  // The whole point: nothing can leave the master above the ceiling. tanh
+  // saturates to exactly 1 in floating point, so the ceiling is reached rather
+  // than merely approached - "never exceeds" is the property that matters.
+  assert(softClip(1, cfg) < C, '0 dBFS input stays under the ceiling');
+  assert(softClip(50, cfg) <= C, 'an absurdly hot input never exceeds the ceiling');
+  assert(softClip(-50, cfg) >= -C, 'the same holds for negative peaks');
+  assert(Math.abs(softClip(1e6, cfg)) <= C, 'the ceiling holds for any input');
+
+  assert(softClip(-0.9, cfg) === -softClip(0.9, cfg), 'the curve is odd-symmetric');
+
+  // A corner at the knee would be audible as distortion, so the slope has to
+  // arrive at 1 from both sides.
+  const e = 1e-6;
+  const slopeIn = (softClip(T, cfg) - softClip(T - e, cfg)) / e;
+  const slopeOut = (softClip(T + e, cfg) - softClip(T, cfg)) / e;
+  assert(Math.abs(slopeIn - 1) < 1e-3 && Math.abs(slopeOut - 1) < 1e-3, 'slope is continuous at the knee');
+
+  let mono = true, prev = -Infinity;
+  for (let x = -3; x <= 3; x += 0.01) {
+    const y = softClip(x, cfg);
+    if (y < prev) mono = false;
+    prev = y;
+  }
+  assert(mono, 'the curve is monotonic (no fold-back distortion)');
+
+  const curve = softClipCurve(cfg, 4097);
+  assert(curve.length === 4097, 'curve table length');
+  assert(Math.abs(curve[2048]) < 1e-6, 'curve is centred on zero');
+  // Float32 rounding can nudge the stored value a hair past the double, hence
+  // the epsilon - the audible guarantee is the ceiling, not the last ULP.
+  const f32eps = 1e-7;
+  assert(curve[4096] <= C + f32eps && curve[4096] > 0.9, 'curve tops out at the ceiling');
+  assert(curve[0] >= -C - f32eps && curve[0] < -0.9, 'curve bottoms out at -ceiling');
+
+  // applyLimiter reports the peak BEFORE shaping - that number is what makes
+  // the export warning actionable ("you are 3 dB over"), which a post-limiter
+  // reading could never say.
+  const fakeBuffer = (samples) => ({
+    numberOfChannels: 1,
+    _d: Float32Array.from(samples),
+    getChannelData() { return this._d; },
+  });
+  const hot = fakeBuffer([0, 0.5, 2, -2, 0.1]);
+  const level = applyLimiter(hot, {});
+  assert(Math.abs(level.peak - 2) < 1e-6, 'reports the pre-limiter peak');
+  assert(level.over === true, 'flags a mix over 0 dBFS');
+  assert(Math.abs(level.peakDb - 6.0206) < 0.01, 'peak in dB');
+  assert(Math.abs(level.shapedRatio - 0.4) < 1e-6, 'reports how much of the buffer was shaped');
+  assert(hot._d.every((v) => Math.abs(v) <= C), 'no sample survives above the ceiling');
+  assert(hot._d[1] === 0.5, 'quiet samples pass through untouched');
+
+  const quiet = fakeBuffer([0.1, -0.2, 0.3]);
+  const qlevel = applyLimiter(quiet, {});
+  assert(qlevel.over === false, 'a quiet mix is not flagged');
+  assert(qlevel.shapedRatio === 0, 'a quiet mix is not shaped at all');
+
+  // The limiter block lives in the document so it can evolve without a schema
+  // bump; an absent block must still yield working defaults.
+  assert(limiterConfig(undefined).enabled === true, 'missing block falls back to the default');
+  assert(limiterConfig({ master: { limiter: { ceilingDb: -6 } } }).ceilingDb === -6, 'document overrides merge');
+  assert(limiterConfig({ master: { limiter: { ceilingDb: -6 } } }).kneeDb === cfg.kneeDb, 'partial overrides keep defaults');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

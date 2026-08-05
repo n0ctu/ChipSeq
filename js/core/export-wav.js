@@ -3,11 +3,14 @@
 
 import { flattenSong, clipEventsToRegion } from './flatten.js';
 import { scheduleNote, getInstrument } from './instruments.js';
+import { buildOutputGraph, applyLimiter } from './graph.js';
 
 const SAMPLE_RATE = 44100;
 
 // opts.region: {startTick, endTick} - render exactly that slice, rebased to
 // 0 and cut to the exact region length so the file loops seamlessly.
+// Returns {blob, level}, where level reports the pre-limiter peak so the
+// export dialog can warn about a mix that only fits because it was limited.
 export async function renderWav(doc, opts = {}) {
   let { events } = flattenSong(doc);
   const region = opts.region && opts.region.endTick > opts.region.startTick ? opts.region : null;
@@ -28,9 +31,13 @@ export async function renderWav(doc, opts = {}) {
   }
 
   const ctx = new OfflineAudioContext(1, Math.ceil(SAMPLE_RATE * lengthS), SAMPLE_RATE);
+  // Same output stage as playback, but rendered UNSHAPED: the clipper is
+  // applied to the finished buffer instead, which is the only way to read the
+  // true pre-limiter peak (an intermediate node can't be tapped offline).
+  const { master } = buildOutputGraph(ctx, doc, { limiter: false });
   for (const ev of events) {
     if (ev.durationTicks <= 0) continue;
-    scheduleNote(ctx, ctx.destination, getInstrument(doc, ev.instrumentId), {
+    scheduleNote(ctx, master, getInstrument(doc, ev.instrumentId), {
       pitch: ev.pitch,
       startTime: ev.startTick * secondsPerTick,
       stopTime: (ev.startTick + ev.durationTicks) * secondsPerTick,
@@ -42,7 +49,8 @@ export async function renderWav(doc, opts = {}) {
     });
   }
   const buffer = await ctx.startRendering();
-  return encodeWav(buffer);
+  const level = applyLimiter(buffer, doc);
+  return { blob: encodeWav(buffer), level };
 }
 
 export function encodeWav(audioBuffer) {
