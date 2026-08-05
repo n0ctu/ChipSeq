@@ -3,8 +3,9 @@
 // which is what guarantees preview === export === badge.
 
 import { renderHarmonics, resolveChord } from './harmonics.js';
-import { playableTracks, getTrack, getNote, findOverlaps, ticksPerBar, trackPan } from './doc.js';
+import { playableTracks, getTrack, getNote, findOverlaps, ticksPerBar, trackPan, tickToSeconds } from './doc.js';
 import { sampleAutomation, sampleGainCurve, quantizeDuty, AUTOMATION_PARAMS } from './automation.js';
+import { applyNormalization } from './normalize.js';
 
 // Segment the chords track into a timeline of chord EVENTS that hold until
 // the next change (like a DAW chord track). Sampling "what sounds at exactly
@@ -221,6 +222,12 @@ export function flattenSong(doc) {
     }
     return { events: filtered, warnings };
   }
+
+  // Polyphony normalization runs LAST, on the finished stream: it needs to
+  // know what is actually sounding together, which is only true once
+  // harmonics have expanded and the automation lanes have been sampled.
+  // Poly only - mono returned above, so badge output is untouched.
+  applyNormalization(doc, events, (tick) => tickToSeconds(doc, tick));
 
   return { events, warnings };
 }

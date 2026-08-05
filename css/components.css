@@ -255,6 +255,30 @@
 .mix-val { width: 38px; text-align: right; font-family: var(--font-mono); color: var(--text); }
 .mix-val.hot { color: var(--warn); }
 
+/* levels tool */
+/* its labels are longer than the mixer's, which clipped "Smooth" */
+#levels-body .mix-ctl label { width: 46px; }
+.lv-legend { font-size: 10px; color: var(--text-dim); line-height: 1.4; }
+.lv-readout {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lv-row { display: flex; align-items: baseline; gap: 6px; color: var(--text-dim); }
+.lv-row span:first-child { width: 46px; flex: none; }
+.lv-row b { font-family: var(--font-mono); font-size: 13px; min-width: 38px; }
+.lv-row b.ok { color: var(--accent); }
+.lv-row b.warm { color: var(--warn); }
+.lv-row b.hot { color: var(--danger); }
+.lv-note { color: var(--text-dim); font-size: 10px; margin-top: 2px; }
+.lv-tracks { display: flex; flex-direction: column; gap: 2px; }
+.lv-track { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); }
+
 /* envelope editor (instrument tool) */
 .env-canvas {
   width: 100%;

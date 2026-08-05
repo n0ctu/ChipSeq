@@ -21,6 +21,7 @@
 //   label - short context line, shown open or closed.
 
 import { activeTrack, getTrack, trackGain, trackPan, DEFAULT_INSTRUMENTS } from '../../core/doc.js';
+import { DEFAULT_NORMALIZE, normalizeConfig } from '../../core/normalize.js';
 
 // Selected notes, computed straight from the stores. Deliberately not routed
 // through roll.interactions so status() has no dependency on the piano roll
@@ -89,6 +90,32 @@ export const TOOLS = [
       };
     },
     load: () => import('./mixer.js'),
+  },
+  {
+    id: 'levels',
+    name: 'Levels',
+    when: (ctx) => ctx.store.getDoc().mode === 'poly',
+    // Same rule as every other card: at defaults there is nothing to look at,
+    // so it stays collapsed. Deliberately does NOT flatten the song to report
+    // a peak here - status() runs on every change, and flattening Bad Apple
+    // takes ~150 ms. The readout lives in the body, where it is only computed
+    // while the card is actually open.
+    status: (ctx) => {
+      const doc = ctx.store.getDoc();
+      const cfg = normalizeConfig(doc);
+      const tuned = ['enabled', 'song', 'track', 'smoothMs'].filter((k) => cfg[k] !== DEFAULT_NORMALIZE[k]);
+      const optedOut = doc.tracks.filter((t) => t.normalize !== undefined).length;
+      if (!cfg.enabled) return { on: true, label: 'off' };
+      return {
+        on: tuned.length > 0 || optedOut > 0,
+        label: optedOut
+          ? `${optedOut} track${optedOut === 1 ? '' : 's'} excluded`
+          : tuned.length
+            ? `${cfg.song.toFixed(2)} / ${cfg.track.toFixed(2)}`
+            : 'default',
+      };
+    },
+    load: () => import('./levels.js'),
   },
   {
     id: 'instrument',
