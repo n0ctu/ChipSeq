@@ -258,8 +258,14 @@
 /* mixer tool */
 .mix-row { display: flex; flex-direction: column; gap: 3px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .mix-row:last-child { border-bottom: none; }
-/* a track that cannot be heard right now - muted, or not the soloed one */
-.mix-row.silenced { opacity: 0.45; }
+/* A track that cannot be heard right now - muted, or not the soloed one.
+   The fade is applied to the LABEL AND CONTROLS, never to the whole row:
+   opacity on the row also dimmed the colour dot, so a muted track's colour
+   looked different here than in the tracks panel - same hue, paler, which
+   reads as the wrong colour. Opacity creates a stacking context, so a child
+   cannot opt back out; it has to not be applied in the first place. */
+.mix-row.silenced .mix-name,
+.mix-row.silenced .mix-ctl { opacity: 0.45; }
 .mix-head { display: flex; align-items: center; gap: 6px; }
 .mix-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .mix-ctl { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); }
