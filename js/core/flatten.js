@@ -4,14 +4,10 @@
 
 import { renderHarmonics, resolveChord } from './harmonics.js';
 import {
-  playableTracks, getTrack, getNote, findOverlaps, ticksPerBar, trackPan, trackGain,
-  tickToSeconds, secondsToTick,
+  playableTracks, getTrack, getNote, findOverlaps, ticksPerBar, trackPan, tickToSeconds,
 } from './doc.js';
-import { MASTER_GAIN } from './graph.js';
 import { sampleAutomation, sampleGainCurve, quantizeDuty, AUTOMATION_PARAMS } from './automation.js';
 import { applyNormalization } from './normalize.js';
-import { getInstrument } from './instruments.js';
-import { effectiveEnvelope, releaseTime } from './modulation.js';
 
 // Segment the chords track into a timeline of chord EVENTS that hold until
 // the next change (like a DAW chord track). Sampling "what sounds at exactly
@@ -138,37 +134,6 @@ export function flattenNote(doc, trackId, noteId) {
 // Mono mode: only the active track, badge instrument forced, overlaps truncated
 // (earlier note cut at the later note's start - matches firmware semantics).
 
-// What an event actually contributes to the mix, for the Levels stage.
-//
-//   level        its peak output amplitude - instrument gain, velocity, the
-//                track's fader and any gain automation, through the master.
-//                Levels measures amplitude rather than counting voices,
-//                because a count says nothing about how loud something is.
-//   releaseTicks how long it keeps ringing after its notated end. A voice is
-//                audible until its release finishes, and ignoring that made
-//                a chord's tails invisible - the count dropped the instant
-//                the notes ended and every tail rang out at full level.
-//
-// Both resolved through the same instrument and envelope the voice will
-// actually use, so per-event ADSR automation is honoured.
-function voiceOf(doc, ev) {
-  const inst = getInstrument(doc, ev.instrumentId);
-  if (!inst) return { level: 0, releaseTicks: 0 };
-  const laneLevel = ev.gainCurve && ev.gainCurve.length
-    ? Math.max(...ev.gainCurve)
-    : ev.gainMul ?? 1;
-  const track = getTrack(doc, ev.trackId);
-  const level = inst.gain * (ev.velocity / 127) * laneLevel * trackGain(track) * MASTER_GAIN;
-
-  const seconds = releaseTime(effectiveEnvelope(inst, ev.adsr || null));
-  let releaseTicks = 0;
-  if (seconds > 0) {
-    const endTick = ev.startTick + ev.durationTicks;
-    releaseTicks = Math.max(0, secondsToTick(doc, tickToSeconds(doc, endTick) + seconds) - endTick);
-  }
-  return { level, releaseTicks };
-}
-
 export function flattenSong(doc) {
   const ctx = makeArpContext(doc);
   const warnings = [];
@@ -265,7 +230,7 @@ export function flattenSong(doc) {
   // know what is actually sounding together, which is only true once
   // harmonics have expanded and the automation lanes have been sampled.
   // Poly only - mono returned above, so badge output is untouched.
-  applyNormalization(doc, events, (tick) => tickToSeconds(doc, tick), (ev) => voiceOf(doc, ev));
+  applyNormalization(doc, events, (tick) => tickToSeconds(doc, tick));
 
   return { events, warnings };
 }
