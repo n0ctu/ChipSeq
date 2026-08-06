@@ -177,9 +177,12 @@ is missing.
 
 ## Tracks
 
-Rows are **reorderable** - drag a track by its colour dot. The dot doubles as
-the grip because it is already the row's identity and a separate handle would
-not fit a 200 px panel. A drag is one undo entry, not one per row it crosses.
+Rows are **reorderable** - drag a track from anywhere on it. The drag arms on
+mousedown and only begins once the pointer has moved a few pixels, so a plain
+click still selects the track and a double-click still opens the dialog;
+buttons and the instrument menu keep their own gestures. Past the threshold
+the click is swallowed, so a drag is one undo entry rather than a reorder
+plus a track switch.
 Order is presentational (playback reads whichever tracks are playable and
 sorts events by tick), but it does decide the palette position of any track
 that has not picked a colour.

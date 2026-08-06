@@ -1010,25 +1010,58 @@ await check('an explicit colour survives reordering, an auto one follows', `(asy
     || 'pinned ' + before + '->' + after + ', auto ' + autoBefore + '->' + autoAfter;
 })()`);
 
-await check('dragging the colour dot reorders the track list', `(async () => {
+await check('dragging a row anywhere reorders the track list', `(async () => {
   const store = window.__chipseq.store;
   const rows = () => [...document.querySelectorAll('#track-list .track-row')];
   if (rows().length < 2) return 'need two tracks';
   const namesBefore = store.getDoc().tracks.map((t) => t.name);
-  const grip = rows()[0].querySelector('.track-grip');
+  // grab by the NAME, i.e. plain row body - not a dedicated handle
+  const from = rows()[0];
+  const grab = from.querySelector('.track-name');
   const target = rows()[rows().length - 1].getBoundingClientRect();
-  grip.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 10, clientY: rows()[0].getBoundingClientRect().top + 5, button: 0 }));
-  window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: target.bottom - 2 }));
-  window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 10, clientY: target.bottom - 2 }));
+  grab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 40, clientY: from.getBoundingClientRect().top + 5, button: 0 }));
+  window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 40, clientY: target.bottom - 2 }));
+  window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 40, clientY: target.bottom - 2 }));
+  from.dispatchEvent(new MouseEvent('click', { bubbles: true })); // the browser's click after a drag
   await new Promise((r) => setTimeout(r, 200));
   const namesAfter = store.getDoc().tracks.map((t) => t.name);
   const movedToEnd = namesAfter[namesAfter.length - 1] === namesBefore[0];
   const sameSet = [...namesAfter].sort().join() === [...namesBefore].sort().join();
-  // one drag, one undo entry
+  // ONE undo entry: the reorder, not a reorder plus a track switch
   store.undo();
   const restored = store.getDoc().tracks.map((t) => t.name).join() === namesBefore.join();
   return (movedToEnd && sameSet && restored)
     || 'after=' + namesAfter.join() + ' restored=' + restored;
+})()`);
+
+await check('a click under the drag threshold still selects the track', `(async () => {
+  const store = window.__chipseq.store;
+  const rows = [...document.querySelectorAll('#track-list .track-row')];
+  const order = store.getDoc().tracks.map((t) => t.id).join();
+  const second = rows[1];
+  const y = second.getBoundingClientRect().top + 5;
+  second.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 40, clientY: y, button: 0 }));
+  window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 40, clientY: y + 2 })); // under 4px
+  window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 40, clientY: y + 2 }));
+  second.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 150));
+  const d = store.getDoc();
+  const selected = d.activeTrackId === d.tracks[1].id;
+  const unmoved = d.tracks.map((t) => t.id).join() === order;
+  return (selected && unmoved) || 'selected=' + selected + ' unmoved=' + unmoved;
+})()`);
+
+await check('dragging from a control does not reorder', `(async () => {
+  const store = window.__chipseq.store;
+  const rows = [...document.querySelectorAll('#track-list .track-row')];
+  const order = store.getDoc().tracks.map((t) => t.id).join();
+  const btn = rows[0].querySelector('button');
+  const target = rows[rows.length - 1].getBoundingClientRect();
+  btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 40, clientY: rows[0].getBoundingClientRect().top + 5, button: 0 }));
+  window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 40, clientY: target.bottom - 2 }));
+  window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 40, clientY: target.bottom - 2 }));
+  await new Promise((r) => setTimeout(r, 150));
+  return store.getDoc().tracks.map((t) => t.id).join() === order || 'order changed';
 })()`);
 
 // ---- import MIDI tracks into the open project ----
