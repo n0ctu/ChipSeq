@@ -81,8 +81,13 @@ export function createNote({ pitch, startTick, durationTicks, velocity = 100, ha
 // `color` is a palette index and is assigned at birth - callers that have a
 // document pass pickTrackColor(doc) so a new track lands on the least-used
 // entry. Defaults to 0 only for the very first track of a new project.
-export function createTrack({ name = 'Track', role = 'melody', instrumentId = 'badge', notes = [], color = 0 } = {}) {
-  return { id: uid(), name, role, instrumentId, color, notes };
+// The colour is generated here and baked into the track, so it is part of the
+// saved configuration in localStorage and in an export rather than something
+// each view re-derives. Pass `doc` to get the least-used palette entry;
+// without one the caller either supplied a colour or gets the first.
+export function createTrack({ name = 'Track', role = 'melody', instrumentId = 'badge', notes = [], color, doc } = {}) {
+  const baked = Number.isInteger(color) ? color : doc ? pickTrackColor(doc) : 0;
+  return { id: uid(), name, role, instrumentId, color: baked, notes };
 }
 
 export function createProject({ name = 'Untitled', mode = 'mono' } = {}) {
@@ -403,6 +408,30 @@ export function enforceInvariants(doc) {
   if (!doc.instruments.some((i) => i.id === 'badge')) {
     doc.instruments.unshift(structuredClone(DEFAULT_INSTRUMENTS[0]));
     warnings.push('the "Square" instrument was missing - it was restored');
+  }
+
+  // Track ids must be unique. A duplicate is not cosmetic: every lookup by id
+  // resolves to the FIRST match, so the second track answers to the first
+  // one's selection, notes and colour. Re-issue rather than merge - the
+  // tracks are distinct, only their labels collided.
+  const seen = new Set();
+  for (const track of doc.tracks) {
+    if (!seen.has(track.id)) { seen.add(track.id); continue; }
+    const old = track.id;
+    track.id = uid();
+    // A per-track instrument is addressed as "track:<id>", so the reference
+    // has to follow the rename or the check below would reset it to Square.
+    if (track.instrumentId === 'track:' + old) track.instrumentId = 'track:' + track.id;
+    seen.add(track.id);
+    warnings.push(`two tracks shared an id - "${track.name}" was given a new one`);
+  }
+
+  // Every track owns its colour explicitly, so it survives reordering and
+  // means the same thing in the grid, the tracks panel and the Mixer. Baked
+  // here as well as at creation, because imports and hand-written files also
+  // have to come out the other side with one.
+  for (const track of doc.tracks) {
+    if (!Number.isInteger(track.color)) track.color = pickTrackColor(doc);
   }
 
   const byId = new Set(doc.tracks.map((t) => t.id));

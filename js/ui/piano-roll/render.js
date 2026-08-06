@@ -30,9 +30,15 @@ export function readTheme() {
   };
 }
 
-export function trackColor(theme, doc, trackId) {
-  const track = doc.tracks.find((t) => t.id === trackId);
-  return theme.trackColors[trackColorIndex(doc, track) % theme.trackColors.length];
+// Takes the track itself. It used to take an id and look the track up, which
+// made this the one colour path that could disagree with every other one:
+// find() resolves a duplicate id to the FIRST match, so a track sharing an id
+// rendered in another track's colour here while the Mixer - which holds the
+// object - showed its own. Passing the object removes the divergence at the
+// source; enforceInvariants() repairs the duplicate that exposed it.
+export function trackColor(theme, doc, track) {
+  const t = typeof track === 'string' ? doc.tracks.find((x) => x.id === track) : track;
+  return theme.trackColors[trackColorIndex(doc, t) % theme.trackColors.length];
 }
 
 const BLACK_KEYS = new Set([1, 3, 6, 8, 10]);
@@ -102,7 +108,7 @@ export function drawNotes(ctx, ui, doc, w, h, theme, items, selection, conflictI
   // ghosts first (under real notes)
   for (const item of items) {
     if (!item.ghost) continue;
-    const color = trackColor(theme, doc, item.track.id);
+    const color = trackColor(theme, doc, item.track);
     const selected = selection.has(item.note.id);
     ctx.globalAlpha = item.silenced ? 0.08 : selected ? 0.45 : 0.25;
     ctx.fillStyle = color;
@@ -126,7 +132,7 @@ export function drawNotes(ctx, ui, doc, w, h, theme, items, selection, conflictI
   for (const item of items) {
     const { note, track } = item;
     const r = noteRect(ui, note);
-    const color = trackColor(theme, doc, track.id);
+    const color = trackColor(theme, doc, track);
     const isConflict = conflictIds && conflictIds.has(note.id);
     const isActiveTrack = track.id === doc.activeTrackId;
     const dimmed = doc.mode === 'poly' && !isActiveTrack;
