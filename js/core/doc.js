@@ -78,8 +78,11 @@ export function createNote({ pitch, startTick, durationTicks, velocity = 100, ha
   return { id: uid(), pitch, startTick, durationTicks, velocity, harmonics };
 }
 
-export function createTrack({ name = 'Track', role = 'melody', instrumentId = 'badge', notes = [] } = {}) {
-  return { id: uid(), name, role, instrumentId, notes };
+// `color` is a palette index and is assigned at birth - callers that have a
+// document pass pickTrackColor(doc) so a new track lands on the least-used
+// entry. Defaults to 0 only for the very first track of a new project.
+export function createTrack({ name = 'Track', role = 'melody', instrumentId = 'badge', notes = [], color = 0 } = {}) {
+  return { id: uid(), name, role, instrumentId, color, notes };
 }
 
 export function createProject({ name = 'Untitled', mode = 'mono' } = {}) {
@@ -184,6 +187,12 @@ export function migrate(doc) {
   }
   // Additive default: melody marker used to be fused with the active track.
   if (!doc.melodyTrackId) doc.melodyTrackId = doc.activeTrackId;
+  // Colours used to be derived from row position. Baking the current position
+  // in keeps every existing project looking exactly as it did, while making
+  // the colour survive the reordering that position-derived colours could not.
+  doc.tracks.forEach((t, i) => {
+    if (!Number.isInteger(t.color)) t.color = i % TRACK_COLORS;
+  });
   // A newer file keeps its own version number: this build did not upgrade it
   // and must not claim it did. Its unknown parts ride along untouched.
   normalizeDoc(doc);
@@ -383,7 +392,7 @@ export function enforceInvariants(doc) {
   // Something must be playable. A zero-track document would break every
   // consumer that reasonably assumes tracks[0] exists.
   if (!Array.isArray(doc.tracks) || !doc.tracks.length) {
-    doc.tracks = [createTrack({ name: 'Lead', role: 'melody', instrumentId: 'badge' })];
+    doc.tracks = [createTrack({ name: 'Lead', role: 'melody', instrumentId: 'badge', color: 0 })];
     warnings.push('the project had no tracks - an empty one was added');
   }
   if (!Array.isArray(doc.instruments) || !doc.instruments.length) {
@@ -471,38 +480,76 @@ export function melodyTrack(doc) {
 }
 
 // Tracks audible in the current mode.
-// Tracks audible in the current mode. Solo wins over mute, as everywhere:
-// soloing is "let me hear only this", and having to unmute the thing you
-// just soloed would be nonsense.
+// Mute and solo answer different questions, and the difference matters:
 //
-// Mute and solo stay FLATTEN-TIME filters rather than becoming node gains.
-// Routing muted tracks through a zero-gain node would mean scheduling and
-// rendering audio nobody hears - 5650 notes of it in the Bad Apple demo -
-// to save a re-flatten that costs nothing.
-export function playableTracks(doc) {
+//   mute  this track is not part of the piece right now. It does not sound,
+//         its notes leave the grid, and Levels stops counting it.
+//   solo  let me hear this one for a moment. Only soloed tracks sound, but
+//         the others stay visible in the grid AND keep counting towards
+//         Levels - so a soloed track previews at the level it has in the
+//         mix, which is the only level worth judging it at.
+//
+// Hence two functions. unmutedTracks is what the piece IS; playableTracks is
+// what you are hearing at this instant.
+//
+// Both stay FLATTEN-TIME filters rather than becoming node gains: routing a
+// muted track through a zero-gain node would mean scheduling and rendering
+// audio nobody hears - 5650 notes of it in the Bad Apple demo - to save a
+// re-flatten that costs nothing.
+export function unmutedTracks(doc) {
   if (doc.mode === 'mono') {
     const t = melodyTrack(doc);
     return t ? [t] : [];
   }
-  const soloed = doc.tracks.filter((t) => t.solo && t.role !== 'muted');
-  if (soloed.length) return soloed;
   return doc.tracks.filter((t) => t.role !== 'muted');
+}
+
+// Is anything soloed that could actually be heard? Muting a soloed track
+// takes it out of the running, so soloing only the muted track is not "solo".
+export function soloActive(doc) {
+  return doc.mode === 'poly' && doc.tracks.some((t) => t.solo && t.role !== 'muted');
+}
+
+export function playableTracks(doc) {
+  const unmuted = unmutedTracks(doc);
+  if (!soloActive(doc)) return unmuted;
+  return unmuted.filter((t) => t.solo);
 }
 
 // ---- track colour and order ----
 
 // Colour is stored as an INDEX into the theme palette, not a hex value, so
 // the whole look stays retunable from css/base.css - which is the point of
-// the palette existing. Absent means "follow my position", which is how every
-// project behaved before colours could be set, so nothing changes on load.
+// the palette existing.
+//
+// Every track carries one explicitly. Deriving it from row position was
+// tidy until rows could be reordered, at which point every track's colour
+// shuffled whenever the list did - an identity that moves is not an identity.
+// New tracks get a colour baked in at birth and keep it until someone
+// changes it.
 export const TRACK_COLORS = 8;
 
 export function trackColorIndex(doc, track) {
   if (track && Number.isInteger(track.color)) {
     return ((track.color % TRACK_COLORS) + TRACK_COLORS) % TRACK_COLORS;
   }
+  // Only reachable for a hand-written document; migrate() bakes colours into
+  // everything else on load.
   const idx = doc.tracks.findIndex((t) => t.id === (track && track.id));
   return Math.max(0, idx) % TRACK_COLORS;
+}
+
+// The least-used palette entry, so a new track is visually distinct for as
+// long as the palette allows and then wraps around evenly. Ties go to the
+// lowest index, which keeps the assignment deterministic.
+export function pickTrackColor(doc) {
+  const used = new Array(TRACK_COLORS).fill(0);
+  for (const t of doc.tracks) {
+    if (Number.isInteger(t.color)) used[((t.color % TRACK_COLORS) + TRACK_COLORS) % TRACK_COLORS]++;
+  }
+  let best = 0;
+  for (let i = 1; i < TRACK_COLORS; i++) if (used[i] < used[best]) best = i;
+  return best;
 }
 
 // Move a track to a new position. Reordering is presentational - playback
@@ -831,6 +878,7 @@ export function applyImport(doc, parsed, assignments) {
       name: a.name || src.name || `Track ${a.index + 1}`,
       role: a.role,
       instrumentId: doc.mode === 'mono' ? 'badge' : 'sine',
+      color: newTracks.length % TRACK_COLORS,
     });
     track.notes = src.notes.map((n) => createNote(n));
     sortNotes(track);
@@ -868,6 +916,7 @@ export function mergeImport(doc, parsed, assignments, { offsetTick = 0 } = {}) {
       name,
       role: a.role === 'chords' ? 'chords' : a.role,
       instrumentId: doc.mode === 'mono' ? 'badge' : 'sine',
+      color: pickTrackColor(doc),
     });
     track.notes = src.notes.map((n) => createNote({ ...n, startTick: n.startTick + offsetTick }));
     sortNotes(track);

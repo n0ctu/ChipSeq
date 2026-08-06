@@ -104,14 +104,14 @@ export function drawNotes(ctx, ui, doc, w, h, theme, items, selection, conflictI
     if (!item.ghost) continue;
     const color = trackColor(theme, doc, item.track.id);
     const selected = selection.has(item.note.id);
-    ctx.globalAlpha = selected ? 0.45 : 0.25;
+    ctx.globalAlpha = item.silenced ? 0.08 : selected ? 0.45 : 0.25;
     ctx.fillStyle = color;
     for (const ev of item.ghost) {
       const r = noteRect(ui, ev);
       roundRect(ctx, r.x, r.y, r.w, r.h, 2);
       ctx.fill();
     }
-    ctx.globalAlpha = selected ? 0.7 : 0.5;
+    ctx.globalAlpha = item.silenced ? 0.15 : selected ? 0.7 : 0.5;
     ctx.strokeStyle = color;
     ctx.lineWidth = 1;
     for (const ev of item.ghost) {
@@ -130,8 +130,10 @@ export function drawNotes(ctx, ui, doc, w, h, theme, items, selection, conflictI
     const isConflict = conflictIds && conflictIds.has(note.id);
     const isActiveTrack = track.id === doc.activeTrackId;
     const dimmed = doc.mode === 'poly' && !isActiveTrack;
-
-    ctx.globalAlpha = dimmed ? 0.45 : 1;
+    // Solo has silenced this track: fainter than a merely inactive one, so
+    // "not the track I am editing" and "not being heard right now" do not
+    // look like the same thing.
+    ctx.globalAlpha = item.silenced ? 0.18 : dimmed ? 0.45 : 1;
     ctx.fillStyle = isConflict ? theme.danger : color;
     roundRect(ctx, r.x, r.y, r.w, r.h, 2);
     ctx.fill();

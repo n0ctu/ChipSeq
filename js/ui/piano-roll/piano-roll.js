@@ -4,7 +4,7 @@
 import { readTheme, drawGrid, drawNotes, drawOverlay, drawRuler, drawKeys, drawChordLane } from './render.js';
 import { clampScroll, effectiveSnap, tickToX, PITCH_MIN, PITCH_MAX } from './coords.js';
 import { flattenNote, buildChordEvents } from '../../core/flatten.js';
-import { songEndTick } from '../../core/doc.js';
+import { songEndTick, soloActive } from '../../core/doc.js';
 import { chordName } from '../../core/music.js';
 import { attachInteractions } from './interactions.js';
 import { initAutomationLane } from './automation-lane.js';
@@ -82,12 +82,18 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
         : [...doc.tracks.filter((t) => t.role !== 'muted' && t.id !== doc.activeTrackId),
            ...doc.tracks.filter((t) => t.id === doc.activeTrackId)];
 
+    // Solo silences without hiding: those notes stay on the grid so the piece
+    // is still readable while you listen to one part of it. Mute is the one
+    // that removes them (the filter above), because a muted track is not part
+    // of the piece right now.
+    const solo = soloActive(doc);
     for (const track of tracks) {
+      const silenced = solo && !track.solo;
       for (const note of track.notes) {
         if (note.startTick > endTick) break;
         if (note.startTick + note.durationTicks < startTick && !note.harmonics) continue;
         if (erased && erased.has(note.id)) continue;
-        const item = { track, note, ghost: null };
+        const item = { track, note, ghost: null, silenced };
         if (note.harmonics) {
           const events = flattenNote(doc, track.id, note.id);
           if (!(events.length === 1 && events[0].pitch === note.pitch && events[0].startTick === note.startTick && events[0].durationTicks === note.durationTicks)) {

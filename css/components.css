@@ -128,6 +128,7 @@
 }
 .track-row .role-btn.on { color: var(--accent); border-color: var(--accent-dim); background: var(--bg-3); }
 .track-row .role-btn.chords.on { color: var(--track-4); border-color: var(--track-4); }
+.track-row .role-btn.solo.on { color: var(--warn); border-color: var(--warn); }
 .track-row select { max-width: 74px; font-size: 11px; }
 .track-role-chip {
   font-size: 10px;
@@ -152,15 +153,6 @@
   border: 2px solid transparent;
 }
 .swatch.on { border-color: var(--text); }
-.swatch-auto {
-  background: var(--bg-2);
-  border: 2px dashed var(--line-strong);
-  color: var(--text-dim);
-  font-size: 9px;
-  width: auto;
-  padding: 0 6px;
-}
-.swatch-auto.on { border-style: solid; border-color: var(--text); color: var(--text); }
 
 /* recent projects */
 .recent-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }

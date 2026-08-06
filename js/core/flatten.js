@@ -4,7 +4,8 @@
 
 import { renderHarmonics, resolveChord } from './harmonics.js';
 import {
-  playableTracks, getTrack, getNote, findOverlaps, ticksPerBar, trackPan, tickToSeconds,
+  unmutedTracks, playableTracks, soloActive, getTrack, getNote, findOverlaps, ticksPerBar,
+  trackPan, tickToSeconds,
 } from './doc.js';
 import { sampleAutomation, sampleGainCurve, quantizeDuty, AUTOMATION_PARAMS } from './automation.js';
 import { applyNormalization } from './normalize.js';
@@ -139,7 +140,11 @@ export function flattenSong(doc) {
   const warnings = [];
   const events = [];
 
-  for (const track of playableTracks(doc)) {
+  // Everything UNMUTED is rendered, including tracks that solo will silence
+  // in a moment. Levels has to weigh the whole piece: a soloed track must
+  // preview at the level it has in the mix, not at the louder level it would
+  // reach with the others removed. Solo is applied after normalization, below.
+  for (const track of unmutedTracks(doc)) {
     const instrumentId =
       doc.mode === 'mono' ? 'badge' : track.instrument ? 'track:' + track.id : track.instrumentId;
 
@@ -231,6 +236,13 @@ export function flattenSong(doc) {
   // harmonics have expanded and the automation lanes have been sampled.
   // Poly only - mono returned above, so badge output is untouched.
   applyNormalization(doc, events, (tick) => tickToSeconds(doc, tick));
+
+  // Solo last: it decides what you HEAR, not what the piece is, so it must
+  // not have been able to influence the levels computed above.
+  if (soloActive(doc)) {
+    const heard = new Set(doc.tracks.filter((t) => t.solo && t.role !== 'muted').map((t) => t.id));
+    return { events: events.filter((e) => heard.has(e.trackId)), warnings };
+  }
 
   return { events, warnings };
 }
