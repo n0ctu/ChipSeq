@@ -120,15 +120,22 @@
 .track-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .track-row .btn-icon { padding: 1px 5px; font-size: 11px; color: var(--text-dim); }
 .track-row .btn-icon.on { color: var(--accent); }
-.track-row .role-btn {
+/* M / C / S markers. Defined once and unscoped, so the same control looks
+   the same wherever it appears - solo used to be green in the Mixer and
+   yellow in the tracks panel. */
+.role-btn {
   border: 1px solid var(--line);
   border-radius: 3px;
   font-family: var(--font-mono);
   font-weight: 700;
+  color: var(--text-dim);
+  padding: 0 5px;
 }
-.track-row .role-btn.on { color: var(--accent); border-color: var(--accent-dim); background: var(--bg-3); }
-.track-row .role-btn.chords.on { color: var(--track-4); border-color: var(--track-4); }
-.track-row .role-btn.solo.on { color: var(--warn); border-color: var(--warn); }
+.role-btn.on { color: var(--accent); border-color: var(--accent-dim); background: var(--bg-3); }
+.role-btn.chords.on { color: var(--track-4); border-color: var(--track-4); }
+/* solo is a temporary override you want to notice and undo, so it gets the
+   warning colour rather than the "this is on and fine" accent */
+.role-btn.solo.on { color: var(--warn); border-color: var(--warn); }
 .track-row select { max-width: 74px; font-size: 11px; }
 .track-role-chip {
   font-size: 10px;
@@ -255,16 +262,6 @@
 .mix-row.silenced { opacity: 0.45; }
 .mix-head { display: flex; align-items: center; gap: 6px; }
 .mix-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.mix-solo {
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: 11px;
-  padding: 0 5px;
-  color: var(--text-dim);
-}
-.mix-solo.on { color: var(--accent); border-color: var(--accent-dim); background: var(--bg-3); }
 .mix-ctl { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); }
 .mix-ctl label { width: 30px; flex: none; }
 .mix-ctl input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }

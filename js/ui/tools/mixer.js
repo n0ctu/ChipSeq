@@ -32,8 +32,8 @@ export function mount(body, { store, engine }) {
             <div class="mix-head">
               <span class="track-color" style="background:var(--track-${trackColorIndex(doc, track) + 1})"></span>
               <span class="mix-name">${track.name}</span>
-              <button class="btn-icon mix-solo${track.solo ? ' on' : ''}" data-act="solo"
-                title="Solo - hear only the soloed tracks">S</button>
+              <button class="btn-icon role-btn solo${track.solo ? ' on' : ''}" data-act="solo"
+                title="Solo - hear only the soloed tracks. The others stay visible and levels are unchanged, so a soloed track sounds exactly as it does in the mix.">S</button>
             </div>
             <div class="mix-ctl">
               <label>Gain</label>
