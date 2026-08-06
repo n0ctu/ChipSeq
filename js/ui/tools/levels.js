@@ -11,10 +11,10 @@ import { flattenSong } from '../../core/flatten.js';
 import { getInstrument } from '../../core/instruments.js';
 import { ticksPerBar } from '../../core/doc.js';
 import {
-  DEFAULT_NORMALIZE, normalizeConfig, trackExponent, predictPeak,
+  DEFAULT_NORMALIZE, normalizeConfig, trackExponent, predictPeak, dbToLin,
 } from '../../core/normalize.js';
 
-const KNEE = 0.708; // where the master soft clipper starts shaping
+
 
 export function mount(body, { store }) {
   let timer = null;
@@ -47,8 +47,9 @@ export function mount(body, { store }) {
     const on = measure(normalizeConfig(doc).enabled);
     const tpBar = ticksPerBar(doc);
     const bar = (t) => Math.floor(t / tpBar) + 1;
-    const verdict = (p) => (p.peak > 1 ? 'over full scale' : p.peak > KNEE ? 'into the limiter' : 'clean');
-    const cls = (p) => (p.peak > 1 ? 'hot' : p.peak > KNEE ? 'warm' : 'ok');
+    const target = dbToLin(normalizeConfig(doc).targetDb);
+    const verdict = (p) => (p.peak > 1 ? 'over full scale' : p.peak > target * 1.02 ? 'above target' : 'within target');
+    const cls = (p) => (p.peak > 1 ? 'hot' : p.peak > target * 1.02 ? 'warm' : 'ok');
     el.innerHTML = `
       <div class="lv-row"><span>without</span>
         <b class="${cls(off)}">${off.peak.toFixed(2)}</b><span>${verdict(off)}</span></div>
@@ -60,21 +61,27 @@ export function mount(body, { store }) {
   function render() {
     const doc = store.getDoc();
     const cfg = normalizeConfig(doc);
-    const slider = (id, label, value, max, step, fmt) => `
+    const slider = (id, label, value, min, max, step, fmt) => `
       <div class="mix-ctl">
         <label>${label}</label>
-        <input type="range" data-k="${id}" min="0" max="${max}" step="${step}" value="${value}" />
+        <input type="range" data-k="${id}" min="${min}" max="${max}" step="${step}" value="${value}" />
         <span class="mix-val">${fmt}</span>
       </div>`;
 
     body.innerHTML = `
       <label class="tb-field"><input type="checkbox" id="lv-on" ${cfg.enabled ? 'checked' : ''} />
-        <span>Normalize polyphony</span></label>
-      ${slider('song', 'Song', Math.round(cfg.song * 100), 100, 5, cfg.song.toFixed(2))}
-      ${slider('track', 'Track', Math.round(cfg.track * 100), 100, 5, cfg.track.toFixed(2))}
-      ${slider('smoothMs', 'Smooth', cfg.smoothMs, 60, 1, cfg.smoothMs + ' ms')}
-      <div class="lv-legend">0 = off (voices sum) &middot; 0.5 = equal power &middot; 1 = constant sum</div>
+        <span>Keep the mix under the target</span></label>
+      ${slider('targetDb', 'Target', cfg.targetDb, -12, 0, 0.5, cfg.targetDb.toFixed(1) + ' dB')}
+      ${slider('smoothMs', 'Smooth', cfg.smoothMs, 0, 60, 1, cfg.smoothMs + ' ms')}
+      <div class="lv-legend">Nothing is touched while the mix stays under the target -
+        only moments that would clip are pulled down.</div>
       <div id="lv-readout" class="lv-readout"></div>
+
+      <div class="lv-legend"><b>Evenness</b> (optional) - scale voices by N<sup>-k</sup> so a
+        chord sounds only slightly louder than one note. 0 = off, 0.5 = equal power,
+        1 = a chord as loud as a single note.</div>
+      ${slider('song', 'Song', Math.round(cfg.song * 100), 0, 100, 5, cfg.song.toFixed(2))}
+      ${slider('track', 'Track', Math.round(cfg.track * 100), 0, 100, 5, cfg.track.toFixed(2))}
       <div class="lv-tracks">${doc.tracks
         .map((t) => `<label class="lv-track"><input type="checkbox" data-track="${t.id}"
           ${trackExponent(cfg, t) > 0 ? 'checked' : ''} /><span>${t.name}</span></label>`)
@@ -88,9 +95,9 @@ export function mount(body, { store }) {
     if (el.dataset && el.dataset.k) {
       const key = el.dataset.k;
       const raw = Number(el.value);
-      const value = key === 'smoothMs' ? raw : raw / 100;
+      const value = key === 'smoothMs' || key === 'targetDb' ? raw : raw / 100;
       el.parentElement.querySelector('.mix-val').textContent =
-        key === 'smoothMs' ? raw + ' ms' : value.toFixed(2);
+        key === 'smoothMs' ? raw + ' ms' : key === 'targetDb' ? raw.toFixed(1) + ' dB' : value.toFixed(2);
       patch(() => ({ [key]: value }));
       scheduleReadout();
     }

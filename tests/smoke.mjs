@@ -1562,6 +1562,10 @@ await check('a deliberately hot mix is limited, not clipped, and is reported', `
   const { dbToLin, limiterConfig } = await import('/js/core/graph.js');
   const doc = structuredClone(window.__chipseq.store.getDoc());
   doc.mode = 'poly';
+  // This tests the master CLIPPER, so Levels is switched off - otherwise it
+  // pulls the mix under the target and the clipper never engages, which is
+  // Levels working correctly but proves nothing about the clipper.
+  doc.master = { ...(doc.master || {}), normalize: { kind: 'normalize', v: 1, enabled: false } };
   // eight loud voices stacked on the same beat - guaranteed to sum over 1.0
   doc.instruments.forEach((i) => { i.gain = 1; });
   doc.tracks = [0,1,2,3,4,5,6,7].map((i) => ({
