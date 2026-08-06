@@ -1823,6 +1823,37 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     assert(JSON.stringify(d) === before, 'a well-formed project is not modified');
   }
 
+  // Duplicate track ids. Every lookup by id resolves to the first match, so
+  // the second track answers to the first one's colour, selection and notes -
+  // which is exactly how a track showed one colour in the panel and another
+  // in the Mixer. The tracks are distinct; only the label collided.
+  {
+    const { d, extra } = twoTrack();
+    const shared = d.tracks[0].id;
+    extra.id = shared;
+    extra.instrument = { kind: 'square' };
+    extra.instrumentId = 'track:' + shared;
+    const warnings = enforceInvariants(d);
+    assert(d.tracks[0].id !== d.tracks[1].id, 'a duplicate id is re-issued');
+    assert(d.tracks[0].id === shared, 'the first holder keeps the id it had');
+    assert(extra.instrumentId === 'track:' + extra.id,
+      'a per-track instrument reference follows the new id: ' + extra.instrumentId);
+    assert(extra.instrument, 'and the custom instrument is not reset as an orphan');
+    assert(warnings.some((w) => w.includes('shared an id')), 'the repair is reported: ' + JSON.stringify(warnings));
+    // The property this all exists to protect.
+    assert(getTrack(d, extra.id) === extra, 'each track is now reachable by its own id');
+  }
+
+  // A colour is part of the saved configuration, not something a view derives.
+  {
+    const { d } = twoTrack();
+    delete d.tracks[1].color;
+    enforceInvariants(d);
+    assert(Number.isInteger(d.tracks[1].color), 'a track without a colour gets one baked in');
+    assert(d.tracks[1].color !== d.tracks[0].color, 'and it is not one already in use');
+    assert(Number.isInteger(createTrack({ name: 'x', doc: d }).color), 'createTrack bakes one at birth');
+  }
+
   // Deleting a track: the markers follow, without the call site doing it.
   {
     const { d, extra } = twoTrack();

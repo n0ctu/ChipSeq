@@ -148,7 +148,7 @@ export function initAutomationLane({ store, uiStore, canvas }) {
     const { lanes, track } = layout();
     if (!track || h < 2) return;
     const font = getComputedStyle(document.documentElement).getPropertyValue('--font-mono');
-    const color = trackColor(theme, doc, track.id);
+    const color = trackColor(theme, doc, track);
 
     // master strip
     ctx.fillStyle = theme.panel;

@@ -92,7 +92,7 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker, onImportTr
 
       const color = document.createElement('span');
       color.className = 'track-color';
-      color.style.background = trackColor(theme, doc, track.id);
+      color.style.background = trackColor(theme, doc, track);
       li.appendChild(color);
 
       const name = document.createElement('span');
