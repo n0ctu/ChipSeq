@@ -1,0 +1,76 @@
+# Publishing is a DELIBERATE act: pushes to main do not deploy, tags do.
+#
+# This replaces branch-based Pages ("Deploy from a branch"), which deployed on
+# every push. GitHub runs ONE Pages deployment at a time per repository, so a
+# burst of commits queues up - and the deploy step aborts itself with
+# "Timeout reached" after about ten minutes of waiting. Four pushes in one
+# afternoon was enough to jam it for over an hour and lose two deployments.
+#
+# To publish:
+#
+#   git tag v0.2.0 && git push origin v0.2.0
+#
+# workflow_dispatch republishes the current commit without minting a tag.
+
+name: Release to Pages
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One at a time, and a NEWER deployment wins instead of waiting behind an
+# older one - the specific failure this workflow exists to replace.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # No install step, deliberately: the app and its tests have no
+      # dependencies. tests/smoke.mjs is not run here because it drives a real
+      # Chromium over CDP; it stays a local gate.
+      - run: node tests/unit.mjs
+      - run: node tests/check.mjs
+      - run: node tests/golden.mjs
+
+      # The tag and the version the footer shows must agree, or the site
+      # announces a version that does not exist in the history.
+      - name: Tag matches APP_VERSION
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          app=$(node -e "import('./js/core/version.js').then((m) => console.log(m.APP_VERSION))")
+          echo "tag=$tag APP_VERSION=$app"
+          if [ "$tag" != "$app" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match APP_VERSION $app in js/core/version.js"
+            exit 1
+          fi
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      # The whole repository IS the site - no build step, so there is nothing
+      # to assemble and nothing that could differ from what was tested.
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deploy
+        uses: actions/deploy-pages@v4
