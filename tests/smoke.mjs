@@ -950,14 +950,14 @@ await check('row click changes editing focus but NOT the melody marker', `(() =>
   return focusMoved && melodyStayed || 'focus=' + focusMoved + ' melody=' + melodyStayed;
 })()`);
 
-// ---- track rename: ENTER in the prompt saves ----
-await check('Enter in the rename prompt saves the new name', `(async () => {
+// ---- track dialog: name + colour, Enter saves ----
+await check('Enter in the track dialog saves the new name', `(async () => {
   const nameEl = document.querySelector('#track-list .track-row .track-name');
   nameEl.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
   await new Promise((r) => setTimeout(r, 250));
-  const dlg = document.getElementById('dlg-prompt');
-  if (!dlg.open) return 'prompt did not open';
-  const input = document.getElementById('prompt-input');
+  const dlg = document.getElementById('dlg-track');
+  if (!dlg.open) return 'track dialog did not open';
+  const input = document.getElementById('track-name');
   input.value = 'Renamed via Enter';
   input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
   await new Promise((r) => setTimeout(r, 250));
@@ -965,6 +965,70 @@ await check('Enter in the rename prompt saves the new name', `(async () => {
   const renamed = window.__chipseq.store.getDoc().tracks[0].name === 'Renamed via Enter';
   window.__chipseq.store.undo();
   return closed && renamed || 'closed=' + closed + ' renamed=' + renamed;
+})()`);
+
+await check('the track dialog sets an explicit colour', `(async () => {
+  const store = window.__chipseq.store;
+  const nameEl = document.querySelector('#track-list .track-row .track-name');
+  nameEl.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 250));
+  const swatches = document.querySelectorAll('#track-colors .swatch');
+  if (swatches.length !== 9) return 'expected 8 colours + auto, got ' + swatches.length;
+  // a track starts on "auto" - colour follows its position
+  const autoWasOn = swatches[8].classList.contains('on');
+  swatches[4].click();
+  document.querySelector('#dlg-track [value="ok"]').click();
+  await new Promise((r) => setTimeout(r, 250));
+  const t = store.getDoc().tracks[0];
+  const picked = t.color === 4;
+  store.undo();
+  const backToAuto = store.getDoc().tracks[0].color === undefined;
+  return (autoWasOn && picked && backToAuto)
+    || 'auto=' + autoWasOn + ' picked=' + picked + ' (' + t.color + ') undo=' + backToAuto;
+})()`);
+
+await check('an explicit colour survives reordering, an auto one follows', `(async () => {
+  const { trackColorIndex } = await import('/js/core/doc.js');
+  const store = window.__chipseq.store;
+  const doc = store.getDoc();
+  if (doc.tracks.length < 2) return 'need two tracks';
+  const first = doc.tracks[0].id;
+  store.commit('pin colour', ['tracks'], (d) => { d.tracks[0].color = 6; });
+  const before = trackColorIndex(store.getDoc(), store.getDoc().tracks[0]);
+  // the second track has no colour, so it follows its index
+  const autoBefore = trackColorIndex(store.getDoc(), store.getDoc().tracks[1]);
+  store.commit('reorder', ['tracks'], (d) => {
+    const [t] = d.tracks.splice(0, 1);
+    d.tracks.push(t);
+  });
+  const moved = store.getDoc().tracks.find((t) => t.id === first);
+  const after = trackColorIndex(store.getDoc(), moved);
+  const autoAfter = trackColorIndex(store.getDoc(), store.getDoc().tracks[0]);
+  store.undo();
+  store.undo();
+  return (before === 6 && after === 6 && autoBefore === 1 && autoAfter === 0)
+    || 'pinned ' + before + '->' + after + ', auto ' + autoBefore + '->' + autoAfter;
+})()`);
+
+await check('dragging the colour dot reorders the track list', `(async () => {
+  const store = window.__chipseq.store;
+  const rows = () => [...document.querySelectorAll('#track-list .track-row')];
+  if (rows().length < 2) return 'need two tracks';
+  const namesBefore = store.getDoc().tracks.map((t) => t.name);
+  const grip = rows()[0].querySelector('.track-grip');
+  const target = rows()[rows().length - 1].getBoundingClientRect();
+  grip.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 10, clientY: rows()[0].getBoundingClientRect().top + 5, button: 0 }));
+  window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: target.bottom - 2 }));
+  window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 10, clientY: target.bottom - 2 }));
+  await new Promise((r) => setTimeout(r, 200));
+  const namesAfter = store.getDoc().tracks.map((t) => t.name);
+  const movedToEnd = namesAfter[namesAfter.length - 1] === namesBefore[0];
+  const sameSet = [...namesAfter].sort().join() === [...namesBefore].sort().join();
+  // one drag, one undo entry
+  store.undo();
+  const restored = store.getDoc().tracks.map((t) => t.name).join() === namesBefore.join();
+  return (movedToEnd && sameSet && restored)
+    || 'after=' + namesAfter.join() + ' restored=' + restored;
 })()`);
 
 // ---- import MIDI tracks into the open project ----

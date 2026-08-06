@@ -989,6 +989,53 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(limiterConfig({ master: { limiter: { ceilingDb: -6 } } }).kneeDb === cfg.kneeDb, 'partial overrides keep defaults');
 }
 
+// ---- track colour and order ----
+{
+  const { trackColorIndex, moveTrack, TRACK_COLORS, createTrack: mkTrack } = await import('../js/core/doc.js');
+
+  const doc = createProject({ name: 'order', mode: 'poly' });
+  doc.tracks[0].name = 'A';
+  for (const n of ['B', 'C', 'D']) {
+    doc.tracks.push(mkTrack({ name: n, role: 'melody', instrumentId: 'sine' }));
+  }
+  const names = () => doc.tracks.map((t) => t.name).join('');
+
+  // Colour follows position until someone picks one, which is exactly how
+  // every project behaved before colours existed.
+  assert(trackColorIndex(doc, doc.tracks[0]) === 0, 'the first track takes the first colour');
+  assert(trackColorIndex(doc, doc.tracks[2]) === 2, 'and the third takes the third');
+  doc.tracks[2].color = 6;
+  assert(trackColorIndex(doc, doc.tracks[2]) === 6, 'an explicit colour wins');
+  assert(trackColorIndex(doc, { ...doc.tracks[0], color: TRACK_COLORS + 3 }) === 3, 'out-of-range colours wrap');
+  assert(trackColorIndex(doc, { ...doc.tracks[0], color: -1 }) === TRACK_COLORS - 1, 'and wrap the other way');
+
+  // Reordering
+  assert(moveTrack(doc, doc.tracks[0].id, 2) === true, 'a track moves');
+  assert(names() === 'BCAD', 'to the requested position: ' + names());
+  moveTrack(doc, doc.tracks.find((t) => t.name === 'D').id, 0);
+  assert(names() === 'DBCA', 'including to the front: ' + names());
+  assert(doc.tracks.length === 4, 'no track is lost or duplicated');
+
+  const before = names();
+  assert(moveTrack(doc, doc.tracks[1].id, 1) === false, 'moving a track onto itself is a no-op');
+  assert(names() === before, 'and changes nothing');
+  assert(moveTrack(doc, 'nope', 0) === false, 'an unknown id is a no-op');
+  moveTrack(doc, doc.tracks[0].id, 99);
+  assert(doc.tracks.length === 4 && doc.tracks[3].name === 'D', 'an out-of-range target clamps to the end');
+
+  // The point of explicit colours: reordering must not reshuffle them.
+  {
+    const d = createProject({ name: 'colours', mode: 'poly' });
+    d.tracks[0].color = 5;
+    d.tracks.push(mkTrack({ name: 'second', role: 'melody', instrumentId: 'sine' }));
+    const pinned = d.tracks[0].id;
+    assert(trackColorIndex(d, d.tracks[1]) === 1, 'an auto track follows its index');
+    moveTrack(d, pinned, 1);
+    assert(trackColorIndex(d, d.tracks.find((t) => t.id === pinned)) === 5, 'a pinned colour survives the move');
+    assert(trackColorIndex(d, d.tracks[0]) === 0, 'while an auto one takes its new position');
+  }
+}
+
 // ---- saved view ----
 {
   const { setView, viewOf } = await import('../js/core/doc.js');

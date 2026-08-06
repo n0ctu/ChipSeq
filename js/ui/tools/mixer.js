@@ -5,7 +5,7 @@
 // than in the Instrument card, and they act on the per-track audio nodes
 // built by graph.js rather than being baked into each voice.
 
-import { getTrack, trackGain, trackPan, spreadPan, hasPanLane } from '../../core/doc.js';
+import { getTrack, trackGain, trackPan, spreadPan, hasPanLane, trackColorIndex } from '../../core/doc.js';
 import { formatPercent, formatPan, isHot } from '../../core/units.js';
 
 export function mount(body, { store, engine }) {
@@ -20,7 +20,7 @@ export function mount(body, { store, engine }) {
       title="Fan the tracks across the stereo field - melody centred, the rest outward">Spread</button>`;
 
     body.innerHTML = spread + doc.tracks
-      .map((track, i) => {
+      .map((track) => {
         const gain = trackGain(track);
         const pan = trackPan(track);
         const muted = track.role === 'muted';
@@ -30,7 +30,7 @@ export function mount(body, { store, engine }) {
         return `
           <div class="mix-row${silenced ? ' silenced' : ''}" data-track="${track.id}">
             <div class="mix-head">
-              <span class="track-color" style="background:var(--track-${(i % 8) + 1})"></span>
+              <span class="track-color" style="background:var(--track-${trackColorIndex(doc, track) + 1})"></span>
               <span class="mix-name">${track.name}</span>
               <button class="btn-icon mix-solo${track.solo ? ' on' : ''}" data-act="solo"
                 title="Solo - hear only the soloed tracks">S</button>

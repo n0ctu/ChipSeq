@@ -43,6 +43,61 @@ export async function promptDialog(title, initial = '') {
   return result === 'ok' ? input.value.trim() : null;
 }
 
+// Rename + recolour in one dialog: they are the two things you change about a
+// track as an object, and splitting them across two interactions for the sake
+// of one text field would be worse.
+//
+// Returns { name, color } or null. color is a palette INDEX, so the theme
+// stays in charge of the actual shade.
+export async function trackDialog(track, colorCount = 8) {
+  const dlg = document.getElementById('dlg-track');
+  const input = dlg.querySelector('#track-name');
+  const swatches = dlg.querySelector('#track-colors');
+  input.value = track.name;
+
+  let picked = Number.isInteger(track.color) ? track.color : null;
+  swatches.innerHTML = '';
+  for (let i = 0; i < colorCount; i++) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'swatch' + (picked === i ? ' on' : '');
+    b.style.background = `var(--track-${i + 1})`;
+    b.dataset.color = String(i);
+    b.title = `Colour ${i + 1}`;
+    swatches.appendChild(b);
+  }
+  // "Auto" keeps the old behaviour - colour follows the row's position - and
+  // is what every track uses until someone picks one.
+  const auto = document.createElement('button');
+  auto.type = 'button';
+  auto.className = 'swatch swatch-auto' + (picked === null ? ' on' : '');
+  auto.dataset.color = 'auto';
+  auto.textContent = 'auto';
+  auto.title = 'Follow the track order';
+  swatches.appendChild(auto);
+
+  swatches.onclick = (e) => {
+    const b = e.target.closest('[data-color]');
+    if (!b) return;
+    picked = b.dataset.color === 'auto' ? null : Number(b.dataset.color);
+    for (const el of swatches.children) {
+      el.classList.toggle('on', el === b);
+    }
+  };
+  // Enter confirms; the form's first button is Cancel, so implicit submission
+  // would otherwise discard everything.
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      dlg.close('ok');
+    }
+  };
+  setTimeout(() => input.select(), 0);
+  const result = await openDialog(dlg);
+  if (result !== 'ok') return null;
+  return { name: input.value.trim() || track.name, color: picked };
+}
+
 export function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
