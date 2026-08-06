@@ -1,10 +1,10 @@
-// Export dialog: .h (mono badge header), .wav render, .tune.json project file.
+// Export dialog: .h (mono badge header), .wav render, .chipseq.json project file.
 
 import { openDialog, downloadBlob } from './dialogs.js';
 import { exportHeader, sanitizeSymbolName } from '../core/export-h.js';
 import { exportFmf } from '../core/export-fmf.js';
 import { renderWav } from '../core/export-wav.js';
-import { exportTuneJson } from '../core/persist.js';
+import { exportProjectFile } from '../core/persist.js';
 import { ticksPerBar, needsStereo, trackPan, hasPanLane } from '../core/doc.js';
 
 export function initExportDialog({ store, conflicts }) {
@@ -198,7 +198,7 @@ export function initExportDialog({ store, conflicts }) {
         btn.textContent = 'Download';
       }
     } else {
-      downloadBlob(exportTuneJson(doc), base + '.tune.json');
+      downloadBlob(exportProjectFile(doc), base + '.chipseq.json');
     }
   });
 

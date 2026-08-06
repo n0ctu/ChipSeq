@@ -1124,9 +1124,9 @@ await check('the sliders stand down rather than rounding the curve away', `(() =
 })()`);
 
 await check('a drawn envelope survives a save/load round-trip', `(async () => {
-  const { exportTuneJson, importTuneJson } = await import('/js/core/persist.js');
+  const { exportProjectFile, importProjectFile } = await import('/js/core/persist.js');
   const doc = window.__chipseq.store.getDoc();
-  const back = importTuneJson(await exportTuneJson(doc).text());
+  const back = importProjectFile(await exportProjectFile(doc).text());
   const a = doc.tracks[0].instrument.env;
   const b = back.tracks[0].instrument.env;
   return JSON.stringify(a) === JSON.stringify(b) || JSON.stringify(b);
@@ -1432,9 +1432,9 @@ await check('loop region restored from localStorage', `(() => {
   const loop = window.__chipseq.store.getLoop();
   return loop && loop.startTick === 1536 && loop.endTick === 1920 || JSON.stringify(loop);
 })()`);
-await check('loop region included in .tune.json export', `(async () => {
-  const { exportTuneJson } = await import('/js/core/persist.js');
-  const text = await exportTuneJson(window.__chipseq.store.getDoc()).text();
+await check('loop region included in .chipseq.json export', `(async () => {
+  const { exportProjectFile } = await import('/js/core/persist.js');
+  const text = await exportProjectFile(window.__chipseq.store.getDoc()).text();
   const parsed = JSON.parse(text);
   return parsed.loop && parsed.loop.startTick === 1536 || JSON.stringify(parsed.loop);
 })()`);
@@ -1444,9 +1444,9 @@ await check('snap preference restored from localStorage', `(() => {
   return ui.snapTicks === 24 && sel.options[sel.selectedIndex].textContent === '1/16'
     || 'ui=' + ui.snapTicks + ' sel=' + sel.options[sel.selectedIndex].textContent;
 })()`);
-await check('grid preference included in .tune.json export', `(async () => {
-  const { exportTuneJson } = await import('/js/core/persist.js');
-  const parsed = JSON.parse(await exportTuneJson(window.__chipseq.store.getDoc()).text());
+await check('grid preference included in .chipseq.json export', `(async () => {
+  const { exportProjectFile } = await import('/js/core/persist.js');
+  const parsed = JSON.parse(await exportProjectFile(window.__chipseq.store.getDoc()).text());
   return parsed.grid && parsed.grid.snapTicks === 24 || JSON.stringify(parsed.grid);
 })()`);
 
@@ -1853,6 +1853,49 @@ await check('solo silences everything else', `(async () => {
   });
   const ids = new Set(flattenSong(doc).events.map((e) => e.trackId));
   return (ids.size === 1 && ids.has('mod2')) || [...ids].join(',');
+})()`);
+
+// ---- saved view: scroll, zoom and cursor travel with the project ----
+await check('the viewport is mirrored into the document', `(async () => {
+  const store = window.__chipseq.store;
+  const ui = window.__chipseq.uiStore;
+  ui.update('view', (s) => { s.scrollTick = 768; s.scrollPitch = 66; s.pxPerTick = 1.25; });
+  ui.update('cursor', (s) => { s.gridCursor.pitch = 55; });
+  store.session.originTick = 384;
+  ui.update('transport', () => {});
+  await new Promise((r) => setTimeout(r, 450)); // the mirror is throttled
+  const v = store.getView();
+  return (v && v.scrollTick === 768 && v.scrollPitch === 66 && v.pxPerTick === 1.25
+    && v.cursorTick === 384 && v.cursorPitch === 55)
+    || JSON.stringify(v);
+})()`);
+
+await check('scrolling is not an edit', `(() => {
+  // no undo entry, and the history button state must not have changed
+  const store = window.__chipseq.store;
+  const before = store.canUndo();
+  store.setView({ scrollTick: 12, scrollPitch: 60, pxPerTick: 1, cursorTick: 0, cursorPitch: 60 });
+  return store.canUndo() === before || 'undo state changed';
+})()`);
+
+await check('the saved view is exported and restored on reopen', `(async () => {
+  const { exportProjectFile, importProjectFile } = await import('/js/core/persist.js');
+  const store = window.__chipseq.store;
+  // scrollPitch 100: a tall window clamps low values up (it would need rows
+  // below the lowest pitch), so pick one this viewport can actually honour.
+  store.setView({ scrollTick: 960, scrollPitch: 100, pxPerTick: 2, cursorTick: 288, cursorPitch: 64 });
+  const doc = store.getDoc();
+  const back = importProjectFile(await exportProjectFile(doc).text());
+  if (JSON.stringify(back.view) !== JSON.stringify(doc.view)) return 'not exported: ' + JSON.stringify(back.view);
+
+  // reopening applies it to the live viewport instead of re-centring
+  window.__chipseq.openProject(back);
+  await new Promise((r) => setTimeout(r, 400));
+  const ui = window.__chipseq.uiStore.state;
+  return (ui.scrollTick === 960 && ui.scrollPitch === 100 && ui.pxPerTick === 2
+    && window.__chipseq.store.session.originTick === 288)
+    || 'scroll=' + ui.scrollTick + '/' + ui.scrollPitch + ' zoom=' + ui.pxPerTick
+       + ' cursor=' + window.__chipseq.store.session.originTick;
 })()`);
 
 // ---- referential integrity through the real UI ----

@@ -18,7 +18,7 @@
       <div class="start-actions">
         <button id="btn-new-project" class="btn btn-primary">New project</button>
         <button id="btn-import-midi" class="btn">Import MIDI…</button>
-        <button id="btn-open-tune" class="btn">Open .tune.json…</button>
+        <button id="btn-open-tune" class="btn">Open .chipseq.json…</button>
       </div>
       <h2 class="start-recent-title">Recent projects</h2>
       <ul id="recent-list" class="recent-list"></ul>
@@ -26,7 +26,7 @@
         <h2 class="start-recent-title">Demos</h2>
         <ul id="demo-list" class="recent-list"></ul>
       </div>
-      <p class="start-hint">Drop a .mid or .tune.json file anywhere to import it.</p>
+      <p class="start-hint">Drop a .mid or .chipseq.json file anywhere to import it.</p>
     </div>
   </section>
 
@@ -146,7 +146,7 @@
         <button type="button" data-tab="h" class="seg-btn">.h (badge)</button>
         <button type="button" data-tab="fmf" class="seg-btn">.fmf (Flipper)</button>
         <button type="button" data-tab="wav" class="seg-btn">.wav</button>
-        <button type="button" data-tab="json" class="seg-btn">.tune.json</button>
+        <button type="button" data-tab="json" class="seg-btn">.chipseq.json</button>
       </div>
       <label class="tb-field" id="export-region-row">
         <input type="checkbox" id="chk-export-region" />
@@ -173,7 +173,7 @@
         <div id="export-level" class="level-note"></div>
       </div>
       <div id="export-json-pane" hidden>
-        <p class="dlg-hint">Full project file, loadable via “Open .tune.json” - nothing is lost,
+        <p class="dlg-hint">Full project file, loadable via “Open .chipseq.json” - nothing is lost,
           arpeggios stay editable.</p>
       </div>
       <menu class="dlg-actions">
@@ -206,7 +206,7 @@
     </form>
   </dialog>
 
-  <input type="file" id="file-input" accept=".mid,.midi,.json,.tune.json" hidden />
+  <input type="file" id="file-input" accept=".mid,.midi,.json" hidden />
   <input type="file" id="track-import-input" accept=".mid,.midi" hidden />
 
   <script type="module" src="js/main.js"></script>

@@ -296,6 +296,27 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
   // Centring may be requested before the editor screen has laid out (H = 0),
   // so it is applied on the first frame that has a real height.
   let pendingCenterPitch = null;
+  // Mirror the viewport into the document so it travels with the project.
+  // Throttled and non-undoable: scrolling is not an edit, and it must not
+  // push undo snapshots or trigger a save on its own - it rides along with
+  // whatever save happens next (or the flush on tab-hide).
+  let viewTimer = null;
+  function rememberView() {
+    if (viewTimer) return;
+    viewTimer = setTimeout(() => {
+      viewTimer = null;
+      const st = uiStore.state;
+      store.setView({
+        scrollTick: st.scrollTick,
+        scrollPitch: st.scrollPitch,
+        pxPerTick: st.pxPerTick,
+        cursorTick: store.session.originTick,
+        cursorPitch: st.gridCursor.pitch,
+      });
+    }, 300);
+  }
+  uiStore.subscribe(['view', 'cursor', 'transport'], rememberView);
+
   function applyPendingCenter() {
     if (pendingCenterPitch == null || H <= 0) return;
     const pitch = pendingCenterPitch;
@@ -315,6 +336,24 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
       if (pitch == null) return;
       pendingCenterPitch = pitch;
       applyPendingCenter();
+    },
+    // Put the viewport back where the project was left. Beats centerOnPitch,
+    // which is only the fallback for a project that has never been viewed.
+    restoreView(view) {
+      if (!view) return false;
+      pendingCenterPitch = null;
+      uiStore.update('view', (st) => {
+        st.scrollTick = view.scrollTick ?? st.scrollTick;
+        st.scrollPitch = view.scrollPitch ?? st.scrollPitch;
+        st.pxPerTick = view.pxPerTick ?? st.pxPerTick;
+      });
+      uiStore.update('cursor', (st) => {
+        st.gridCursor.tick = view.cursorTick ?? st.gridCursor.tick;
+        st.gridCursor.pitch = view.cursorPitch ?? st.gridCursor.pitch;
+      });
+      store.session.cursorTick = view.cursorTick ?? 0;
+      store.session.originTick = view.cursorTick ?? 0;
+      return true;
     },
     // Keep a tick visible (used by keyboard nav + conflict jump).
     scrollTickIntoView(tick) {

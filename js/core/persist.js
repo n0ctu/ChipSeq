@@ -163,10 +163,16 @@ export function purgeSeededDemos(demoIds) {
 export function attachAutosave(store, { debounceMs = 400, shouldSave = null } = {}) {
   let timer = null;
   let reported = false;
+  // Whether the document differs from what is stored. Needed because the
+  // exit flush is now unconditional: without it, the placeholder project the
+  // app creates at boot would be written to storage before anyone had done
+  // anything, and a brand-new visitor would find a project they never made.
+  let dirty = false;
 
   function flush() {
     timer = null;
     if (shouldSave && !shouldSave()) return;
+    dirty = false;
     const stored = saveProject(store.getDoc());
     if (stored) {
       store.emit('saved', { at: Date.now() });
@@ -181,15 +187,22 @@ export function attachAutosave(store, { debounceMs = 400, shouldSave = null } = 
   }
 
   store.subscribe(['doc', 'song', 'notes', 'tracks', 'harmonics', 'loop', 'grid'], () => {
+    dirty = true;
     if (timer) clearTimeout(timer);
     timer = setTimeout(flush, debounceMs);
   });
 
+  // Scrolling marks the document dirty but schedules NO write: the saved
+  // view rides along with the next real save, or with the exit flush below.
+  store.subscribe(['view'], () => {
+    dirty = true;
+  });
+
+  // Flush on the way out even when no debounce is pending, or a session
+  // spent only looking around would lose its scroll position.
   const flushNow = () => {
-    if (timer) {
-      clearTimeout(timer);
-      flush();
-    }
+    if (timer) clearTimeout(timer);
+    if (dirty) flush();
   };
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') flushNow();
@@ -198,13 +211,13 @@ export function attachAutosave(store, { debounceMs = 400, shouldSave = null } = 
   return flushNow;
 }
 
-// ---- .tune.json file import/export ----
+// ---- .chipseq.json file import/export ----
 
-export function exportTuneJson(doc) {
+export function exportProjectFile(doc) {
   return new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
 }
 
-export function importTuneJson(text) {
+export function importProjectFile(text) {
   return migrate(JSON.parse(text));
 }
 

@@ -175,9 +175,27 @@ code path.
 vibrato and portamento data rather than deferred features; only the editing UI
 is missing.
 
+## The project file
+
+Projects are `.chipseq.json` - the compound extension is deliberate. It keeps
+the `.json` suffix, so editors syntax-highlight and validate it, `jq` works on
+it and GitHub renders it in the browser, which matters for a tool whose pitch
+is plain files and no build step. A short custom extension would have bought
+three characters and cost all of that, and being a web app there is no OS file
+association to claim anyway. Older `.tune.json` files still open - the picker
+matches on `.json`, and the in-file format id never changed.
+
+Saved with every project, so reopening puts you exactly where you left off:
+the loop region, snap/grid preference, active track, **scroll position, zoom
+level and cursor position**. The view is a self-versioned block that is
+deliberately *not* declared in `doc.uses` - a reader that ignores it still
+plays the file correctly, which is the bar for belonging in that list.
+Scrolling never pushes an undo entry and never triggers a save on its own; it
+rides along with the next save, or with the flush when you leave the tab.
+
 ## Growing the file format
 
-Three rules keep `.tune.json` extensible without breaking files. The point of
+Three rules keep `.chipseq.json` extensible without breaking files. The point of
 all three: a build that meets a file it does not fully understand must still
 open it, say what it cannot honour, and - above all - not quietly destroy the
 parts it could not read.
@@ -377,7 +395,7 @@ current song at any time.
 ## Files
 
 - Projects autosave to localStorage on every change (recent list on the start
-  screen). `Export → .tune.json` gives a portable project file; everything in
+  screen). `Export → .chipseq.json` gives a portable project file; everything in
   it stays editable, including applied arpeggios.
 - Opening the app resumes the project you last had open, with the piano roll
   centred on the active track's notes (mono badge tunes sit high, so the
@@ -386,7 +404,7 @@ current song at any time.
   `demos/` on every visit, so updates always reach everyone - they are never
   copied into your storage. Open one to explore it; the moment you edit, a
   personal copy with the same name is created and the demo stays pristine.
-  Add your own by dropping a `.tune.json` into `demos/` and listing it in
+  Add your own by dropping a `.chipseq.json` into `demos/` and listing it in
   `demos/index.json` - that list is also the display order. Shipped: "Demo Mono" (arpeggios), "Demo Poly"
   (automation lanes: PWM duty sweep, intra-note gain swell, stepped-gain
   echoes, release change), "Rickroll", "Tetris" and "Bad Apple".
@@ -414,7 +432,7 @@ current song at any time.
 Click the ruler to place the cursor (green marker - `Space` always starts
 there; right-click offers "Reset cursor to start"); drag on it for a loop
 region, right-click for loop/trim options. The loop region is part of the
-project - it survives reloads and travels in `.tune.json` files, as does
+project - it survives reloads and travels in `.chipseq.json` files, as does
 the snap/grid preference.
 In the grid: plain drag marquee-selects, a plain click just moves the cursor.
 `Shift+drag` draws a note from start to release (snapped; `Alt` for freeform),
@@ -441,7 +459,7 @@ cache and common system paths, or set `CHROME_BIN=/path/to/chrome`.
 migrated document, the flattened event stream and the `.h`/`.fmf` text for
 every shipped demo, plus a determinism check (the same document must always
 flatten identically) and a forward-compatibility check (unknown blocks in a
-`.tune.json` survive a load/save round-trip untouched). Artifacts over 32 kB
+`.chipseq.json` survive a load/save round-trip untouched). Artifacts over 32 kB
 are stored as a hash with head/tail context instead of in full. After a
 *deliberate* output change, regenerate with `node tests/golden.mjs --update`
 and review the diff in its own commit - never inside a feature commit, or an
