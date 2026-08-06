@@ -20,11 +20,18 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker, onImportTr
     });
   }
 
-  // Reordering, pointer-based like every other drag in the app - and so the
-  // smoke tests can drive it with the synthetic events they already use.
-  // Committed once on release, so a drag is a single undo entry rather than
-  // one per row it crossed.
+  // Reordering: grab anywhere on a row. Pointer-based like every other drag in
+  // the app - and so the smoke tests can drive it with the synthetic events
+  // they already use.
+  //
+  // The row is also a click target (select) and holds buttons, a select and a
+  // double-click rename, so the drag ARMS on mousedown and only begins after
+  // the pointer has actually moved. Under the threshold nothing happens and
+  // the click runs as normal; over it, the click is swallowed so one drag is
+  // one undo entry rather than a reorder plus a track switch.
+  const DRAG_THRESHOLD = 4;
   let drag = null;
+  let suppressClick = false;
 
   function rowsGeometry() {
     return [...list.children].map((li) => {
@@ -33,19 +40,25 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker, onImportTr
     });
   }
 
-  function startReorder(e, trackId) {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    drag = { trackId, rows: rowsGeometry(), moved: false, to: null };
-    list.classList.add('reordering');
+  function armReorder(e, trackId) {
+    // Controls own their own gestures - dragging a slider or opening the
+    // instrument menu must not start a reorder.
+    if (e.button !== 0 || e.target.closest('button, select, input, textarea')) return;
+    drag = { trackId, startY: e.clientY, rows: null, moved: false, to: null };
     window.addEventListener('mousemove', onReorderMove);
     window.addEventListener('mouseup', endReorder);
   }
 
   function onReorderMove(e) {
     if (!drag) return;
-    drag.moved = true;
+    if (!drag.moved) {
+      if (Math.abs(e.clientY - drag.startY) < DRAG_THRESHOLD) return;
+      drag.moved = true;
+      // Geometry is captured once the drag is real, so rows measured here are
+      // the ones the pointer will actually be compared against.
+      drag.rows = rowsGeometry();
+      list.classList.add('reordering');
+    }
     // Land after every row whose midpoint is above the pointer.
     let to = 0;
     for (const r of drag.rows) {
@@ -64,10 +77,8 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker, onImportTr
     list.classList.remove('reordering');
     const d = drag;
     drag = null;
-    if (!d || !d.moved || d.to == null) {
-      render();
-      return;
-    }
+    if (!d || !d.moved || d.to == null) return; // a plain click - leave it alone
+    suppressClick = true;
     store.commit('reorder tracks', ['tracks'], (doc) => moveTrack(doc, d.trackId, d.to));
   }
 
@@ -79,13 +90,9 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker, onImportTr
       li.className = 'track-row' + (track.id === doc.activeTrackId ? ' active' : '');
       li.dataset.track = track.id;
 
-      // The colour dot doubles as the drag grip: it is already the row's
-      // identity, and a separate handle would not fit a 200 px panel.
       const color = document.createElement('span');
-      color.className = 'track-color track-grip';
+      color.className = 'track-color';
       color.style.background = trackColor(theme, doc, track.id);
-      color.title = 'Drag to reorder';
-      color.addEventListener('mousedown', (e) => startReorder(e, track.id));
       li.appendChild(color);
 
       const name = document.createElement('span');
@@ -177,7 +184,15 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker, onImportTr
       });
       li.appendChild(del);
 
-      li.addEventListener('click', () => setActive(track.id));
+      li.title = 'Drag to reorder';
+      li.addEventListener('mousedown', (e) => armReorder(e, track.id));
+      li.addEventListener('click', () => {
+        if (suppressClick) {
+          suppressClick = false;
+          return;
+        }
+        setActive(track.id);
+      });
 
       name.addEventListener('dblclick', async () => {
         const result = await trackDialog(track, TRACK_COLORS);
