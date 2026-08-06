@@ -1,6 +1,0 @@
-# chipseq-golden digest v1
-# artifact exceeds 32768 bytes - compared by hash, head/tail for context
-bytes:  259641
-sha256: 636e69699c61d83a0b6644f719e0c1426223df543bff52631598801ae55e9469
-head:   {\n  \"schema\": \"chipseq-tune\",\n  \"version\": 4,\n  \"id\": \"7345fdb1-1344-4c1a-8065-ac7d2f85e3ad\",\n  \"name\": \"Tetris\",\n  \"mode\": \"poly\",\n  \"ppq\": 96,\n  \"song\": {\n    \"bpm\": 140,\n    \"timeSig\": {\n      \"num\": 4,\n      \"den\": 4\n    },\n    \"key\": {\n      \"tonic\": 4,\n      \"mode\": \"major\"\n    },\n    \"tempo\":
-tail:   a5a\",\n  \"activeTrackId\": \"3b6c2f24-8b1d-403c-8e37-e7081952d900\",\n  \"loop\": null,\n  \"grid\": {\n    \"snapTicks\": 48,\n    \"triplet\": false\n  },\n  \"createdAt\": \"2026-08-04T17:03:45.639Z\",\n  \"updatedAt\": \"2026-08-04T05:50:00.000Z\",\n  \"melodyTrackId\": \"3b6c2f24-8b1d-403c-8e37-e7081952d900\",\n  \"uses\": []\n}\n

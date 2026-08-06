@@ -811,12 +811,12 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   const { readFile } = await import('node:fs/promises');
   const { migrate } = await import('../js/core/doc.js');
   const index = JSON.parse(await readFile(new URL('../demos/index.json', import.meta.url), 'utf8'));
-  eq(index, ['demo-mono-1.chipseq.json', 'demo-poly-1.chipseq.json', 'demo-mono-2-rickroll-arp.chipseq.json', 'demo-poly-2-tetris.chipseq.json', 'demo-poly-3-bad-apple.chipseq.json'], 'demo manifest lists all five demos in display order');
+  eq(index, ['mono.chipseq.json', 'poly.chipseq.json', 'rickroll.chipseq.json', 'tetris.chipseq.json', 'bad-apple.chipseq.json'], 'demo manifest lists all five demos in display order');
   for (const file of index) {
     const doc = migrate(JSON.parse(await readFile(new URL('../demos/' + file, import.meta.url), 'utf8')));
     assert(doc.tracks.every((t) => t.notes.length >= 0), file + ' migrates cleanly');
   }
-  const poly = migrate(JSON.parse(await readFile(new URL('../demos/demo-poly-1.chipseq.json', import.meta.url), 'utf8')));
+  const poly = migrate(JSON.parse(await readFile(new URL('../demos/poly.chipseq.json', import.meta.url), 'utf8')));
   assert(poly.mode === 'poly', 'poly demo is poly');
   assert(poly.name === 'Demo Poly', 'demo names are short: ' + poly.name);
   const names = [];
