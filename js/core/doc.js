@@ -86,6 +86,9 @@ export function createProject({ name = 'Untitled', mode = 'mono' } = {}) {
   const track = createTrack({ name: 'Lead', role: 'melody', instrumentId: 'badge' });
   const now = new Date().toISOString();
   return {
+    // The in-file format id, NOT the file extension. Renaming the extension
+    // to .chipseq.json deliberately left this alone: changing it would make
+    // validate() reject every project anyone has already saved.
     schema: 'chipseq-tune',
     version: SCHEMA_VERSION,
     id: uid(),
@@ -131,14 +134,14 @@ export function createProject({ name = 'Untitled', mode = 'mono' } = {}) {
 // So a higher version loads, its unknown parts ride along untouched, and
 // unsupportedFeatures() reports it as schema@N for the UI to surface.
 export function validate(doc) {
-  if (!doc || doc.schema !== 'chipseq-tune') throw new Error('Not a chipseq .tune.json file');
+  if (!doc || doc.schema !== 'chipseq-tune') throw new Error('Not a ChipSeq project file');
   if (typeof doc.version !== 'number') throw new Error('Corrupt project file: no version');
   if (!Array.isArray(doc.tracks) || !doc.song) throw new Error('Corrupt project file');
   return doc;
 }
 
 // Migrations run on every load (localStorage autosaves and imported
-// .tune.json files); the upgraded doc is written back on the next save.
+// .chipseq.json files); the upgraded doc is written back on the next save.
 export function migrate(doc) {
   validate(doc);
   if (doc.version === 1) {
@@ -484,6 +487,37 @@ export function playableTracks(doc) {
   const soloed = doc.tracks.filter((t) => t.solo && t.role !== 'muted');
   if (soloed.length) return soloed;
   return doc.tracks.filter((t) => t.role !== 'muted');
+}
+
+// ---- saved view ----
+//
+// Where you were looking when you last had the project open: scroll, zoom and
+// the cursor. Project data rather than a local preference, so reopening a
+// .chipseq.json somewhere else puts you back where you left off, not at bar 1.
+//
+// A self-versioned block per the extension rules above. Deliberately NOT
+// declared in doc.uses: a reader that ignores it still plays the file
+// correctly, which is the bar for belonging in that list.
+export const VIEW_KIND = 'view';
+
+export function viewOf(doc) {
+  const v = doc && doc.view;
+  if (!v || typeof v !== 'object') return null;
+  return v;
+}
+
+// Non-undoable by nature - scrolling is not an edit - so the store exposes
+// this the same way it exposes the loop region and the grid preference.
+export function setView(doc, view) {
+  doc.view = {
+    kind: VIEW_KIND,
+    v: 1,
+    scrollTick: Math.max(0, Math.round(view.scrollTick ?? 0)),
+    scrollPitch: Math.round(view.scrollPitch ?? 84),
+    pxPerTick: Math.max(0.04, Math.min(8, view.pxPerTick ?? 0.5)),
+    cursorTick: Math.max(0, Math.round(view.cursorTick ?? 0)),
+    cursorPitch: Math.round(view.cursorPitch ?? 69),
+  };
 }
 
 // ---- per-track mix ----

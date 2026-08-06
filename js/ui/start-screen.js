@@ -78,7 +78,7 @@ export function initStartScreen({ onOpenProject, onNewProject, onFilePicked, onO
     fileInput.click();
   });
   document.getElementById('btn-open-tune').addEventListener('click', () => {
-    fileInput.accept = '.json,.tune.json';
+    fileInput.accept = '.json'; // matches .chipseq.json and older .tune.json alike
     fileInput.click();
   });
   fileInput.addEventListener('change', () => {

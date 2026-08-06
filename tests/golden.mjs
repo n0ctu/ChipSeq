@@ -107,12 +107,12 @@ function canonical(value) {
 const demoFiles = JSON.parse(readFileSync(join(ROOT, 'demos', 'index.json'), 'utf8'));
 
 for (const file of demoFiles) {
-  const base = file.replace(/\.tune\.json$/, '');
+  const base = file.replace(/\.chipseq\.json$/, '');
   const doc = migrate(JSON.parse(readFileSync(join(ROOT, 'demos', file), 'utf8')));
 
   // The migrated document: guards migrations and the "unknown keys survive"
   // rule against every demo we ship, including the v2 file among them.
-  compare(`${base}.tune.json`, JSON.stringify(doc, null, 2) + '\n');
+  compare(`${base}.chipseq.json`, JSON.stringify(doc, null, 2) + '\n');
 
   // The flattened event stream: the single source every exporter and the
   // engine consume, so this catches pipeline drift before any exporter does.
@@ -198,7 +198,7 @@ function seededDoc() {
   assert(JSON.stringify(reloaded.tracks[0].sends) === JSON.stringify(doc.tracks[0].sends), 'unknown track field survives');
   assert(JSON.stringify(reloaded.tracks[0].notes[0].mods) === JSON.stringify(doc.tracks[0].notes[0].mods), 'unknown note block survives');
   assert(JSON.stringify(reloaded.master) === JSON.stringify(doc.master), 'unknown master block survives');
-  compare('forward-compat.tune.json', before + '\n');
+  compare('forward-compat.chipseq.json', before + '\n');
 }
 
 // ---- summary ----

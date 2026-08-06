@@ -4,7 +4,7 @@
 import { createProject, applyImport, mergeImport, uid, activeTrack, trackPitchCenter, bpmAt, unsupportedFeatures, PPQ } from './core/doc.js';
 import { createStore } from './core/store.js';
 import {
-  attachAutosave, saveProject, importTuneJson, listProjects, loadProject,
+  attachAutosave, saveProject, importProjectFile, listProjects, loadProject,
   lastOpenId, purgeSeededDemos,
 } from './core/persist.js';
 import { createEngine } from './core/engine.js';
@@ -69,8 +69,11 @@ function openProject(doc, { demo = null } = {}) {
   });
   if (!demo) saveProject(doc);
   showScreen('editor');
-  // centre the view where the active track's notes actually are
-  roll.centerOnPitch(trackPitchCenter(activeTrack(doc)));
+  // Put the viewport back where this project was left; only fall back to
+  // centring on the track's notes for one that has never been opened.
+  if (!roll.restoreView(store.getView())) {
+    roll.centerOnPitch(trackPitchCenter(activeTrack(doc)));
+  }
   announceUnsupported(doc);
 }
 
@@ -112,7 +115,7 @@ async function loadDemos() {
   const loaded = [];
   for (const file of files) {
     try {
-      const doc = importTuneJson(await (await fetch('demos/' + file)).text());
+      const doc = importProjectFile(await (await fetch('demos/' + file)).text());
       loaded.push(doc);
     } catch (err) {
       console.warn('demo load failed:', file, err);
@@ -157,10 +160,10 @@ async function handleFile(file) {
       applyImport(doc, parsed, assignments);
       openProject(doc);
     } else if (name.endsWith('.json')) {
-      const doc = importTuneJson(await file.text());
+      const doc = importProjectFile(await file.text());
       openProject(doc);
     } else {
-      alert('Unsupported file type - drop a .mid or .tune.json file.');
+      alert('Unsupported file type - drop a .mid or .chipseq.json file.');
     }
   } catch (err) {
     console.error(err);

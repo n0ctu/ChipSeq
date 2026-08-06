@@ -232,7 +232,7 @@ eq(tdoc2.tracks[0].notes.map((n) => [n.pitch, n.startTick, n.durationTicks]),
   const loop = lstore.getDoc().loop;
   assert(loop.startTick === 96 && loop.endTick === 480 && loop.enabled === true, 'setLoop stores in doc, enabled by default');
   assert(!lstore.canUndo(), 'setLoop creates no undo entry');
-  assert(JSON.parse(JSON.stringify(lstore.getDoc())).loop.endTick === 480, 'loop survives serialization (.tune.json)');
+  assert(JSON.parse(JSON.stringify(lstore.getDoc())).loop.endTick === 480, 'loop survives serialization (.chipseq.json)');
   lstore.setLoop({ startTick: 100, endTick: 50 });
   assert(lstore.getDoc().loop === null, 'invalid region clears the loop');
 
@@ -261,7 +261,7 @@ eq(tdoc2.tracks[0].notes.map((n) => [n.pitch, n.startTick, n.durationTicks]),
   gstore.setGrid({ snapTicks: 24, triplet: false }); // 1/16
   eq(gstore.getDoc().grid, { snapTicks: 24, triplet: false }, 'setGrid stores in doc');
   assert(!gstore.canUndo(), 'setGrid creates no undo entry');
-  assert(JSON.parse(JSON.stringify(gstore.getDoc())).grid.snapTicks === 24, 'grid survives serialization (.tune.json)');
+  assert(JSON.parse(JSON.stringify(gstore.getDoc())).grid.snapTicks === 24, 'grid survives serialization (.chipseq.json)');
   gstore.setGrid({ snapTicks: 24, triplet: true });
   assert(gstore.getDoc().grid.triplet === true, 'triplet flag persisted');
 }
@@ -811,12 +811,12 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   const { readFile } = await import('node:fs/promises');
   const { migrate } = await import('../js/core/doc.js');
   const index = JSON.parse(await readFile(new URL('../demos/index.json', import.meta.url), 'utf8'));
-  eq(index, ['demo-mono-1.tune.json', 'demo-poly-1.tune.json', 'demo-mono-2-rickroll-arp.tune.json', 'demo-poly-2-tetris.tune.json', 'demo-poly-3-bad-apple.tune.json'], 'demo manifest lists all five demos in display order');
+  eq(index, ['demo-mono-1.chipseq.json', 'demo-poly-1.chipseq.json', 'demo-mono-2-rickroll-arp.chipseq.json', 'demo-poly-2-tetris.chipseq.json', 'demo-poly-3-bad-apple.chipseq.json'], 'demo manifest lists all five demos in display order');
   for (const file of index) {
     const doc = migrate(JSON.parse(await readFile(new URL('../demos/' + file, import.meta.url), 'utf8')));
     assert(doc.tracks.every((t) => t.notes.length >= 0), file + ' migrates cleanly');
   }
-  const poly = migrate(JSON.parse(await readFile(new URL('../demos/demo-poly-1.tune.json', import.meta.url), 'utf8')));
+  const poly = migrate(JSON.parse(await readFile(new URL('../demos/demo-poly-1.chipseq.json', import.meta.url), 'utf8')));
   assert(poly.mode === 'poly', 'poly demo is poly');
   assert(poly.name === 'Demo Poly', 'demo names are short: ' + poly.name);
   const names = [];
@@ -987,6 +987,41 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(limiterConfig(undefined).enabled === true, 'missing block falls back to the default');
   assert(limiterConfig({ master: { limiter: { ceilingDb: -6 } } }).ceilingDb === -6, 'document overrides merge');
   assert(limiterConfig({ master: { limiter: { ceilingDb: -6 } } }).kneeDb === cfg.kneeDb, 'partial overrides keep defaults');
+}
+
+// ---- saved view ----
+{
+  const { setView, viewOf } = await import('../js/core/doc.js');
+  const { createStore } = await import('../js/core/store.js');
+
+  const doc = createProject({ name: 'view', mode: 'poly' });
+  assert(viewOf(doc) === null, 'a fresh project has no saved view');
+
+  setView(doc, { scrollTick: 384, scrollPitch: 72, pxPerTick: 1.5, cursorTick: 192, cursorPitch: 60 });
+  const v = viewOf(doc);
+  assert(v.kind === 'view' && v.v === 1, 'the view is a self-versioned block');
+  eq([v.scrollTick, v.scrollPitch, v.pxPerTick, v.cursorTick, v.cursorPitch], [384, 72, 1.5, 192, 60],
+    'every field round-trips');
+
+  // Values are clamped to what the editor can actually show, so a corrupt or
+  // hand-edited file cannot strand the viewport somewhere unreachable.
+  setView(doc, { scrollTick: -500, scrollPitch: 60, pxPerTick: 999, cursorTick: -10, cursorPitch: 60 });
+  const c = viewOf(doc);
+  assert(c.scrollTick === 0 && c.cursorTick === 0, 'negative positions clamp to the start');
+  assert(c.pxPerTick <= 8, 'zoom clamps to the editor range');
+
+  // It travels with the project - that is the point of it being document
+  // data rather than a local preference.
+  const back = JSON.parse(JSON.stringify(doc));
+  eq(viewOf(back), viewOf(doc), 'the view survives a save/load round-trip');
+
+  // Scrolling is not an edit: no undo entry, no history.
+  {
+    const store = createStore(createProject({ name: 'v2', mode: 'poly' }));
+    store.setView({ scrollTick: 100, scrollPitch: 70, pxPerTick: 1, cursorTick: 0, cursorPitch: 60 });
+    assert(store.canUndo() === false, 'setting the view pushes no undo snapshot');
+    assert(store.getView().scrollTick === 100, 'and is readable back');
+  }
 }
 
 // ---- polyphony normalization ----

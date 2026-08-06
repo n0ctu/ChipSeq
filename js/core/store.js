@@ -6,7 +6,7 @@
 // snapshot rather than something each call site has to remember. It is
 // idempotent, which is why running it again after undo/redo is harmless.
 
-import { normalizeDoc } from './doc.js';
+import { normalizeDoc, setView as writeView, viewOf } from './doc.js';
 
 const UNDO_CAP_ENTRIES = 200;
 const UNDO_CAP_BYTES = 8 * 1024 * 1024;
@@ -34,7 +34,7 @@ export function createStore(doc) {
 
   // Ephemeral, non-undoable, non-persisted UI-facing session state.
   // (the loop region lives in the DOCUMENT - doc.loop - so it is autosaved
-  // and exported with .tune.json)
+  // and exported with .chipseq.json)
   const session = {
     cursorTick: 0, // current playhead / pause position
     originTick: 0, // where the user last manually placed the cursor
@@ -95,6 +95,19 @@ export function createStore(doc) {
           : null;
       current.updatedAt = new Date().toISOString();
       emitChange(['loop'], 'set loop');
+    },
+
+    // Saved view (scroll, zoom, cursor): project data, but not an edit -
+    // scrolling must not push an undo snapshot or mark history dirty. It is
+    // also deliberately NOT in the autosave's scope list: scrolling should
+    // not trigger a write on its own, it just rides along with the next save.
+    getView: () => viewOf(current),
+    setView(view) {
+      writeView(current, view);
+      // Announced on its own scope: enough for autosave to know the document
+      // differs from what is stored, but not enough to schedule a write -
+      // scrolling should ride along with the next save, not cause one.
+      emitChange(['view'], 'set view');
     },
 
     // commit(label, scopes, fn): push snapshot, mutate, notify.
