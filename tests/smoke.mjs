@@ -1764,6 +1764,30 @@ await check('WAV length matches the song length at the project tempo', `(async (
   return seconds > songS && seconds < songS + 1.5 || 'wav=' + seconds.toFixed(3) + ' song=' + songS.toFixed(3);
 })()`);
 
+// Velocity is stored (MIDI import fills it in) but deliberately not applied
+// while no UI can show or edit it. Assert on rendered audio, not on the
+// constant, so re-enabling it cannot pass unnoticed.
+await check('per-note velocity does not change the rendered audio', `(async () => {
+  ${WAV_HELPERS}
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const base = structuredClone(window.__chipseq.store.getDoc());
+  base.mode = 'poly';
+  const render = async (velocity) => {
+    const doc = structuredClone(base);
+    for (const t of doc.tracks) for (const n of t.notes) n.velocity = velocity;
+    const { blob } = await renderWav(doc);
+    const w = await readWav(blob);
+    return { peak: w.peak, rms: w.rms };
+  };
+  const nominal = await render(100);
+  const quiet = await render(20);
+  const loud = await render(127);
+  if (!(nominal.peak > 0)) return 'fixture rendered silence';
+  const same = (a, b) => Math.abs(a.peak - b.peak) < 1e-6 && Math.abs(a.rms - b.rms) < 1e-6;
+  return (same(nominal, quiet) && same(nominal, loud))
+    || JSON.stringify({ nominal, quiet, loud });
+})()`);
+
 await check('a normal mix renders below 0 dBFS and is not flagged', `(async () => {
   ${WAV_HELPERS}
   const { renderWav } = await import('/js/core/export-wav.js');
@@ -1810,6 +1834,7 @@ await check('export runs through the same master gain as playback', `(async () =
   ${WAV_HELPERS}
   const { renderWav } = await import('/js/core/export-wav.js');
   const { MASTER_GAIN } = await import('/js/core/graph.js');
+  const { VELOCITY_GAIN } = await import('/js/core/instruments.js');
   const doc = structuredClone(window.__chipseq.store.getDoc());
   doc.mode = 'poly';
   const inst = doc.instruments.find((i) => i.id === 'badge');
@@ -1822,10 +1847,12 @@ await check('export runs through the same master gain as playback', `(async () =
   doc.activeTrackId = doc.melodyTrackId = 'lvl';
   const { blob } = await renderWav(doc);
   const w = await readWav(blob);
-  // one square voice: gain * velocity/127 * MASTER_GAIN, before the (inactive
+  // one square voice: gain * VELOCITY_GAIN * MASTER_GAIN, before the (inactive
   // at this level) clipper. A normalized PeriodicWave overshoots a little, so
-  // this is a band rather than an equality.
-  const expected = 0.5 * (127 / 127) * MASTER_GAIN;
+  // this is a band rather than an equality. VELOCITY_GAIN is imported rather
+  // than spelled out: the note above carries velocity 127 and is deliberately
+  // NOT rendered any louder for it, which is the policy under test elsewhere.
+  const expected = 0.5 * VELOCITY_GAIN * MASTER_GAIN;
   const ratio = w.peak / expected;
   return (ratio > 0.85 && ratio < 1.35) || 'peak=' + w.peak.toFixed(4) + ' expected~' + expected.toFixed(4) + ' ratio=' + ratio.toFixed(3);
 })()`);
