@@ -3,7 +3,7 @@
 
 import { tickToX, pitchToY, visibleTickRange, visiblePitchRange, PITCH_MIN, PITCH_MAX } from './coords.js';
 import { isInKey, noteName, PITCH_NAMES } from '../../core/music.js';
-import { ticksPerBeat, ticksPerBar } from '../../core/doc.js';
+import { ticksPerBeat, ticksPerBar, trackColorIndex } from '../../core/doc.js';
 
 export function readTheme() {
   const cs = getComputedStyle(document.documentElement);
@@ -31,8 +31,8 @@ export function readTheme() {
 }
 
 export function trackColor(theme, doc, trackId) {
-  const idx = doc.tracks.findIndex((t) => t.id === trackId);
-  return theme.trackColors[Math.max(0, idx) % theme.trackColors.length];
+  const track = doc.tracks.find((t) => t.id === trackId);
+  return theme.trackColors[trackColorIndex(doc, track) % theme.trackColors.length];
 }
 
 const BLACK_KEYS = new Set([1, 3, 6, 8, 10]);

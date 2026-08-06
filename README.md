@@ -175,6 +175,23 @@ code path.
 vibrato and portamento data rather than deferred features; only the editing UI
 is missing.
 
+## Tracks
+
+Rows are **reorderable** - drag a track by its colour dot. The dot doubles as
+the grip because it is already the row's identity and a separate handle would
+not fit a 200 px panel. A drag is one undo entry, not one per row it crosses.
+Order is presentational (playback reads whichever tracks are playable and
+sorts events by tick), but it does decide the palette position of any track
+that has not picked a colour.
+
+Double-clicking a track's name opens the **Track** dialog: name and colour
+together, since those are the two things you change about a track as an
+object. Colour is stored as an **index into the theme palette**, not a hex
+value, so the whole look stays retunable from `css/base.css` - and `auto`
+means "follow my position", which is how every project behaved before colours
+could be set. Setting one explicitly is what stops a colour from shuffling
+when rows are reordered.
+
 ## The project file
 
 Projects are `.chipseq.json` - the compound extension is deliberate. It keeps

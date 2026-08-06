@@ -1,7 +1,7 @@
 // Tracks panel: list, active selection, roles, instruments, add/remove.
 
-import { createTrack } from '../core/doc.js';
-import { promptDialog, confirmDialog } from './dialogs.js';
+import { createTrack, moveTrack, TRACK_COLORS } from '../core/doc.js';
+import { confirmDialog, trackDialog } from './dialogs.js';
 import { icon } from './icons.js';
 import { readTheme, trackColor } from './piano-roll/render.js';
 
@@ -20,22 +20,78 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker, onImportTr
     });
   }
 
+  // Reordering, pointer-based like every other drag in the app - and so the
+  // smoke tests can drive it with the synthetic events they already use.
+  // Committed once on release, so a drag is a single undo entry rather than
+  // one per row it crossed.
+  let drag = null;
+
+  function rowsGeometry() {
+    return [...list.children].map((li) => {
+      const r = li.getBoundingClientRect();
+      return { id: li.dataset.track, top: r.top, bottom: r.bottom, mid: r.top + r.height / 2 };
+    });
+  }
+
+  function startReorder(e, trackId) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    drag = { trackId, rows: rowsGeometry(), moved: false, to: null };
+    list.classList.add('reordering');
+    window.addEventListener('mousemove', onReorderMove);
+    window.addEventListener('mouseup', endReorder);
+  }
+
+  function onReorderMove(e) {
+    if (!drag) return;
+    drag.moved = true;
+    // Land after every row whose midpoint is above the pointer.
+    let to = 0;
+    for (const r of drag.rows) {
+      if (e.clientY > r.mid) to++;
+    }
+    const from = drag.rows.findIndex((r) => r.id === drag.trackId);
+    drag.to = to > from ? to - 1 : to;
+    for (const [i, li] of [...list.children].entries()) {
+      li.classList.toggle('drop-target', i === drag.to && drag.to !== from);
+    }
+  }
+
+  function endReorder() {
+    window.removeEventListener('mousemove', onReorderMove);
+    window.removeEventListener('mouseup', endReorder);
+    list.classList.remove('reordering');
+    const d = drag;
+    drag = null;
+    if (!d || !d.moved || d.to == null) {
+      render();
+      return;
+    }
+    store.commit('reorder tracks', ['tracks'], (doc) => moveTrack(doc, d.trackId, d.to));
+  }
+
   function render() {
     const doc = store.getDoc();
     list.innerHTML = '';
     for (const track of doc.tracks) {
       const li = document.createElement('li');
       li.className = 'track-row' + (track.id === doc.activeTrackId ? ' active' : '');
+      li.dataset.track = track.id;
 
+      // The colour dot doubles as the drag grip: it is already the row's
+      // identity, and a separate handle would not fit a 200 px panel.
       const color = document.createElement('span');
-      color.className = 'track-color';
+      color.className = 'track-color track-grip';
       color.style.background = trackColor(theme, doc, track.id);
+      color.title = 'Drag to reorder';
+      color.addEventListener('mousedown', (e) => startReorder(e, track.id));
       li.appendChild(color);
 
       const name = document.createElement('span');
       name.className = 'track-name';
       name.textContent = track.name;
-      name.title = track.name + ' (double-click to rename)';
+      name.title = track.name + ' (double-click to rename or recolour)';
       li.appendChild(name);
 
       // Explicit role buttons (the only way to assign roles in mono mode):
@@ -124,12 +180,17 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker, onImportTr
       li.addEventListener('click', () => setActive(track.id));
 
       name.addEventListener('dblclick', async () => {
-        const newName = await promptDialog('Rename track', track.name);
-        if (newName) {
-          store.commit('rename track', ['tracks'], (d) => {
-            d.tracks.find((t) => t.id === track.id).name = newName;
-          });
-        }
+        const result = await trackDialog(track, TRACK_COLORS);
+        if (!result) return;
+        store.commit('edit track', ['tracks'], (d) => {
+          const t = d.tracks.find((x) => x.id === track.id);
+          if (!t) return;
+          t.name = result.name;
+          // null = follow the row's position, which is how it worked before
+          // colours could be set - so it is stored by REMOVING the field.
+          if (result.color === null) delete t.color;
+          else t.color = result.color;
+        });
       });
 
       // right-click: set/unset as chord source

@@ -489,6 +489,36 @@ export function playableTracks(doc) {
   return doc.tracks.filter((t) => t.role !== 'muted');
 }
 
+// ---- track colour and order ----
+
+// Colour is stored as an INDEX into the theme palette, not a hex value, so
+// the whole look stays retunable from css/base.css - which is the point of
+// the palette existing. Absent means "follow my position", which is how every
+// project behaved before colours could be set, so nothing changes on load.
+export const TRACK_COLORS = 8;
+
+export function trackColorIndex(doc, track) {
+  if (track && Number.isInteger(track.color)) {
+    return ((track.color % TRACK_COLORS) + TRACK_COLORS) % TRACK_COLORS;
+  }
+  const idx = doc.tracks.findIndex((t) => t.id === (track && track.id));
+  return Math.max(0, idx) % TRACK_COLORS;
+}
+
+// Move a track to a new position. Reordering is presentational - playback
+// reads whichever tracks are playable and sorts events by tick - but it also
+// decides the palette position of any track that has not picked a colour,
+// which is why setting one explicitly matters once rows can be shuffled.
+export function moveTrack(doc, trackId, toIndex) {
+  const from = doc.tracks.findIndex((t) => t.id === trackId);
+  if (from < 0) return false;
+  const to = Math.max(0, Math.min(doc.tracks.length - 1, toIndex));
+  if (from === to) return false;
+  const [track] = doc.tracks.splice(from, 1);
+  doc.tracks.splice(to, 0, track);
+  return true;
+}
+
 // ---- saved view ----
 //
 // Where you were looking when you last had the project open: scroll, zoom and
