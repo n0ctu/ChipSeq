@@ -12,7 +12,7 @@ import { flattenSong } from '../../core/flatten.js';
 import { getInstrument } from '../../core/instruments.js';
 import { ticksPerBar } from '../../core/doc.js';
 import {
-  DEFAULT_NORMALIZE, normalizeConfig, trackExponent, predictPeak,
+  DEFAULT_NORMALIZE, normalizeConfig, trackExempt, predictPeak,
 } from '../../core/normalize.js';
 
 const KNEE = 0.708; // where the master soft clipper starts shaping
@@ -78,7 +78,7 @@ export function mount(body, { store }) {
       <div id="lv-readout" class="lv-readout"></div>
       <div class="lv-tracks">${doc.tracks
         .map((t) => `<label class="lv-track"><input type="checkbox" data-track="${t.id}"
-          ${trackExponent(cfg, t) > 0 ? 'checked' : ''} />
+          ${trackExempt(t) ? '' : 'checked'} />
           <span class="track-color" style="background:${trackColorCss(doc, t)}"></span>
           <span>${t.name}</span></label>`)
         .join('')}</div>
@@ -105,8 +105,10 @@ export function mount(body, { store }) {
       patch(() => ({ enabled: el.checked }));
       scheduleReadout();
     } else if (el.dataset && el.dataset.track) {
-      // A track opts out by storing false; opting back in clears the field so
-      // it follows the song setting again rather than freezing today's value.
+      // A track opts out by storing false - exempt from BOTH stages, so the
+      // box means exactly "this track is normalized". Opting back in clears
+      // the field so it follows the song setting again rather than freezing
+      // today's value.
       const id = el.dataset.track;
       const on = el.checked;
       store.commit('set track normalization', ['tracks'], (doc) => {

@@ -1210,7 +1210,7 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
 // ---- polyphony normalization ----
 {
   const {
-    DEFAULT_NORMALIZE, normalizeConfig, trackExponent, polyphonyTimeline,
+    DEFAULT_NORMALIZE, normalizeConfig, trackExponent, trackExempt, polyphonyTimeline,
     countAt, smooth, predictPeak,
   } = await import('../js/core/normalize.js');
   const { flattenSong } = await import('../js/core/flatten.js');
@@ -1259,6 +1259,9 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     assert(trackExponent(cfg, { normalize: false }) === 0, 'a track can opt out');
     assert(trackExponent(cfg, { normalize: 0.9 }) === 0.9, 'or set its own exponent');
     assert(trackExponent(cfg, { normalize: 5 }) === 1, 'which is clamped');
+    assert(trackExempt({ normalize: false }) === true, 'false means exempt');
+    assert(trackExempt({ normalize: 0 }) === false, 'an exponent of 0 is not the same thing');
+    assert(trackExempt({}) === false && trackExempt(null) === false, 'and absent is not exempt');
   }
 
   // ---- the headline behaviour ----
@@ -1272,6 +1275,39 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     return d;
   };
   const levelOf = (ev) => (ev.gainCurve ? ev.gainCurve[0] : ev.gainMul ?? 1);
+
+  // Exempt means EXEMPT - from the song stage too, not just the track stage.
+  // Cancelling only the track stage was indistinguishable from doing nothing
+  // for a monophonic lead, which is exactly the track you want to exclude.
+  {
+    const doc = createProject({ name: 'exempt', mode: 'poly' });
+    doc.master = { normalize: { ...DEFAULT_NORMALIZE, track: 0.5, song: 0.5, smoothMs: 0 } };
+    const lead = doc.tracks[0];
+    const pad = mkTrack({ name: 'Pad', role: 'melody', instrumentId: 'sine', color: 1 });
+    doc.tracks.push(pad);
+    // one lead note against a four-voice pad, all sounding together
+    addNote(doc, lead.id, createNote({ pitch: 72, startTick: 0, durationTicks: 384 }));
+    for (const p of [48, 52, 55, 59]) {
+      addNote(doc, pad.id, createNote({ pitch: p, startTick: 0, durationTicks: 384 }));
+    }
+    const levels = (d) => {
+      const evs = flattenSong(d).events;
+      const pick = (id) => levelOf(evs.find((e) => e.trackId === id));
+      return { lead: pick(lead.id), pad: pick(pad.id) };
+    };
+
+    const before = levels(doc);
+    assert(before.lead < 0.999, `the lead is ducked while it takes part (${before.lead})`);
+
+    lead.normalize = false;
+    const after = levels(doc);
+    assert(Math.abs(after.lead - 1) < 1e-9, `an exempt track plays at its written level (${after.lead})`);
+    assert(!flattenSong(doc).events.filter((e) => e.trackId === lead.id).some((e) => e.gainCurve),
+      'and carries no moving gain at all');
+    assert(Math.abs(after.pad - before.pad) < 1e-9,
+      'the rest of the arrangement still normalizes around it, unchanged');
+  }
+
 
   {
     // one note for a bar, then four for a bar: k=0.5 halves the four.
@@ -1330,11 +1366,15 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     // B: 1 in its track, 3 in the song ->        3^-0.5
     assert(Math.abs(levelOf(onA) - Math.pow(2, -0.5) * Math.pow(3, -0.5)) < 1e-3, 'both stages apply');
     assert(Math.abs(levelOf(onB) - Math.pow(3, -0.5)) < 1e-3, 'a lone voice gets only the song stage');
-    // and a track can opt out of its own stage while still following the song
+    // A track can switch off its OWN stage and still follow the song, by
+    // setting an exponent of 0 rather than opting out.
+    b.normalize = 0;
+    const onB2 = flattenSong(d).events.find((e) => e.trackId === b.id);
+    assert(Math.abs(levelOf(onB2) - Math.pow(3, -0.5)) < 1e-3, 'exponent 0 keeps the song stage');
+    // false is different, and stronger: exempt from both.
     b.normalize = false;
-    const evs2 = flattenSong(d).events;
-    const onB2 = evs2.find((e) => e.trackId === b.id);
-    assert(Math.abs(levelOf(onB2) - Math.pow(3, -0.5)) < 1e-3, 'opting out keeps the song stage');
+    const onB3 = flattenSong(d).events.find((e) => e.trackId === b.id);
+    assert(Math.abs(levelOf(onB3) - 1) < 1e-9, 'opting out escapes the song stage too');
   }
 
   {
