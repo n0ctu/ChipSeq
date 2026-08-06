@@ -64,12 +64,18 @@ export function trackExponent(cfg, track) {
 
 // Count of simultaneous events at every tick where the count CHANGES.
 // Returns [{ tick, count }] sorted, starting at the first onset.
-export function polyphonyTimeline(events) {
+//
+// A voice is counted until its RELEASE has finished, not until its notated
+// end. Counting notated durations meant a chord's tails were invisible: the
+// count dropped the instant the notes ended, the factor sprang back toward 1
+// and every tail rang out at full level - four ducked notes releasing
+// together straight back into the limiter.
+export function polyphonyTimeline(events, releaseTicksOf = null) {
   const deltas = new Map();
   for (const ev of events) {
     if (ev.durationTicks <= 0) continue;
     deltas.set(ev.startTick, (deltas.get(ev.startTick) || 0) + 1);
-    const end = ev.startTick + ev.durationTicks;
+    const end = ev.startTick + ev.durationTicks + (releaseTicksOf ? releaseTicksOf(ev) : 0);
     deltas.set(end, (deltas.get(end) || 0) - 1);
   }
   const ticks = [...deltas.keys()].sort((a, b) => a - b);
@@ -128,12 +134,12 @@ const q = (v) => Math.round(v * 1e6) / 1e6;
 
 // Build the normalization factor for one track over the whole song, sampled
 // on a uniform time grid so it can be smoothed.
-function buildFactorCurve(doc, events, trackId, cfg, tickToSeconds, endTick, songMax, n, totalS) {
+function buildFactorCurve(doc, events, trackId, cfg, tickToSeconds, endTick, songMax, n, totalS, relOf) {
   const kTrack = trackExponent(cfg, doc.tracks.find((t) => t.id === trackId));
   const kSong = cfg.song;
   if (kTrack <= 0 && kSong <= 0) return null;
 
-  const trackLine = polyphonyTimeline(events.filter((e) => e.trackId === trackId));
+  const trackLine = polyphonyTimeline(events.filter((e) => e.trackId === trackId), relOf);
   const trackMax = maxCountGrid(trackLine, n, endTick);
   const raw = new Float64Array(n);
   for (let i = 0; i < n; i++) {
@@ -178,29 +184,35 @@ function sampleCurve(curve, seconds) {
 // scalar) or gainCurve (from a gain automation lane); normalization
 // multiplies into whichever is there, so the two compose instead of one
 // winning.
-export function applyNormalization(doc, events, tickToSeconds) {
+export function applyNormalization(doc, events, tickToSeconds, releaseTicksOf = null) {
   const cfg = normalizeConfig(doc);
   if (!cfg.enabled || doc.mode !== 'poly' || !events.length) return events;
   if (cfg.track <= 0 && cfg.song <= 0) return events;
 
+  const relOf = releaseTicksOf || (() => 0);
   let endTick = 0;
-  for (const ev of events) endTick = Math.max(endTick, ev.startTick + ev.durationTicks);
+  for (const ev of events) endTick = Math.max(endTick, ev.startTick + ev.durationTicks + relOf(ev));
   if (endTick <= 0) return events;
 
   // The song-wide timeline and its grid are identical for every track, so
   // they are built once rather than per track.
   const totalS = tickToSeconds(endTick);
   const n = Math.max(2, Math.ceil((totalS * 1000) / SAMPLE_MS) + 1);
-  const songMax = maxCountGrid(polyphonyTimeline(events), n, endTick);
+  const songMax = maxCountGrid(polyphonyTimeline(events, relOf), n, endTick);
 
   const curves = new Map();
   for (const ev of events) {
     if (!curves.has(ev.trackId)) {
-      curves.set(ev.trackId, buildFactorCurve(doc, events, ev.trackId, cfg, tickToSeconds, endTick, songMax, n, totalS));
+      curves.set(ev.trackId, buildFactorCurve(doc, events, ev.trackId, cfg, tickToSeconds, endTick, songMax, n, totalS, relOf));
     }
     const curve = curves.get(ev.trackId);
     if (!curve) continue;
 
+    // The curve spans the NOTE, and the voice holds its final value through
+    // the release. That is correct precisely because ringing tails are
+    // counted (see polyphonyTimeline): at a note's end tick its own tail and
+    // its neighbours' are all still sounding, so the last value is already
+    // the ducked one the release should keep.
     const startS = tickToSeconds(ev.startTick);
     const endS = tickToSeconds(ev.startTick + ev.durationTicks);
     // Sample strictly INSIDE the note: at u=1 exactly, the grid has already

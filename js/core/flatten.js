@@ -3,9 +3,13 @@
 // which is what guarantees preview === export === badge.
 
 import { renderHarmonics, resolveChord } from './harmonics.js';
-import { playableTracks, getTrack, getNote, findOverlaps, ticksPerBar, trackPan, tickToSeconds } from './doc.js';
+import {
+  playableTracks, getTrack, getNote, findOverlaps, ticksPerBar, trackPan, tickToSeconds, secondsToTick,
+} from './doc.js';
 import { sampleAutomation, sampleGainCurve, quantizeDuty, AUTOMATION_PARAMS } from './automation.js';
 import { applyNormalization } from './normalize.js';
+import { getInstrument } from './instruments.js';
+import { effectiveEnvelope, releaseTime } from './modulation.js';
 
 // Segment the chords track into a timeline of chord EVENTS that hold until
 // the next change (like a DAW chord track). Sampling "what sounds at exactly
@@ -131,6 +135,22 @@ export function flattenNote(doc, trackId, noteId) {
 // flattenSong(doc) -> { events: [{pitch,startTick,durationTicks,velocity,instrumentId}], warnings: [] }
 // Mono mode: only the active track, badge instrument forced, overlaps truncated
 // (earlier note cut at the later note's start - matches firmware semantics).
+
+// How long this event keeps sounding after its notated end, in ticks.
+//
+// Needed in two places that must agree: the polyphony count (a ringing voice
+// is still a voice) and the span a gain curve covers. Resolved through the
+// same envelope the voice will actually use, so a per-event ADSR override
+// from an automation lane is honoured.
+function releaseTicks(doc, ev, instrumentId, adsr) {
+  const inst = getInstrument(doc, instrumentId);
+  if (!inst) return 0;
+  const seconds = releaseTime(effectiveEnvelope(inst, adsr));
+  if (!(seconds > 0)) return 0;
+  const endTick = ev.startTick + ev.durationTicks;
+  return Math.max(0, secondsToTick(doc, tickToSeconds(doc, endTick) + seconds) - endTick);
+}
+
 export function flattenSong(doc) {
   const ctx = makeArpContext(doc);
   const warnings = [];
@@ -227,7 +247,12 @@ export function flattenSong(doc) {
   // know what is actually sounding together, which is only true once
   // harmonics have expanded and the automation lanes have been sampled.
   // Poly only - mono returned above, so badge output is untouched.
-  applyNormalization(doc, events, (tick) => tickToSeconds(doc, tick));
+  applyNormalization(
+    doc,
+    events,
+    (tick) => tickToSeconds(doc, tick),
+    (ev) => releaseTicks(doc, ev, ev.instrumentId, ev.adsr || null)
+  );
 
   return { events, warnings };
 }

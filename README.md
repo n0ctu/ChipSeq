@@ -78,6 +78,14 @@ was rejected deliberately - it makes a sparse melody quiet to accommodate one
 dense bar elsewhere. Because the factor follows what is actually sounding, a
 solo passage has N=1 and is multiplied by exactly 1.
 
+A voice is counted until its **release** has finished, not until its notated
+end. Counting notated durations made a chord's tails invisible: the count
+dropped the instant the notes ended, the factor sprang back toward 1, and
+every tail rang out at full level - four ducked notes releasing together,
+straight back into the limiter. The consequence is that an arpeggio's own
+overlapping tails count too, which is physically correct and slightly more
+conservative.
+
 **Smoothing** is the other dial and it matters more than it looks: the factor
 changes in steps, and a step in gain is a click, but too much smoothing lets
 short dense hits through. Bad Apple's notes run 18-109 ms, and 30 ms of

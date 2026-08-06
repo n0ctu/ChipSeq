@@ -765,8 +765,14 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   setAutomationPoint(fdoc2, ftid2, 'gain', { tick: 384, value: 1, curve: 'step' });
   const evs = flattenSong(fdoc2).events;
   assert(evs.length === 16, '16 arp steps');
-  assert(evs.every((e) => typeof e.gainMul === 'number'), 'short steps get scalar gainMul');
-  assert(evs[0].gainMul < evs[8].gainMul && evs[8].gainMul < evs[15].gainMul, 'per-step gainMul ramps up');
+  // Each step reads the lane where it sits. Asserted on the LEVEL rather than
+  // on gainMul-versus-gainCurve: polyphony normalization may express the same
+  // level as a curve (an arp's own release tails overlap its next step), and
+  // that is an implementation detail, not the behaviour under test.
+  const stepLevel = (e) => (e.gainCurve ? e.gainCurve[0] : e.gainMul ?? 1);
+  assert(evs.every((e) => typeof stepLevel(e) === 'number'), 'every step carries a level');
+  assert(stepLevel(evs[0]) < stepLevel(evs[8]) && stepLevel(evs[8]) < stepLevel(evs[15]),
+    'per-step level ramps up with the lane');
 
   // held note under the same ramp gets a curve array
   const hdoc2 = createProject({ name: 'autohold', mode: 'poly' });
@@ -828,7 +834,8 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(evs.some((e) => e.gainCurve), 'poly demo has an intra-note gain curve');
   assert(evs.some((e) => e.duty != null), 'poly demo has duty automation');
   assert(evs.some((e) => e.adsr && e.adsr.r != null), 'poly demo has a release override');
-  assert(new Set(evs.filter((e) => typeof e.gainMul === 'number').map((e) => e.gainMul)).size >= 3, 'poly demo has stepped gain echoes');
+  const lvl = (e) => (e.gainCurve ? Number(e.gainCurve[0].toFixed(4)) : e.gainMul);
+  assert(new Set(evs.map(lvl).filter((v) => typeof v === 'number')).size >= 3, 'poly demo has stepped gain echoes');
 }
 
 // ---- melody marker is independent of the editing focus ----
@@ -1057,8 +1064,12 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
 
   {
     // one note for a bar, then four for a bar: k=0.5 halves the four.
+    // A release-free instrument keeps this about the exponent - with a real
+    // release the first note is still ringing over the stack, which is its
+    // own (tested) behaviour further down.
     const doc = build({ track: 0, song: 0.5, smoothMs: 0 },
       [[60, 0, 384], [60, 384, 384], [64, 384, 384], [67, 384, 384], [71, 384, 384]]);
+    doc.instruments.find((i) => i.id === 'badge').adsr = { a: 0.002, d: 0, s: 1, r: 0 };
     const evs = flattenSong(doc).events;
     const solo = evs.find((e) => e.startTick === 0);
     const stack = evs.filter((e) => e.startTick === 384);
@@ -1129,6 +1140,44 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     addNote(d, tid, createNote({ pitch: 64, startTick: 96, durationTicks: 96 }));
     const evs = flattenSong(d).events;
     assert(evs.every((e) => !('gainMul' in e) && !e.gainCurve), 'mono events carry no normalization');
+  }
+
+  // ---- release tails ----
+  {
+    // A voice is audible until its RELEASE ends. Counting notated durations
+    // made a chord's tails invisible: the count dropped the instant the notes
+    // ended, the factor sprang back toward 1, and every tail rang out at full
+    // level - four ducked notes releasing together, straight into the limiter.
+    const evs = [
+      { startTick: 0, durationTicks: 100, trackId: 'a' },
+      { startTick: 0, durationTicks: 100, trackId: 'a' },
+    ];
+    const bare = polyphonyTimeline(evs);
+    assert(countAt(bare, 120) === 0, 'without releases, the tails are invisible');
+    const withTails = polyphonyTimeline(evs, () => 50);
+    assert(countAt(withTails, 120) === 2, 'with releases, ringing voices are still counted');
+    assert(countAt(withTails, 160) === 0, 'and stop counting once the tails end');
+  }
+
+  {
+    // End to end: a stack whose notes all release together must stay ducked
+    // through the tail rather than springing back.
+    const d = createProject({ name: 'tails', mode: 'poly' });
+    d.master = { normalize: { ...DEFAULT_NORMALIZE, track: 0.5, song: 0.5, smoothMs: 0 } };
+    d.instruments.find((i) => i.id === 'badge').adsr = { a: 0.005, d: 0, s: 1, r: 0.5 };
+    const tid = d.tracks[0].id;
+    for (const p of [60, 64, 67, 71]) {
+      addNote(d, tid, createNote({ pitch: p, startTick: 0, durationTicks: 192 }));
+    }
+    // something still sounding underneath, so the factor has to keep working
+    addNote(d, tid, createNote({ pitch: 36, startTick: 0, durationTicks: 576 }));
+    const evs = flattenSong(d).events;
+    for (const ev of evs.filter((e) => e.durationTicks === 192)) {
+      const level = ev.gainCurve ? Array.from(ev.gainCurve) : [ev.gainMul ?? 1];
+      const body = level[0];
+      const tail = level[level.length - 1];
+      assert(tail <= body * 1.05, `a release never rises above its note body (${body.toFixed(3)} -> ${tail.toFixed(3)})`);
+    }
   }
 
   // ---- predictPeak ----
