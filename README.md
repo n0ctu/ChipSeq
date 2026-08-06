@@ -18,8 +18,23 @@ python3 -m http.server        # from this directory
 ```
 
 Any static file server works (the app uses ES modules, so `file://` won't).
-It's a fully static site - GitHub Pages serves it as-is (Settings → Pages →
-deploy from the repository root).
+It's a fully static site - GitHub Pages serves it as-is.
+
+## Releasing
+
+Pushes to `main` do **not** publish. Tags do:
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+`.github/workflows/pages.yml` runs the unit, module-import and golden suites,
+checks that the tag matches `APP_VERSION` in `js/core/version.js`, and then
+deploys. Branch-based publishing was dropped because Pages runs one deployment
+at a time per repository: a burst of pushes queues up, and each deploy step
+aborts itself after ~10 minutes of waiting. The workflow sets
+`cancel-in-progress`, so a newer release supersedes an older one instead of
+both dying. `workflow_dispatch` republishes without minting a tag.
 
 ## Modes
 
