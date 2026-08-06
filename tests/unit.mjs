@@ -1051,9 +1051,11 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   }
 
   // ---- the headline behaviour ----
+  // targetDb: 12 puts the headroom stage far out of reach, so these assert
+  // the evenness stage on its own. The headroom stage has its own block.
   const build = (cfg, notes) => {
     const d = createProject({ name: 'norm', mode: 'poly' });
-    d.master = { normalize: { ...DEFAULT_NORMALIZE, ...cfg } };
+    d.master = { normalize: { ...DEFAULT_NORMALIZE, targetDb: 12, ...cfg } };
     const tid = d.tracks[0].id;
     for (const [pitch, start, dur] of notes) {
       addNote(d, tid, createNote({ pitch, startTick: start, durationTicks: dur }));
@@ -1110,7 +1112,7 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   {
     // Per-track and song stages answer different questions and multiply.
     const d = createProject({ name: 'two', mode: 'poly' });
-    d.master = { normalize: { ...DEFAULT_NORMALIZE, track: 0.5, song: 0.5, smoothMs: 0 } };
+    d.master = { normalize: { ...DEFAULT_NORMALIZE, targetDb: 12, track: 0.5, song: 0.5, smoothMs: 0 } };
     const a = d.tracks[0];
     const b = mkTrack({ name: 'B', role: 'melody', instrumentId: 'sine' });
     d.tracks.push(b);
@@ -1142,6 +1144,85 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     assert(evs.every((e) => !('gainMul' in e) && !e.gainCurve), 'mono events carry no normalization');
   }
 
+  // ---- headroom: the default model ----
+  {
+    const { dbToLin } = await import('../js/core/normalize.js');
+    const mk = (notes, cfg = {}) => {
+      const d = createProject({ name: 'head', mode: 'poly' });
+      d.master = { normalize: { ...DEFAULT_NORMALIZE, smoothMs: 0, ...cfg } };
+      const tid = d.tracks[0].id;
+      for (const [pitch, start, dur] of notes) {
+        addNote(d, tid, createNote({ pitch, startTick: start, durationTicks: dur }));
+      }
+      return d;
+    };
+    const level = (e) => (e.gainCurve ? Math.min(...e.gainCurve) : e.gainMul ?? 1);
+    const peakOf = (d) => {
+      const evs = flattenSong(d).events;
+      return predictPeak(d, evs, (ev) => getInstrument(d, ev.instrumentId));
+    };
+
+    // Below the target NOTHING happens. This is the whole point of measuring
+    // amplitude instead of counting voices: a sparse melody, an interval and
+    // a moderate chord were all being ducked by the count model for no reason.
+    for (const notes of [
+      [[60, 0, 384]],
+      [[60, 0, 384], [64, 0, 384]],
+    ]) {
+      const evs = flattenSong(mk(notes)).events;
+      assert(evs.every((e) => level(e) >= 1), `${notes.length} voice(s) under target: untouched`);
+    }
+    // Three voices sum to 0.744 against a 0.708 target, so they are touched -
+    // but only just. The transition has to be gentle, not a cliff.
+    {
+      const evs = flattenSong(mk([[60, 0, 384], [64, 0, 384], [67, 0, 384]])).events;
+      const worst = Math.min(...evs.map(level));
+      assert(worst > 0.9, 'a mix barely over target is barely ducked: ' + worst.toFixed(3));
+    }
+
+    // Above it, the mix is pulled to the target and no further.
+    {
+      const d = mk([[60, 0, 384], [64, 0, 384], [67, 0, 384], [71, 0, 384], [74, 0, 384], [77, 0, 384]]);
+      const before = peakOf({ ...d, master: { normalize: { ...DEFAULT_NORMALIZE, enabled: false } } });
+      const after = peakOf(d);
+      const target = dbToLin(DEFAULT_NORMALIZE.targetDb);
+      assert(before.peak > 1, 'six voices would clip: ' + before.peak.toFixed(3));
+      assert(after.peak <= target * 1.05, 'and are pulled to the target: ' + after.peak.toFixed(3));
+      assert(after.peak > target * 0.8, 'without over-ducking: ' + after.peak.toFixed(3));
+    }
+
+    // The regression this model exists to kill: a MONOPHONIC melody whose
+    // notes overlap only by their release tails. The count model saw two
+    // voices and halved every note after the first; nothing here is remotely
+    // near clipping.
+    for (const r of [0, 0.1, 0.4]) {
+      const d = mk([0, 1, 2, 3, 4, 5, 6, 7].map((i) => [60 + i, i * 96, 96]));
+      d.instruments.find((i) => i.id === 'badge').adsr = { a: 0.005, d: 0, s: 1, r };
+      const evs = flattenSong(d).events;
+      assert(evs.every((e) => level(e) >= 1), `a mono melody with a ${r * 1000} ms release is untouched`);
+    }
+
+    // Smoothing must never leave the factor above what a moment needs, or a
+    // short dense hit slips through - it may only ease the approach.
+    {
+      const notes = [[60, 0, 24], [64, 0, 24], [67, 0, 24], [71, 0, 24], [74, 0, 24], [77, 0, 24]];
+      const sharp = peakOf(mk(notes, { smoothMs: 0 }));
+      const soft = peakOf(mk(notes, { smoothMs: 30 }));
+      assert(soft.peak <= sharp.peak * 1.05, 'smoothing does not let a short hit through');
+    }
+
+    // Mono is out of reach entirely.
+    {
+      const d = createProject({ name: 'monohead', mode: 'mono' });
+      const tid = d.tracks[0].id;
+      for (const p of [60, 64, 67, 71, 74, 77]) {
+        addNote(d, tid, createNote({ pitch: p, startTick: 0, durationTicks: 384 }));
+      }
+      const evs = flattenSong(d).events;
+      assert(evs.every((e) => !('gainMul' in e) && !e.gainCurve), 'mono is never normalized');
+    }
+  }
+
   // ---- release tails ----
   {
     // A voice is audible until its RELEASE ends. Counting notated durations
@@ -1163,7 +1244,7 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     // End to end: a stack whose notes all release together must stay ducked
     // through the tail rather than springing back.
     const d = createProject({ name: 'tails', mode: 'poly' });
-    d.master = { normalize: { ...DEFAULT_NORMALIZE, track: 0.5, song: 0.5, smoothMs: 0 } };
+    d.master = { normalize: { ...DEFAULT_NORMALIZE, targetDb: 12, track: 0.5, song: 0.5, smoothMs: 0 } };
     d.instruments.find((i) => i.id === 'badge').adsr = { a: 0.005, d: 0, s: 1, r: 0.5 };
     const tid = d.tracks[0].id;
     for (const p of [60, 64, 67, 71]) {

@@ -55,43 +55,39 @@ fast arps become smooth sweeps - and held notes get true intra-note gain
 ramps. Poly-only; mono and the `.h`/`.fmf` exports ignore automation
 entirely.
 
-## Levels (polyphony normalization)
+## Levels (headroom)
 
 Voices sum linearly, so with the default instrument gain **three simultaneous
-notes already reach the limiter's knee** - a polyphonic sequencer that starts
-distorting on the fourth note is mis-calibrated. Measured on the shipped
-demos, Tetris and Bad Apple had been running about +5 dB into the limiter
-since they were made.
+notes already reach the master clipper's knee** - a polyphonic sequencer that
+starts distorting on the fourth note is mis-calibrated. Measured on the
+shipped demos, Tetris and Bad Apple had been running about +5 dB into the
+limiter since they were made.
 
-The **Levels** card fixes it by scaling voices by `N^-k` in two stages, where
-N is how many voices are sounding:
+The **Levels** card measures the predicted amplitude at every 5 ms of the
+score and ducks only by how far it exceeds a target (-3 dB by default, the
+clipper's knee). **Below the target nothing happens at all**, so a sparse
+melody, a two-note interval or a moderate chord are untouched; only a
+genuinely hot moment is pulled down. It is a limiter driven by the score
+rather than by the audio, which is why it needs no lookahead - it can simply
+read ahead.
 
-- **track** - how many voices does *this* track have right now? Balances a
-  chord against a single note within one instrument.
-- **song** - how many are sounding *anywhere* right now? Balances the whole
-  arrangement against a solo passage.
+Two details that were found by measuring rather than reasoning:
 
-`k` is the dial: `0` is off (voices sum, as before), `0.5` is equal power
-(four voices are twice one voice, not four times) and `1` is constant sum (a
-chord is exactly as loud as one note). A single global "turn it down" number
-was rejected deliberately - it makes a sparse melody quiet to accommodate one
-dense bar elsewhere. Because the factor follows what is actually sounding, a
-solo passage has N=1 and is multiplied by exactly 1.
+- A voice is counted until its **release** finishes, not until its notated
+  end. Ignoring tails made a chord's releases invisible, so the level sprang
+  back the instant the notes ended and every tail rang out at full volume.
+- Smoothing may **only ease the approach, never reduce the depth**. A plain
+  smoother let Bad Apple's short six-voice stacks overshoot to 1.045 where
+  0.708 was required; taking the lower of the smoothed and required values
+  gives a limiter's shape instead.
 
-A voice is counted until its **release** has finished, not until its notated
-end. Counting notated durations made a chord's tails invisible: the count
-dropped the instant the notes ended, the factor sprang back toward 1, and
-every tail rang out at full level - four ducked notes releasing together,
-straight back into the limiter. The consequence is that an arpeggio's own
-overlapping tails count too, which is physically correct and slightly more
-conservative.
-
-**Smoothing** is the other dial and it matters more than it looks: the factor
-changes in steps, and a step in gain is a click, but too much smoothing lets
-short dense hits through. Bad Apple's notes run 18-109 ms, and 30 ms of
-smoothing let a six-voice stack back over full scale where 10 ms held it
-under. The card shows the predicted peak with and without normalization so a
-setting can be judged by number as well as by ear.
+An earlier version scaled voices by `N^-k` on voice count instead. That was
+measurably wrong: a **monophonic** melody whose notes overlap only by their
+release tails was counted as two voices and halved, with nothing anywhere
+near clipping. Voice count says nothing about loudness. `N^-k` survives as an
+optional **evenness** dial (default 0, off) for anyone who wants a chord to
+sound only slightly louder than a single note - a taste preference, distinct
+from staying under full scale, and therefore a separate control.
 
 All of it is a pure function of the flattened score, so it is deterministic
 and preview still equals export. **Mono is never touched** - one voice has

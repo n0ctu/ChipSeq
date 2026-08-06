@@ -103,15 +103,17 @@ export const TOOLS = [
     status: (ctx) => {
       const doc = ctx.store.getDoc();
       const cfg = normalizeConfig(doc);
-      const tuned = ['enabled', 'song', 'track', 'smoothMs'].filter((k) => cfg[k] !== DEFAULT_NORMALIZE[k]);
+      const tuned = ['enabled', 'targetDb', 'song', 'track', 'smoothMs']
+        .filter((k) => cfg[k] !== DEFAULT_NORMALIZE[k]);
       const optedOut = doc.tracks.filter((t) => t.normalize !== undefined).length;
       if (!cfg.enabled) return { on: true, label: 'off' };
+      const even = cfg.song > 0 || cfg.track > 0;
       return {
         on: tuned.length > 0 || optedOut > 0,
-        label: optedOut
-          ? `${optedOut} track${optedOut === 1 ? '' : 's'} excluded`
+        label: even
+          ? `evenness ${cfg.song.toFixed(2)}/${cfg.track.toFixed(2)}`
           : tuned.length
-            ? `${cfg.song.toFixed(2)} / ${cfg.track.toFixed(2)}`
+            ? `target ${cfg.targetDb.toFixed(1)} dB`
             : 'default',
       };
     },

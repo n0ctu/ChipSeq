@@ -1,49 +1,53 @@
-// Polyphony normalization: keeping a thick arrangement from eating its own
-// headroom, without taxing the thin parts.
+// Levels: keeping the mix under full scale without taxing the quiet parts.
 //
-// The problem it solves, measured rather than assumed: one voice at the
-// default instrument gain peaks around 0.25, and voices sum linearly, so
-// THREE simultaneous notes reach the limiter's knee. A polyphonic sequencer
-// that distorts on the fourth note is mis-calibrated, and the shipped Tetris
-// and Bad Apple demos were running about +5 dB into the limiter as a result.
+// The problem, measured rather than assumed: one voice at the default
+// instrument gain peaks around 0.25, voices sum linearly, and the master's
+// soft clipper starts shaping at 0.708 - so the FOURTH simultaneous note was
+// already being distorted, and the shipped Tetris and Bad Apple demos had
+// been running about +5 dB into the limiter since they were made.
 //
-// A single global "turn the song down" number was the obvious fix and the
-// wrong one: it makes a sparse melody quiet for the sake of one dense bar
-// somewhere else. So the scaling follows what is actually sounding, in two
-// stages that answer two different questions:
+// This module went through two designs, and the second exists because the
+// first was measurably wrong:
 //
-//   track  how many voices does THIS track have right now? Normalizes a
-//          chord against a single note within one instrument.
-//   song   how many voices are sounding ANYWHERE right now? Normalizes the
-//          whole arrangement against a solo passage.
+//   v1  scale every voice by N^-k, where N is how many are sounding. Simple,
+//       but voice COUNT is a poor proxy for loudness. A plain monophonic
+//       melody whose notes overlap only by their release tails was counted
+//       as two voices and halved - nothing was near clipping, and it ducked
+//       anyway.
 //
-// Both use N^-k. k is the dial:
+//   v2  measure the actual amplitude sum and duck only by how far it exceeds
+//       a target. Below the target nothing happens at all, so a sparse
+//       melody, a two-note interval and a moderate chord are untouched, and
+//       only a genuinely hot moment is pulled down. It is a limiter driven
+//       by the score rather than by the audio - which means it needs no
+//       lookahead trickery, because it can simply read ahead.
 //
-//   k = 0    off - voices sum linearly (what the app did before)
-//   k = 0.5  equal power - 4 voices are twice one voice, not four times.
-//            The standard choice, and it keeps a chord feeling like a chord.
-//   k = 1    constant sum - a chord is exactly as loud as a single note.
-//            Very even, and it flattens the arrangement's dynamics.
+// N^-k survives as an OPTIONAL evenness dial (default 0, off) for anyone who
+// wants a chord to sound only slightly louder than a single note. That is a
+// taste preference, distinct from staying under full scale, so it is a
+// separate control rather than the mechanism.
 //
 // Everything here is a pure function of the flattened score, so the result is
-// identical live and offline and the preview === export invariant holds. It
-// needs no lookahead trickery because it can simply read ahead.
+// identical live and offline and preview === export still holds.
 //
-// MONO IS NEVER TOUCHED. Mono plays one voice by definition, so there is
-// nothing to normalize - which is also what guarantees .h/.fmf output and the
-// badge-accurate preview cannot be affected by any of this.
+// MONO IS NEVER TOUCHED. Mono plays one voice by definition, which is also
+// what guarantees .h/.fmf output and the badge-accurate preview cannot be
+// affected by any of this.
 
 export const DEFAULT_NORMALIZE = {
   kind: 'normalize',
   v: 1,
   enabled: true,
-  track: 0.5, // per-track polyphony exponent
-  song: 0.5, // whole-arrangement polyphony exponent
+  // Ceiling for the predicted sum, in dB relative to full scale. Set at the
+  // master's soft-clip knee, so the clipper stays a safety net rather than
+  // something the mix leans on.
+  targetDb: -3,
+  // Optional evenness: scale voices by N^-k on top of the headroom work.
+  // 0 = off, 0.5 = equal power, 1 = a chord as loud as a single note.
+  song: 0,
+  track: 0,
   // How gently the factor may move. Too little clicks on held notes; too
-  // much lets short dense hits through - measured on Bad Apple, whose notes
-  // run 18-109 ms, 30 ms let a six-voice stack back over full scale while
-  // 10 ms held it under. The Levels tool exposes it because the right value
-  // depends entirely on how short the material's notes are.
+  // much lets short dense hits through - Bad Apple's notes run 18-109 ms.
   smoothMs: 10,
 };
 
@@ -52,7 +56,7 @@ export function normalizeConfig(doc) {
   return cfg ? { ...DEFAULT_NORMALIZE, ...cfg } : DEFAULT_NORMALIZE;
 }
 
-// A track can opt out (false) or set its own exponent (a number).
+// A track can opt out of the evenness stage (false) or set its own exponent.
 export function trackExponent(cfg, track) {
   const own = track && track.normalize;
   if (own === false) return 0;
@@ -60,16 +64,16 @@ export function trackExponent(cfg, track) {
   return cfg.track;
 }
 
-// ---- polyphony over time ----
+export const dbToLin = (db) => Math.pow(10, db / 20);
+
+// ---- polyphony (evenness stage only) ----
 
 // Count of simultaneous events at every tick where the count CHANGES.
-// Returns [{ tick, count }] sorted, starting at the first onset.
 //
 // A voice is counted until its RELEASE has finished, not until its notated
-// end. Counting notated durations meant a chord's tails were invisible: the
-// count dropped the instant the notes ended, the factor sprang back toward 1
-// and every tail rang out at full level - four ducked notes releasing
-// together straight back into the limiter.
+// end: counting notated durations made a chord's tails invisible, so the
+// count dropped the instant the notes ended and every tail rang out at full
+// level.
 export function polyphonyTimeline(events, releaseTicksOf = null) {
   const deltas = new Map();
   for (const ev of events) {
@@ -88,7 +92,6 @@ export function polyphonyTimeline(events, releaseTicksOf = null) {
   return out;
 }
 
-// Step lookup into a timeline: how many voices at this tick.
 export function countAt(timeline, tick) {
   if (!timeline.length) return 0;
   let lo = 0;
@@ -110,12 +113,12 @@ const factorFor = (count, k) => (count > 1 && k > 0 ? Math.pow(count, -k) : 1);
 
 // ---- smoothing ----
 
-// Voice counts change in steps, and a step in gain is a click. Smoothing is
-// ZERO-PHASE (one pole forward, the same pole backward) rather than causal:
-// a causal filter would let the first instant of a chord through at full
-// level before ducking, which is exactly the transient we are trying to
-// avoid. Reading the score means we can smooth into the future as easily as
-// out of the past.
+// The sum moves in steps as notes start and stop, and a step in gain is a
+// click. Smoothing is ZERO-PHASE (one pole forward, the same pole backward)
+// rather than causal: a causal filter would let the first instant of a chord
+// through at full level before ducking, which is the transient we exist to
+// prevent. Reading the score lets us smooth into the future as easily as out
+// of the past.
 export function smooth(values, stepMs, smoothMs) {
   if (!(smoothMs > 0) || values.length < 3) return values;
   const a = Math.exp(-stepMs / smoothMs);
@@ -125,107 +128,118 @@ export function smooth(values, stepMs, smoothMs) {
   return out;
 }
 
-const SAMPLE_MS = 5; // resolution the factor curve is built at
+const SAMPLE_MS = 5; // resolution the factor grid is built at
 const FLAT_ENOUGH = 0.01; // level spread treated as constant (~0.09 dB)
-
-// Round applied levels to the microscopic, so smoothing's float tails do not
-// leak into saved files and golden fixtures as 0.9499999999999998.
 const q = (v) => Math.round(v * 1e6) / 1e6;
 
-// Build the normalization factor for one track over the whole song, sampled
-// on a uniform time grid so it can be smoothed.
-function buildFactorCurve(doc, events, trackId, cfg, tickToSeconds, endTick, songMax, n, totalS, relOf) {
-  const kTrack = trackExponent(cfg, doc.tracks.find((t) => t.id === trackId));
-  const kSong = cfg.song;
-  if (kTrack <= 0 && kSong <= 0) return null;
+// ---- the amplitude sum ----
 
-  const trackLine = polyphonyTimeline(events.filter((e) => e.trackId === trackId), relOf);
-  const trackMax = maxCountGrid(trackLine, n, endTick);
-  const raw = new Float64Array(n);
-  for (let i = 0; i < n; i++) {
-    raw[i] = factorFor(trackMax[i], kTrack) * factorFor(songMax[i], kSong);
-  }
-  return { values: smooth(raw, SAMPLE_MS, cfg.smoothMs), totalS, n };
-}
-
-// The HIGHEST voice count each grid cell overlaps - not the count sampled at
-// its midpoint.
+// Predicted output amplitude at every 5 ms step.
 //
-// Polyphony changes in steps, and those steps land between grid points. Point
-// sampling therefore reads the value from just BEFORE a chord arrives, and the
-// note covering that instant sails through at full level: measured on the Bad
-// Apple demo, a six-voice hit was being scaled by 1.0 instead of 0.41. Taking
-// the worst count in each cell errs toward too much headroom, which is the
-// only safe direction to err.
-function maxCountGrid(timeline, n, endTick) {
-  const out = new Int32Array(n);
-  if (!timeline.length || endTick <= 0) return out;
+// Each voice contributes its actual level - instrument gain, velocity, track
+// gain and any gain automation - held flat while the note sounds and decaying
+// linearly through its release. Summing amplitudes is an upper bound, since
+// real waves rarely align perfectly, which is the right direction to err for
+// headroom.
+export function amplitudeGrid(events, n, endTick, voiceOf) {
+  const sum = new Float64Array(n);
+  if (endTick <= 0) return sum;
   const pos = (tick) => (tick / endTick) * (n - 1);
-  for (let j = 0; j < timeline.length; j++) {
-    const count = timeline[j].count;
-    if (count <= 1) continue;
-    const from = Math.max(0, Math.floor(pos(timeline[j].tick)));
-    const nextTick = j + 1 < timeline.length ? timeline[j + 1].tick : endTick;
-    const to = Math.min(n - 1, Math.ceil(pos(nextTick)));
-    for (let i = from; i <= to; i++) if (count > out[i]) out[i] = count;
+  for (const ev of events) {
+    if (ev.durationTicks <= 0) continue;
+    const { level, releaseTicks } = voiceOf(ev);
+    if (!(level > 0)) continue;
+    const noteEnd = ev.startTick + ev.durationTicks;
+    const from = Math.max(0, Math.floor(pos(ev.startTick)));
+    const heldTo = Math.min(n - 1, Math.ceil(pos(noteEnd)));
+    for (let i = from; i <= heldTo; i++) sum[i] += level;
+    if (releaseTicks > 0) {
+      const tailTo = Math.min(n - 1, Math.ceil(pos(noteEnd + releaseTicks)));
+      const span = Math.max(1, tailTo - heldTo);
+      for (let i = heldTo + 1; i <= tailTo; i++) {
+        sum[i] += level * Math.max(0, 1 - (i - heldTo) / span);
+      }
+    }
   }
-  return out;
-}
-
-function sampleCurve(curve, seconds) {
-  const pos = (seconds * 1000) / SAMPLE_MS;
-  const i = Math.max(0, Math.min(curve.n - 1, Math.round(pos)));
-  return curve.values[i];
+  return sum;
 }
 
 // ---- application ----
 
-// Fold the factor into each event's level. Events already carry gainMul (a
-// scalar) or gainCurve (from a gain automation lane); normalization
-// multiplies into whichever is there, so the two compose instead of one
-// winning.
-export function applyNormalization(doc, events, tickToSeconds, releaseTicksOf = null) {
+// Fold the headroom factor (and the optional evenness stages) into each
+// event's level. Events already carry gainMul or gainCurve from a gain
+// automation lane; this multiplies into whichever is there, so the two
+// compose rather than one winning.
+//
+// voiceOf(ev) -> { level, releaseTicks }: the event's actual output level and
+// how long it keeps ringing. Supplied by flatten, the layer that can resolve
+// instruments and envelopes.
+export function applyNormalization(doc, events, tickToSeconds, voiceOf) {
   const cfg = normalizeConfig(doc);
-  if (!cfg.enabled || doc.mode !== 'poly' || !events.length) return events;
-  if (cfg.track <= 0 && cfg.song <= 0) return events;
+  if (!cfg.enabled || doc.mode !== 'poly' || !events.length || !voiceOf) return events;
 
-  const relOf = releaseTicksOf || (() => 0);
+  const relOf = (ev) => voiceOf(ev).releaseTicks || 0;
   let endTick = 0;
   for (const ev of events) endTick = Math.max(endTick, ev.startTick + ev.durationTicks + relOf(ev));
   if (endTick <= 0) return events;
 
-  // The song-wide timeline and its grid are identical for every track, so
-  // they are built once rather than per track.
   const totalS = tickToSeconds(endTick);
   const n = Math.max(2, Math.ceil((totalS * 1000) / SAMPLE_MS) + 1);
-  const songMax = maxCountGrid(polyphonyTimeline(events, relOf), n, endTick);
 
-  const curves = new Map();
-  for (const ev of events) {
-    if (!curves.has(ev.trackId)) {
-      curves.set(ev.trackId, buildFactorCurve(doc, events, ev.trackId, cfg, tickToSeconds, endTick, songMax, n, totalS, relOf));
+  // Headroom: duck only by how far the sum exceeds the target. Below it every
+  // factor is exactly 1 and nothing is touched - which is what keeps a sparse
+  // melody, an interval or a moderate chord out of this entirely.
+  const target = dbToLin(cfg.targetDb);
+  const sum = amplitudeGrid(events, n, endTick, voiceOf);
+  const head = new Float64Array(n);
+  let anyDuck = false;
+  for (let i = 0; i < n; i++) {
+    head[i] = sum[i] > target ? target / sum[i] : 1;
+    if (head[i] < 1) anyDuck = true;
+  }
+  // Smoothing must never leave the factor ABOVE what the moment needs, or a
+  // short dense hit slips through: Bad Apple's six-voice stacks overshot to
+  // 1.045 at 10 ms of smoothing, where the raw requirement was 0.708. Taking
+  // the lower of the two gives a limiter's shape - it eases in and recovers
+  // gently, but reaches full depth wherever depth is actually required.
+  const smoothed = smooth(head, SAMPLE_MS, cfg.smoothMs);
+  const headroom = new Float64Array(n);
+  for (let i = 0; i < n; i++) headroom[i] = Math.min(head[i], smoothed[i]);
+
+  // Evenness (optional, off by default): the N^-k stages.
+  const wantsEvenness = cfg.song > 0 || doc.tracks.some((t) => trackExponent(cfg, t) > 0);
+  if (!anyDuck && !wantsEvenness) return events;
+
+  const songLine = wantsEvenness ? polyphonyTimeline(events, relOf) : null;
+  const trackLines = new Map();
+  const evenAt = (ev, tick) => {
+    if (!wantsEvenness) return 1;
+    const kTrack = trackExponent(cfg, doc.tracks.find((t) => t.id === ev.trackId));
+    if (!trackLines.has(ev.trackId)) {
+      trackLines.set(ev.trackId, polyphonyTimeline(events.filter((e) => e.trackId === ev.trackId), relOf));
     }
-    const curve = curves.get(ev.trackId);
-    if (!curve) continue;
+    return (
+      factorFor(countAt(trackLines.get(ev.trackId), tick), kTrack) *
+      factorFor(countAt(songLine, tick), cfg.song)
+    );
+  };
 
-    // The curve spans the NOTE, and the voice holds its final value through
-    // the release. That is correct precisely because ringing tails are
-    // counted (see polyphonyTimeline): at a note's end tick its own tail and
-    // its neighbours' are all still sounding, so the last value is already
-    // the ducked one the release should keep.
+  const sampleHead = (seconds) => {
+    const i = Math.max(0, Math.min(n - 1, Math.round((seconds * 1000) / SAMPLE_MS)));
+    return headroom[i];
+  };
+
+  for (const ev of events) {
     const startS = tickToSeconds(ev.startTick);
     const endS = tickToSeconds(ev.startTick + ev.durationTicks);
-    // Sample strictly INSIDE the note: at u=1 exactly, the grid has already
-    // moved on to whatever starts next, so the last point of every curve
-    // would carry the following moment's factor.
+    // Sample strictly INSIDE the note: at its exact end the grid has already
+    // moved on to whatever starts next.
     const span = Math.max(0, endS - startS - 1e-4);
-    const at = (u) => sampleCurve(curve, startS + span * u);
+    const at = (u) => sampleHead(startS + span * u) * evenAt(ev, ev.startTick + ev.durationTicks * u);
 
-    // Whether the factor moves across this note has to be decided by looking
-    // INSIDE it, not just at its ends. A held note that spans a chord dips in
-    // the middle and comes back - endpoints alone report "constant 1.0" and
-    // the note sails through the dense passage at full level, which is
-    // exactly the overshoot this module exists to prevent.
+    // Whether the factor moves has to be decided by looking INSIDE the note,
+    // not just at its ends: a held note spanning a chord dips in the middle
+    // and comes back, and endpoints alone report "constant".
     const probes = Math.max(2, Math.min(32, Math.ceil(((endS - startS) * 1000) / SAMPLE_MS)));
     let lo = Infinity;
     let hi = -Infinity;
@@ -234,20 +248,18 @@ export function applyNormalization(doc, events, tickToSeconds, releaseTicksOf = 
       if (v < lo) lo = v;
       if (v > hi) hi = v;
     }
+    if (lo >= 1) continue; // nothing to do for this note
 
     if (ev.gainCurve) {
-      // Follow the existing lane curve point for point.
-      const n = ev.gainCurve.length;
-      for (let i = 0; i < n; i++) ev.gainCurve[i] = q(ev.gainCurve[i] * at(n === 1 ? 0 : i / (n - 1)));
+      const len = ev.gainCurve.length;
+      for (let i = 0; i < len; i++) ev.gainCurve[i] = q(ev.gainCurve[i] * at(len === 1 ? 0 : i / (len - 1)));
     } else if (hi - lo < FLAT_ENOUGH) {
       // Smoothing means the factor is never EXACTLY constant, so an exact
-      // test would push nearly every note onto the curve path - measured on
-      // Bad Apple, 5280 of 5650 notes, at 127k float points per flatten, for
-      // level changes far below hearing. Anything under 1% (0.09 dB) is taken
-      // as flat, at its lowest value so headroom is never overstated.
+      // test would push nearly every note onto the curve path for level
+      // changes far below hearing. Taken at its lowest value, so headroom is
+      // never overstated.
       ev.gainMul = q((ev.gainMul ?? 1) * lo);
     } else {
-      // The factor moves across this note, so it needs a curve of its own.
       const steps = Math.min(64, Math.max(2, Math.ceil(((endS - startS) * 1000) / SAMPLE_MS)));
       const arr = new Float32Array(steps + 1);
       const base = ev.gainMul ?? 1;
@@ -262,9 +274,7 @@ export function applyNormalization(doc, events, tickToSeconds, releaseTicksOf = 
 // ---- reporting ----
 
 // The loudest instant in the song, as a linear peak, so the UI can say what a
-// setting will actually do before anyone renders anything. Summing voice
-// gains is an upper bound (real waves rarely align perfectly) which is the
-// right direction to err for headroom.
+// setting will do before anyone renders anything.
 export function predictPeak(doc, events, resolveInstrument, masterGain = 0.9) {
   if (!events.length) return { peak: 0, tick: 0, voices: 0 };
   const starts = [...new Set(events.map((e) => e.startTick))].sort((a, b) => a - b);
@@ -276,9 +286,7 @@ export function predictPeak(doc, events, resolveInstrument, masterGain = 0.9) {
       if (ev.startTick > tick || tick >= ev.startTick + ev.durationTicks) continue;
       voices++;
       const inst = resolveInstrument(ev);
-      // Sample the event's curve AT THIS MOMENT, not at its own onset - a
-      // note that started quiet and swelled would otherwise be counted at
-      // the level it had bars ago.
+      // Sample the event's curve AT THIS MOMENT, not at its own onset.
       let level = ev.gainMul ?? 1;
       if (ev.gainCurve && ev.gainCurve.length) {
         const u = ev.durationTicks > 0 ? (tick - ev.startTick) / ev.durationTicks : 0;
