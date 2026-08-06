@@ -431,3 +431,7 @@ body.dragging::after {
   z-index: 200;
   pointer-events: none;
 }
+
+.track-hex { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 11px; color: var(--text-dim); }
+.track-hex input { width: 90px; font-family: var(--font-mono); }
+.track-hex input.invalid { border-color: var(--danger); color: var(--danger); }

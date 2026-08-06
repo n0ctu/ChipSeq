@@ -189,12 +189,26 @@ that has not picked a colour.
 
 Double-clicking a track's name opens the **Track** dialog: name and colour
 together, since those are the two things you change about a track as an
-object. Colour is stored as an **index into the theme palette**, not a hex
-value, so the whole look stays retunable from `css/base.css`. Every track
-carries one explicitly, assigned at birth from the least-used entry - deriving
-it from row position was tidy until rows could be reordered, at which point
-every colour shuffled whenever the list did. An identity that moves is not an
-identity.
+object. Every track carries a colour explicitly, assigned at birth from the
+least-used entry - deriving it from row position was tidy until rows could be
+reordered, at which point every colour shuffled whenever the list did. An
+identity that moves is not an identity.
+
+`track.color` is one field in **two forms**:
+
+```jsonc
+"color": 6          // palette index 0..7, resolved through the theme
+"color": "#ff8800"  // a literal colour, used verbatim
+```
+
+An index keeps the look retunable from `css/base.css` (and will follow a light
+theme, if one ever lands); a hex covers anything the palette does not, and is
+there to be hand-edited. Both are the *same field*, so the two can never drift
+apart the way an index plus a mirrored hex would - and every view resolves it
+through the same pair of helpers, `trackColor()` for canvas and
+`trackColorCss()` for inline styles. Shorthand (`#f80`) works. A string that
+does not parse as a hex is ignored, and the dialog leaves the existing colour
+alone rather than storing a typo.
 
 ### Mute and solo
 

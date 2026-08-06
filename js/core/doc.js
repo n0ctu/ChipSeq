@@ -78,15 +78,13 @@ export function createNote({ pitch, startTick, durationTicks, velocity = 100, ha
   return { id: uid(), pitch, startTick, durationTicks, velocity, harmonics };
 }
 
-// `color` is a palette index and is assigned at birth - callers that have a
-// document pass pickTrackColor(doc) so a new track lands on the least-used
-// entry. Defaults to 0 only for the very first track of a new project.
 // The colour is generated here and baked into the track, so it is part of the
 // saved configuration in localStorage and in an export rather than something
 // each view re-derives. Pass `doc` to get the least-used palette entry;
-// without one the caller either supplied a colour or gets the first.
+// without one the caller either supplied a colour or gets the first. A caller
+// may also pass a literal "#rrggbb" - see trackColorHex below.
 export function createTrack({ name = 'Track', role = 'melody', instrumentId = 'badge', notes = [], color, doc } = {}) {
-  const baked = Number.isInteger(color) ? color : doc ? pickTrackColor(doc) : 0;
+  const baked = hasTrackColor({ color }) ? color : doc ? pickTrackColor(doc) : 0;
   return { id: uid(), name, role, instrumentId, color: baked, notes };
 }
 
@@ -196,7 +194,7 @@ export function migrate(doc) {
   // in keeps every existing project looking exactly as it did, while making
   // the colour survive the reordering that position-derived colours could not.
   doc.tracks.forEach((t, i) => {
-    if (!Number.isInteger(t.color)) t.color = i % TRACK_COLORS;
+    if (!hasTrackColor(t)) t.color = i % TRACK_COLORS;
   });
   // A newer file keeps its own version number: this build did not upgrade it
   // and must not claim it did. Its unknown parts ride along untouched.
@@ -431,7 +429,7 @@ export function enforceInvariants(doc) {
   // here as well as at creation, because imports and hand-written files also
   // have to come out the other side with one.
   for (const track of doc.tracks) {
-    if (!Number.isInteger(track.color)) track.color = pickTrackColor(doc);
+    if (!hasTrackColor(track)) track.color = pickTrackColor(doc);
   }
 
   const byId = new Set(doc.tracks.map((t) => t.id));
@@ -558,6 +556,27 @@ export function playableTracks(doc) {
 // changes it.
 export const TRACK_COLORS = 8;
 
+// track.color is ONE field in two forms: a palette index (0..7, resolved
+// through the theme, so it follows a future light theme) or a literal
+// "#rgb"/"#rrggbb" used verbatim. One field means the two can never drift
+// out of sync the way a baked index plus a mirrored hex would.
+const HEX_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+export function trackColorHex(track) {
+  if (!track || typeof track.color !== 'string') return null;
+  const hex = track.color.trim();
+  return HEX_RE.test(hex) ? hex.toLowerCase() : null;
+}
+
+// "This track already owns a colour" - either form counts, so baking a
+// default must not overwrite a hand-written hex.
+export function hasTrackColor(track) {
+  return !!track && (Number.isInteger(track.color) || !!trackColorHex(track));
+}
+
+// Palette slot only. A track carrying a hex has no index, so callers that can
+// render a literal colour must ask trackColorHex() FIRST - this falls back to
+// row position, which is a reasonable guess and nothing more.
 export function trackColorIndex(doc, track) {
   if (track && Number.isInteger(track.color)) {
     return ((track.color % TRACK_COLORS) + TRACK_COLORS) % TRACK_COLORS;

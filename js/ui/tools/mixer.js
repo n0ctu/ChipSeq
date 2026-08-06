@@ -5,7 +5,8 @@
 // than in the Instrument card, and they act on the per-track audio nodes
 // built by graph.js rather than being baked into each voice.
 
-import { getTrack, trackGain, trackPan, spreadPan, hasPanLane, trackColorIndex } from '../../core/doc.js';
+import { getTrack, trackGain, trackPan, spreadPan, hasPanLane } from '../../core/doc.js';
+import { trackColorCss } from '../piano-roll/render.js';
 import { formatPercent, formatPan, isHot } from '../../core/units.js';
 
 export function mount(body, { store, engine }) {
@@ -30,7 +31,7 @@ export function mount(body, { store, engine }) {
         return `
           <div class="mix-row${silenced ? ' silenced' : ''}" data-track="${track.id}">
             <div class="mix-head">
-              <span class="track-color" style="background:var(--track-${trackColorIndex(doc, track) + 1})"></span>
+              <span class="track-color" style="background:${trackColorCss(doc, track)}"></span>
               <span class="mix-name">${track.name}</span>
               <button class="btn-icon role-btn solo${track.solo ? ' on' : ''}" data-act="solo"
                 title="Solo - hear only the soloed tracks. The others stay visible and levels are unchanged, so a soloed track sounds exactly as it does in the mix.">S</button>

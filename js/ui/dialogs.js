@@ -1,6 +1,8 @@
 // Native <dialog> helpers. openDialog returns a Promise resolving with the
 // dialog's returnValue; focus is restored to the invoking element on close.
 
+import { trackColorHex, hasTrackColor } from '../core/doc.js';
+
 export function openDialog(dlg) {
   const opener = document.activeElement;
   dlg.returnValue = 'cancel';
@@ -47,21 +49,28 @@ export async function promptDialog(title, initial = '') {
 // track as an object, and splitting them across two interactions for the sake
 // of one text field would be worse.
 //
-// Returns { name, color } or null. color is a palette INDEX, so the theme
-// stays in charge of the actual shade. Always explicit - colours used to be
-// able to follow row position, which meant reordering reshuffled them.
+// Returns { name, color } or null. color is either a palette INDEX, leaving
+// the theme in charge of the shade, or a literal "#rrggbb" for anything the
+// palette does not cover. Always explicit - colours used to be able to follow
+// row position, which meant reordering reshuffled them.
 export async function trackDialog(track, colorCount = 8) {
   const dlg = document.getElementById('dlg-track');
   const input = dlg.querySelector('#track-name');
   const swatches = dlg.querySelector('#track-colors');
   input.value = track.name;
 
+  // The two controls are one field. A swatch stores a palette index, which
+  // follows the theme; the hex box stores a literal colour, which does not.
+  // Whichever was touched last wins, so the dialog can never hand back both.
+  const hexInput = dlg.querySelector('#track-hex');
+  const ownHex = trackColorHex(track);
   let picked = Number.isInteger(track.color) ? track.color : 0;
+  hexInput.value = ownHex || '';
   swatches.innerHTML = '';
   for (let i = 0; i < colorCount; i++) {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'swatch' + (picked === i ? ' on' : '');
+    b.className = 'swatch' + (!ownHex && picked === i ? ' on' : '');
     b.style.background = `var(--track-${i + 1})`;
     b.dataset.color = String(i);
     b.title = `Colour ${i + 1}`;
@@ -71,9 +80,20 @@ export async function trackDialog(track, colorCount = 8) {
     const b = e.target.closest('[data-color]');
     if (!b) return;
     picked = Number(b.dataset.color);
+    hexInput.value = ''; // picking a swatch means "back to the palette"
+    hexInput.classList.remove('invalid');
     for (const el of swatches.children) {
       el.classList.toggle('on', el === b);
     }
+  };
+  hexInput.oninput = () => {
+    const hex = hexInput.value.trim();
+    // Empty is valid - it means "use the swatch". Anything else has to parse
+    // before it is allowed to claim the selection.
+    const ok = !hex || !!trackColorHex({ color: hex });
+    hexInput.classList.toggle('invalid', !ok);
+    if (hex) for (const el of swatches.children) el.classList.remove('on');
+    else for (const el of swatches.children) el.classList.toggle('on', Number(el.dataset.color) === picked);
   };
   // Enter confirms; the form's first button is Cancel, so implicit submission
   // would otherwise discard everything.
@@ -86,7 +106,14 @@ export async function trackDialog(track, colorCount = 8) {
   setTimeout(() => input.select(), 0);
   const result = await openDialog(dlg);
   if (result !== 'ok') return null;
-  return { name: input.value.trim() || track.name, color: picked };
+  // A hex that does not parse is discarded rather than stored - a typo must
+  // not end up in the project file as a colour nothing can render. It leaves
+  // the track's existing colour ALONE rather than falling back to the swatch,
+  // which would silently repaint a hex track to palette entry 0 on a typo.
+  const typed = hexInput.value.trim();
+  const hex = trackColorHex({ color: typed });
+  const color = hex || (typed && hasTrackColor(track) ? track.color : picked);
+  return { name: input.value.trim() || track.name, color };
 }
 
 export function downloadBlob(blob, filename) {
