@@ -33,6 +33,8 @@
 // nothing to normalize - which is also what guarantees .h/.fmf output and the
 // badge-accurate preview cannot be affected by any of this.
 
+import { VELOCITY_GAIN } from './instruments.js';
+
 export const DEFAULT_NORMALIZE = {
   kind: 'normalize',
   v: 1,
@@ -291,7 +293,10 @@ export function predictPeak(doc, events, resolveInstrument, masterGain = 0.9) {
         const i = Math.max(0, Math.min(ev.gainCurve.length - 1, Math.round(u * (ev.gainCurve.length - 1))));
         level = ev.gainCurve[i];
       }
-      sum += (inst ? inst.gain : 1) * (ev.velocity / 127) * level;
+      // Ignores ev.velocity for the same reason the voice does, and must:
+      // an estimate that disagreed with what is rendered would warn about
+      // clipping that cannot happen, or miss clipping that can.
+      sum += (inst ? inst.gain : 1) * VELOCITY_GAIN * level;
     }
     const peak = sum * masterGain;
     if (peak > best.peak) best = { peak, tick, voices };

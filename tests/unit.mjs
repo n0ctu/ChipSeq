@@ -1412,6 +1412,24 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     const p1 = predictPeak(one, flattenSong(one).events, (ev) => getInstrument(one, ev.instrumentId), 1);
     assert(Math.abs(p.peak - p1.peak * 3) < 1e-6, 'three voices sum to three times one');
     eq(predictPeak(doc, [], () => null), { peak: 0, tick: 0, voices: 0 }, 'no events, no peak');
+
+    // Velocity is carried but NOT applied, so the estimate must not move with
+    // it either - an estimate that disagreed with the voice would warn about
+    // clipping that cannot happen, or miss clipping that can.
+    const loud = build({ enabled: false }, [[60, 0, 384]]);
+    loud.tracks[0].notes[0].velocity = 127;
+    const quiet = build({ enabled: false }, [[60, 0, 384]]);
+    quiet.tracks[0].notes[0].velocity = 20;
+    const pLoud = predictPeak(loud, flattenSong(loud).events, (ev) => getInstrument(loud, ev.instrumentId), 1);
+    const pQuiet = predictPeak(quiet, flattenSong(quiet).events, (ev) => getInstrument(quiet, ev.instrumentId), 1);
+    assert(Math.abs(pLoud.peak - pQuiet.peak) < 1e-9,
+      `velocity does not move the predicted peak (${pLoud.peak} vs ${pQuiet.peak})`);
+    assert(Math.abs(pLoud.peak - p1.peak) < 1e-9, 'and both match a nominal-velocity note');
+
+    // Carried, though: dropping it from the document would lose MIDI data we
+    // cannot recover, and the whole point is that it waits for a UI.
+    eq(flattenSong(quiet).events[0].velocity, 20, 'the event stream still carries the velocity');
+    eq(quiet.tracks[0].notes[0].velocity, 20, 'and so does the note');
   }
 }
 

@@ -62,12 +62,28 @@ function getPeriodicWave(ctx, instrument, dutyOverride = null) {
 // note's span (from flatten); duty overrides the pulse width; adsr overrides
 // the envelope per event (the ADSR automation lanes); detune shifts pitch in
 // cents; lfo adds periodic detune (vibrato).
+// Per-note velocity is PRESERVED in the document - MIDI import fills it in,
+// and every edit path carries it through - but it is NOT APPLIED to the
+// sound. Nothing in the UI shows or edits it, so a note sitting 6 dB below
+// its neighbours looks identical to them with nothing on screen to explain
+// why. Until there is a velocity editor, every note sounds at the nominal
+// value, so the only thing that varies is something you can actually see.
+//
+// The nominal is 100 rather than 127 deliberately: 100 is what every note
+// written in the app already carries, so ignoring velocity changes the level
+// of the notes that DEVIATE without shifting the whole app 2.1 dB louder.
+//
+// Re-enabling is one line here and one in normalize.js - which is why they
+// share this constant rather than each spelling out /127.
+export const NOMINAL_VELOCITY = 100;
+export const VELOCITY_GAIN = NOMINAL_VELOCITY / 127;
+
 export function scheduleNote(
   ctx,
   destination,
   instrument,
   {
-    pitch, startTime, stopTime, velocity = 100,
+    pitch, startTime, stopTime, velocity = 100, // accepted and ignored - see VELOCITY_GAIN
     gainMul = 1, gainCurve = null, duty = null, adsr = null,
     detune = 0, lfo = null, pan = null,
   }
@@ -81,7 +97,7 @@ export function scheduleNote(
   osc.frequency.value = pitchToFreq(pitch);
 
   const env = effectiveEnvelope(instrument, adsr);
-  const peak = instrument.gain * gainMul * (velocity / 127);
+  const peak = instrument.gain * gainMul * VELOCITY_GAIN;
   const hold = Math.max(0, stopTime - startTime);
   const release = Math.max(releaseTime(env), 0.001);
 

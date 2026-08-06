@@ -151,10 +151,30 @@ node**. Two paths, chosen by whether anything actually varies:
   exact Web Audio ramps, so the badge's 2 ms attack lands on the sample it
   should. This is the common case, and it is bit-for-bit what it always was.
 - **curve** - a gain lane varies across the note, or the envelope was drawn
-  freehand. Instrument gain x velocity x envelope x lane are sampled together
+  freehand. Instrument gain x envelope x lane are sampled together
   into one array covering the whole voice, release tail included. Sampling is
   by *time* (0.5 ms), not by a fixed points-per-note budget, because the
   latter smears a 2 ms attack away on any note longer than a second.
+
+### Velocity is stored, not applied
+
+Every note carries a `velocity`, and MIDI import fills it in from the file -
+Rickroll arrives with 48 distinct values spanning 2 to 100. It is preserved
+through every edit, save and export, and it is **deliberately not applied to
+the sound**.
+
+Nothing in the UI shows or edits it, so a note sitting 3 dB below its
+neighbours looks identical to them with nothing on screen to explain why -
+which is indistinguishable from a bug. Until there is a velocity editor,
+every note sounds at the nominal value (`NOMINAL_VELOCITY = 100`, the value
+notes written in the app already carry, so ignoring velocity moves the notes
+that *deviate* rather than shifting everything 2.1 dB).
+
+Two places must agree on this, and share one constant so they cannot drift:
+the voice in `instruments.js` and the peak estimate in `normalize.js`. An
+estimate that disagreed with what is rendered would warn about clipping that
+cannot happen, or miss clipping that can. Re-enabling velocity is a one-line
+change in each, plus a UI.
 
 The **envelope** is one shape with two editors. The four ADSR sliders drive it
 while it stays ADSR-shaped; drag a point on the canvas into something they
