@@ -1045,6 +1045,39 @@ await check('a click under the drag threshold still selects the track', `(async 
   return (selected && unmoved) || 'selected=' + selected + ' unmoved=' + unmoved;
 })()`);
 
+// The tracks panel and the Mixer resolve colour independently, and drifted
+// once already (the Mixer coloured by row index). Assert they agree on the
+// rendered pixels, not on the code path.
+await check('the Mixer shows the same colours as the tracks panel', `(async () => {
+  const { createTrack, pickTrackColor } = await import('/js/core/doc.js');
+  const store = window.__chipseq.store;
+  store.commit('colour fixture', ['song', 'tracks'], (d) => {
+    d.mode = 'poly';
+    while (d.tracks.length < 3) d.tracks.push(createTrack({ name: 'T' + d.tracks.length, color: pickTrackColor(d) }));
+    // deliberately NOT in palette order, and not matching row positions
+    d.tracks[0].color = 6;
+    d.tracks[1].color = 0;
+    d.tracks[2].color = 3;
+  });
+  await new Promise((r) => setTimeout(r, 250));
+  const sec = document.getElementById('sec-mixer');
+  if (!sec.classList.contains('open')) sec.querySelector('.tool-card-head').click();
+  await new Promise((r) => setTimeout(r, 400));
+
+  const panel = [...document.querySelectorAll('#track-list .track-color')]
+    .map((e) => getComputedStyle(e).backgroundColor);
+  const mixer = [...document.querySelectorAll('#mixer-body .mix-row .track-color')]
+    .map((e) => getComputedStyle(e).backgroundColor);
+  const levels = [...document.querySelectorAll('#levels-body .lv-track .track-color')]
+    .map((e) => getComputedStyle(e).backgroundColor);
+  store.undo();
+  if (!mixer.length) return 'mixer did not render';
+  if (panel.join() !== mixer.join()) return 'panel=' + panel.join() + ' mixer=' + mixer.join();
+  // Levels lists them too, when it happens to be open
+  if (levels.length && levels.join() !== panel.join()) return 'levels=' + levels.join();
+  return true;
+})()`);
+
 await check('the solo button silences others without hiding them', `(async () => {
   const { soloActive, createTrack, pickTrackColor } = await import('/js/core/doc.js');
   const { flattenSong } = await import('/js/core/flatten.js');
