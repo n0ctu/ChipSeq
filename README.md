@@ -86,6 +86,16 @@ cell as the note's end, where simultaneous notes had already stopped being
 counted, and smoothing eases the factor back toward 1 before a note is over.
 Together they made a ducked chord release at 2.5x its own level.
 
+A track can be **excluded** from Levels entirely (the checkboxes in the card,
+stored as `track.normalize = false`). Excluded means excluded from *both*
+stages: the voice plays at exactly the level it was written at and carries no
+moving gain, while the rest of the arrangement still normalizes around it.
+That is what you want for a lead - it used to cancel only the track stage,
+which for a monophonic lead was indistinguishable from doing nothing, because
+the song stage kept riding it anyway. Setting a **number** instead (`0`..`1`)
+overrides just that track's own exponent and keeps the song stage, so `0` is
+still available for the old meaning.
+
 **Smoothing** is the other dial and it matters more than it looks: the factor
 changes in steps, and a step in gain is a click, but too much smoothing lets
 short dense hits through. Bad Apple's notes run 18-109 ms, and 30 ms of

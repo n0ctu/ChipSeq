@@ -54,7 +54,21 @@ export function normalizeConfig(doc) {
   return cfg ? { ...DEFAULT_NORMALIZE, ...cfg } : DEFAULT_NORMALIZE;
 }
 
-// A track can opt out (false) or set its own exponent (a number).
+// track.normalize === false means EXEMPT: neither stage touches this track.
+//
+// It used to mean "track exponent 0", which cancelled only the track stage and
+// left the song stage riding the voice anyway - so excluding a lead from Levels
+// changed almost nothing, because a lead is usually monophonic and the track
+// stage was doing nothing for it in the first place. Measured on Bad Apple's
+// Lead: opting out moved its range 9.5 dB -> 7.6 dB, with all 907 notes still
+// sitting on a moving gain. "Exclude this track" has to mean the track stops
+// moving, or it does not mean anything.
+export function trackExempt(track) {
+  return !!track && track.normalize === false;
+}
+
+// A track can set its own exponent (a number) for the track stage. false is
+// handled by trackExempt above, before this is ever reached.
 export function trackExponent(cfg, track) {
   const own = track && track.normalize;
   if (own === false) return 0;
@@ -131,7 +145,11 @@ const q = (v) => Math.round(v * 1e6) / 1e6;
 // Build the normalization factor for one track over the whole song, sampled
 // on a uniform time grid so it can be smoothed.
 function buildFactorCurve(doc, events, trackId, cfg, tickToSeconds, endTick, songMax, n, totalS) {
-  const kTrack = trackExponent(cfg, doc.tracks.find((t) => t.id === trackId));
+  const track = doc.tracks.find((t) => t.id === trackId);
+  // Exempt: no curve at all, so the voice plays at exactly the level it was
+  // written at. The rest of the arrangement still normalizes around it.
+  if (trackExempt(track)) return null;
+  const kTrack = trackExponent(cfg, track);
   const kSong = cfg.song;
   if (kTrack <= 0 && kSong <= 0) return null;
 
