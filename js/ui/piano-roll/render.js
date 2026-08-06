@@ -3,7 +3,7 @@
 
 import { tickToX, pitchToY, visibleTickRange, visiblePitchRange, PITCH_MIN, PITCH_MAX } from './coords.js';
 import { isInKey, noteName, PITCH_NAMES } from '../../core/music.js';
-import { ticksPerBeat, ticksPerBar, trackColorIndex } from '../../core/doc.js';
+import { ticksPerBeat, ticksPerBar, trackColorIndex, trackColorHex } from '../../core/doc.js';
 
 export function readTheme() {
   const cs = getComputedStyle(document.documentElement);
@@ -38,7 +38,14 @@ export function readTheme() {
 // source; enforceInvariants() repairs the duplicate that exposed it.
 export function trackColor(theme, doc, track) {
   const t = typeof track === 'string' ? doc.tracks.find((x) => x.id === track) : track;
-  return theme.trackColors[trackColorIndex(doc, t) % theme.trackColors.length];
+  return trackColorHex(t) || theme.trackColors[trackColorIndex(doc, t) % theme.trackColors.length];
+}
+
+// The same answer as a CSS value, for the HTML views that build inline styles
+// and have no theme to hand. Kept next to trackColor() and over the same core
+// predicate, so the two cannot answer differently.
+export function trackColorCss(doc, track) {
+  return trackColorHex(track) || `var(--track-${trackColorIndex(doc, track) + 1})`;
 }
 
 const BLACK_KEYS = new Set([1, 3, 6, 8, 10]);

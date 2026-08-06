@@ -6,7 +6,8 @@
 // the predicted peak is shown with and without normalization so a setting can
 // be judged by number as well as by ear.
 
-import { getTrack, trackColorIndex } from '../../core/doc.js';
+import { getTrack } from '../../core/doc.js';
+import { trackColorCss } from '../piano-roll/render.js';
 import { flattenSong } from '../../core/flatten.js';
 import { getInstrument } from '../../core/instruments.js';
 import { ticksPerBar } from '../../core/doc.js';
@@ -78,7 +79,7 @@ export function mount(body, { store }) {
       <div class="lv-tracks">${doc.tracks
         .map((t) => `<label class="lv-track"><input type="checkbox" data-track="${t.id}"
           ${trackExponent(cfg, t) > 0 ? 'checked' : ''} />
-          <span class="track-color" style="background:var(--track-${trackColorIndex(doc, t) + 1})"></span>
+          <span class="track-color" style="background:${trackColorCss(doc, t)}"></span>
           <span>${t.name}</span></label>`)
         .join('')}</div>
       <button class="btn" id="lv-reset">Reset to defaults</button>`;

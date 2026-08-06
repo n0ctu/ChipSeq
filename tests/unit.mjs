@@ -1100,6 +1100,30 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(trackColorIndex(doc, { ...doc.tracks[0], color: TRACK_COLORS + 3 }) === 3, 'out-of-range colours wrap');
   assert(trackColorIndex(doc, { ...doc.tracks[0], color: -1 }) === TRACK_COLORS - 1, 'and wrap the other way');
 
+  // A literal hex is the second form of the SAME field, for colours the
+  // palette does not cover and for hand-editing a project file.
+  {
+    const { trackColorHex, hasTrackColor, enforceInvariants, migrate } = await import('../js/core/doc.js');
+    eq(trackColorHex({ color: '#ff8800' }), '#ff8800', 'a six-digit hex is taken verbatim');
+    eq(trackColorHex({ color: '#F80' }), '#f80', 'shorthand works and is normalised to lower case');
+    eq(trackColorHex({ color: '  #ff8800  ' }), '#ff8800', 'surrounding whitespace is tolerated');
+    eq(trackColorHex({ color: 'red' }), null, 'a CSS keyword is not a hex');
+    eq(trackColorHex({ color: '#ff88' }), null, 'a wrong-length hex is rejected');
+    eq(trackColorHex({ color: '#gggggg' }), null, 'a non-hex digit is rejected');
+    eq(trackColorHex({ color: 3 }), null, 'a palette index is not a hex');
+    assert(hasTrackColor({ color: '#ff8800' }) && hasTrackColor({ color: 0 }), 'either form counts as owning a colour');
+    assert(!hasTrackColor({ color: 'nope' }) && !hasTrackColor({}), 'a broken or missing colour does not');
+
+    // The point of the whole exercise: nothing downstream overwrites it.
+    const d = createProject({ name: 'hex', mode: 'poly' });
+    d.tracks[0].color = '#ff8800';
+    const warnings = enforceInvariants(d);
+    eq(d.tracks[0].color, '#ff8800', 'the baking pass leaves a hand-written hex alone');
+    eq(warnings, [], 'and does not report it as damage');
+    eq(mkTrack({ name: 'x', color: '#123456' }).color, '#123456', 'createTrack accepts one too');
+    eq(migrate(JSON.parse(JSON.stringify(d))).tracks[0].color, '#ff8800', 'and it survives a save/load round trip');
+  }
+
   // pickTrackColor spreads before it repeats, and repeats evenly after that.
   {
     const d = createProject({ name: 'pick', mode: 'poly' }); // one track, colour 0

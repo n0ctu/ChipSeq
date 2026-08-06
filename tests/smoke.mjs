@@ -987,6 +987,52 @@ await check('the track dialog sets an explicit colour', `(async () => {
     || 'marked=' + marked + ' before=' + before + ' picked=' + picked + ' restored=' + restored;
 })()`);
 
+await check('the track dialog stores a hex, and rejects one that does not parse', `(async () => {
+  const store = window.__chipseq.store;
+  const before = store.getDoc().tracks[0].color;
+  const open = async () => {
+    document.querySelector('#track-list .track-row .track-name')
+      .dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 250));
+  };
+  const type = (v) => {
+    const el = document.querySelector('#track-hex');
+    el.value = v;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    return el;
+  };
+
+  await open();
+  // typing a hex releases the palette selection - one field, not two
+  const el = type('#ff8800');
+  const swatchCleared = ![...document.querySelectorAll('#track-colors .swatch')].some((b) => b.classList.contains('on'));
+  document.querySelector('#dlg-track [value="ok"]').click();
+  await new Promise((r) => setTimeout(r, 250));
+  const stored = store.getDoc().tracks[0].color === '#ff8800';
+  const rendered = getComputedStyle(document.querySelector('#track-list .track-color')).backgroundColor;
+
+  // a typo must not reach the project file
+  await open();
+  const bad = type('#zz');
+  const flagged = bad.classList.contains('invalid');
+  document.querySelector('#dlg-track [value="ok"]').click();
+  await new Promise((r) => setTimeout(r, 250));
+  const kept = store.getDoc().tracks[0].color;
+
+  // picking a swatch goes back to the palette
+  await open();
+  document.querySelectorAll('#track-colors .swatch')[2].click();
+  const hexCleared = document.querySelector('#track-hex').value === '';
+  document.querySelector('#dlg-track [value="ok"]').click();
+  await new Promise((r) => setTimeout(r, 250));
+  const backToIndex = store.getDoc().tracks[0].color === 2;
+
+  while (store.getDoc().tracks[0].color !== before) store.undo();
+  return (stored && swatchCleared && rendered === 'rgb(255, 136, 0)' && flagged
+    && Number.isInteger(kept) === false && kept === '#ff8800' && hexCleared && backToIndex)
+    || JSON.stringify({ stored, swatchCleared, rendered, flagged, kept, hexCleared, backToIndex });
+})()`);
+
 await check('colours are baked in, so reordering repaints nothing', `(async () => {
   const { trackColorIndex } = await import('/js/core/doc.js');
   const store = window.__chipseq.store;
@@ -1057,7 +1103,7 @@ await check('the Mixer shows the same colours as the tracks panel', `(async () =
     // deliberately NOT in palette order, and not matching row positions
     d.tracks[0].color = 6;
     d.tracks[1].color = 0;
-    d.tracks[2].color = 3;
+    d.tracks[2].color = '#ff8800'; // the literal-hex form of the same field
     d.tracks[0].role = 'muted'; // the silenced path is where this broke
   });
   await new Promise((r) => setTimeout(r, 250));
@@ -1082,6 +1128,9 @@ await check('the Mixer shows the same colours as the tracks panel', `(async () =
   store.undo();
   if (!mixer.length) return 'mixer did not render';
   if (panel.join() !== mixer.join()) return 'panel=' + panel.join() + ' mixer=' + mixer.join();
+  // ...and that a hex is rendered as itself rather than snapped to a palette
+  // entry, in both views.
+  if (!panel[2].startsWith('rgb(255, 136, 0)')) return 'hex not honoured: ' + panel[2];
   // Levels lists them too, when it happens to be open
   if (levels.length && levels.join() !== panel.join()) return 'levels=' + levels.join();
   return true;
