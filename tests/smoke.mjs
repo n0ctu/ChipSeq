@@ -1058,18 +1058,27 @@ await check('the Mixer shows the same colours as the tracks panel', `(async () =
     d.tracks[0].color = 6;
     d.tracks[1].color = 0;
     d.tracks[2].color = 3;
+    d.tracks[0].role = 'muted'; // the silenced path is where this broke
   });
   await new Promise((r) => setTimeout(r, 250));
   const sec = document.getElementById('sec-mixer');
   if (!sec.classList.contains('open')) sec.querySelector('.tool-card-head').click();
   await new Promise((r) => setTimeout(r, 400));
 
-  const panel = [...document.querySelectorAll('#track-list .track-color')]
-    .map((e) => getComputedStyle(e).backgroundColor);
-  const mixer = [...document.querySelectorAll('#mixer-body .mix-row .track-color')]
-    .map((e) => getComputedStyle(e).backgroundColor);
-  const levels = [...document.querySelectorAll('#levels-body .lv-track .track-color')]
-    .map((e) => getComputedStyle(e).backgroundColor);
+  // backgroundColor alone is NOT enough: an ancestor's opacity changes what
+  // the dot looks like without changing its computed colour, which is exactly
+  // how a muted track's dot came to look wrong in the Mixer while every
+  // colour comparison passed. Fold the inherited opacity into the reading.
+  const swatch = (e) => {
+    let opacity = 1;
+    for (let n = e; n && n.nodeType === 1; n = n.parentElement) {
+      opacity *= Number(getComputedStyle(n).opacity);
+    }
+    return getComputedStyle(e).backgroundColor + '@' + opacity.toFixed(2);
+  };
+  const panel = [...document.querySelectorAll('#track-list .track-color')].map(swatch);
+  const mixer = [...document.querySelectorAll('#mixer-body .mix-row .track-color')].map(swatch);
+  const levels = [...document.querySelectorAll('#levels-body .lv-track .track-color')].map(swatch);
   store.undo();
   if (!mixer.length) return 'mixer did not render';
   if (panel.join() !== mixer.join()) return 'panel=' + panel.join() + ' mixer=' + mixer.join();
