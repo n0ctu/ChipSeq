@@ -1,6 +1,6 @@
 # chipseq-golden digest v1
 # artifact exceeds 32768 bytes - compared by hash, head/tail for context
-bytes:  67139
-sha256: 5f309ee5ad52a2f16771f0df5c6d408897dec0e86ba707146ee1996bb258bf1f
-head:   {\n \"warnings\": [],\n \"events\": [\n  {\n   \"pitch\": 69,\n   \"startTick\": 0,\n   \"durationTicks\": 48,\n   \"velocity\": 100,\n   \"trackId\": \"70707a08-baf0-4627-972d-8654d472049c\",\n   \"instrumentId\": \"pwm-demo\",\n   \"noteId\": \"9409b563-ba4a-45a9-a587-3cc29a56d09a\",\n   \"gainMul\": 0.95,\n   \"duty\": 0.12\n  },\n  {\n  
-tail:      0.106068,\n     0.106069,\n     0.106069,\n     0.106072,\n     0.106075,\n     0.106081,\n     0.106091,\n     0.106107,\n     0.106134,\n     0.106178,\n     0.10625,\n     0.10637,\n     0.106567,\n     0.106892,\n     0.107428,\n     0.108311,\n     0.109767,\n     0.112168,\n     0.116126\n    ]\n   }\n  }\n ]\n}\n
+bytes:  78210
+sha256: cfbd061d7eea58c72b106954ef5bb70bce99c0e202462389929eb82512761ee7
+head:   {\n \"warnings\": [],\n \"events\": [\n  {\n   \"pitch\": 69,\n   \"startTick\": 0,\n   \"durationTicks\": 48,\n   \"velocity\": 100,\n   \"trackId\": \"70707a08-baf0-4627-972d-8654d472049c\",\n   \"instrumentId\": \"pwm-demo\",\n   \"noteId\": \"9409b563-ba4a-45a9-a587-3cc29a56d09a\",\n   \"duty\": 0.12,\n   \"gainCurve\": {\n    \"f32\": [
+tail:     0.061247,\n     0.061253,\n     0.061253,\n     0.061263,\n     0.061279,\n     0.061306,\n     0.061351,\n     0.061425,\n     0.061547,\n     0.061748,\n     0.06208,\n     0.062627,\n     0.063528,\n     0.065014,\n     0.067463,\n     0.071503,\n     0.078162,\n     0.089141,\n     0.095801\n    ]\n   }\n  }\n ]\n}\n

@@ -102,7 +102,11 @@ export function scheduleNote(
     gain.gain.linearRampToValueAtTime(0, stopTime + release);
   } else {
     // The lane arrives sampled evenly across [startTime, stopTime]; read it
-    // back by position so the merge does not care how many points it has.
+    // back by position, and hold the final value through the release. That
+    // final value is the right one to hold because normalization counts
+    // ringing tails, so it is already the ducked level - it used to be the
+    // level AFTER the other voices stopped, which released four ducked notes
+    // at full volume straight back into the limiter.
     const laneAt = laneVaries
       ? (t) => {
           const u = hold > 0 ? Math.min(1, Math.max(0, t / hold)) : 0;
