@@ -163,7 +163,8 @@
           "velocity": 100,
           "harmonics": null
         }
-      ]
+      ],
+      "color": 0
     }
   ],
   "chordTrackId": null,

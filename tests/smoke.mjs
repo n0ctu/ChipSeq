@@ -969,45 +969,39 @@ await check('Enter in the track dialog saves the new name', `(async () => {
 
 await check('the track dialog sets an explicit colour', `(async () => {
   const store = window.__chipseq.store;
+  const before = store.getDoc().tracks[0].color;
   const nameEl = document.querySelector('#track-list .track-row .track-name');
   nameEl.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
   await new Promise((r) => setTimeout(r, 250));
   const swatches = document.querySelectorAll('#track-colors .swatch');
-  if (swatches.length !== 9) return 'expected 8 colours + auto, got ' + swatches.length;
-  // a track starts on "auto" - colour follows its position
-  const autoWasOn = swatches[8].classList.contains('on');
+  if (swatches.length !== 8) return 'expected 8 colours, got ' + swatches.length;
+  // the track's current colour is the one marked
+  const marked = [...swatches].findIndex((b) => b.classList.contains('on'));
   swatches[4].click();
   document.querySelector('#dlg-track [value="ok"]').click();
   await new Promise((r) => setTimeout(r, 250));
-  const t = store.getDoc().tracks[0];
-  const picked = t.color === 4;
+  const picked = store.getDoc().tracks[0].color === 4;
   store.undo();
-  const backToAuto = store.getDoc().tracks[0].color === undefined;
-  return (autoWasOn && picked && backToAuto)
-    || 'auto=' + autoWasOn + ' picked=' + picked + ' (' + t.color + ') undo=' + backToAuto;
+  const restored = store.getDoc().tracks[0].color === before;
+  return (marked === before && picked && restored)
+    || 'marked=' + marked + ' before=' + before + ' picked=' + picked + ' restored=' + restored;
 })()`);
 
-await check('an explicit colour survives reordering, an auto one follows', `(async () => {
+await check('colours are baked in, so reordering repaints nothing', `(async () => {
   const { trackColorIndex } = await import('/js/core/doc.js');
   const store = window.__chipseq.store;
   const doc = store.getDoc();
   if (doc.tracks.length < 2) return 'need two tracks';
-  const first = doc.tracks[0].id;
-  store.commit('pin colour', ['tracks'], (d) => { d.tracks[0].color = 6; });
-  const before = trackColorIndex(store.getDoc(), store.getDoc().tracks[0]);
-  // the second track has no colour, so it follows its index
-  const autoBefore = trackColorIndex(store.getDoc(), store.getDoc().tracks[1]);
+  const snapshot = () => store.getDoc().tracks
+    .map((t) => t.id + ':' + trackColorIndex(store.getDoc(), t)).sort().join();
+  const before = snapshot();
   store.commit('reorder', ['tracks'], (d) => {
     const [t] = d.tracks.splice(0, 1);
     d.tracks.push(t);
   });
-  const moved = store.getDoc().tracks.find((t) => t.id === first);
-  const after = trackColorIndex(store.getDoc(), moved);
-  const autoAfter = trackColorIndex(store.getDoc(), store.getDoc().tracks[0]);
+  const after = snapshot();
   store.undo();
-  store.undo();
-  return (before === 6 && after === 6 && autoBefore === 1 && autoAfter === 0)
-    || 'pinned ' + before + '->' + after + ', auto ' + autoBefore + '->' + autoAfter;
+  return before === after || 'before=' + before + ' after=' + after;
 })()`);
 
 await check('dragging a row anywhere reorders the track list', `(async () => {
@@ -1049,6 +1043,43 @@ await check('a click under the drag threshold still selects the track', `(async 
   const selected = d.activeTrackId === d.tracks[1].id;
   const unmoved = d.tracks.map((t) => t.id).join() === order;
   return (selected && unmoved) || 'selected=' + selected + ' unmoved=' + unmoved;
+})()`);
+
+await check('the solo button silences others without hiding them', `(async () => {
+  const { soloActive, createTrack, pickTrackColor } = await import('/js/core/doc.js');
+  const { flattenSong } = await import('/js/core/flatten.js');
+  const store = window.__chipseq.store;
+  // set up its own context rather than depending on where in the suite it runs
+  store.commit('solo fixture', ['song', 'tracks', 'notes'], (d) => {
+    d.mode = 'poly';
+    while (d.tracks.length < 2) d.tracks.push(createTrack({ name: 'Extra', color: pickTrackColor(d) }));
+  });
+  await new Promise((r) => setTimeout(r, 250));
+
+  const rows = [...document.querySelectorAll('#track-list .track-row')];
+  const soloBtn = rows[1] && rows[1].querySelector('.role-btn.solo');
+  if (!soloBtn) return 'no solo button on row 2';
+
+  soloBtn.click();
+  await new Promise((r) => setTimeout(r, 200));
+  const d = store.getDoc();
+  const lit = document.querySelectorAll('#track-list .role-btn.solo.on').length === 1;
+  const active = soloActive(d);
+  const heard = new Set(flattenSong(d).events.map((e) => e.trackId));
+  // only the soloed track sounds - but nothing was removed from the document,
+  // so the grid still has everything to draw
+  const onlySoloed = heard.size <= 1 && (heard.size === 0 || heard.has(d.tracks[1].id));
+  const nothingHidden = d.tracks.length === rows.length;
+
+  soloBtn.click();
+  await new Promise((r) => setTimeout(r, 200));
+  const cleared = !soloActive(store.getDoc());
+  store.undo();
+  store.undo();
+  store.undo();
+  return (lit && active && onlySoloed && nothingHidden && cleared)
+    || 'lit=' + lit + ' active=' + active + ' only=' + onlySoloed
+       + ' kept=' + nothingHidden + ' cleared=' + cleared;
 })()`);
 
 await check('dragging from a control does not reorder', `(async () => {

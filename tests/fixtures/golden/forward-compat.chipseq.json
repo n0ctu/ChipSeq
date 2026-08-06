@@ -79,6 +79,7 @@
       "name": "Lead",
       "role": "melody",
       "instrumentId": "badge",
+      "color": 0,
       "notes": [
         {
           "id": "future-note",

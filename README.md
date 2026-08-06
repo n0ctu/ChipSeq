@@ -190,10 +190,31 @@ that has not picked a colour.
 Double-clicking a track's name opens the **Track** dialog: name and colour
 together, since those are the two things you change about a track as an
 object. Colour is stored as an **index into the theme palette**, not a hex
-value, so the whole look stays retunable from `css/base.css` - and `auto`
-means "follow my position", which is how every project behaved before colours
-could be set. Setting one explicitly is what stops a colour from shuffling
-when rows are reordered.
+value, so the whole look stays retunable from `css/base.css`. Every track
+carries one explicitly, assigned at birth from the least-used entry - deriving
+it from row position was tidy until rows could be reordered, at which point
+every colour shuffled whenever the list did. An identity that moves is not an
+identity.
+
+### Mute and solo
+
+They answer different questions, and the difference is deliberate:
+
+| | sounds | in the grid | counted by Levels |
+|---|---|---|---|
+| **mute** | no | hidden | **no** - it is not part of the piece |
+| **solo** | only soloed tracks | others stay visible, drawn faint | **yes, unchanged** |
+
+Solo not touching Levels is the point of it: a soloed track previews at the
+level it has *in the mix*, which is the only level worth judging it at. If
+soloing changed the level, you would be auditioning something you never
+actually hear. Mute is the opposite - a muted track leaves the piece, so the
+others get its headroom back.
+
+Several tracks can be soloed at once and play together. Mute beats solo:
+soloing a track you have muted does not unmute it, and if the only soloed
+track is muted then nothing is really soloed. The track you are editing stays
+visible even when muted, so muting it never makes it uneditable.
 
 ## The project file
 

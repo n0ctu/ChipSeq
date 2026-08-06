@@ -48,14 +48,15 @@ export async function promptDialog(title, initial = '') {
 // of one text field would be worse.
 //
 // Returns { name, color } or null. color is a palette INDEX, so the theme
-// stays in charge of the actual shade.
+// stays in charge of the actual shade. Always explicit - colours used to be
+// able to follow row position, which meant reordering reshuffled them.
 export async function trackDialog(track, colorCount = 8) {
   const dlg = document.getElementById('dlg-track');
   const input = dlg.querySelector('#track-name');
   const swatches = dlg.querySelector('#track-colors');
   input.value = track.name;
 
-  let picked = Number.isInteger(track.color) ? track.color : null;
+  let picked = Number.isInteger(track.color) ? track.color : 0;
   swatches.innerHTML = '';
   for (let i = 0; i < colorCount; i++) {
     const b = document.createElement('button');
@@ -66,20 +67,10 @@ export async function trackDialog(track, colorCount = 8) {
     b.title = `Colour ${i + 1}`;
     swatches.appendChild(b);
   }
-  // "Auto" keeps the old behaviour - colour follows the row's position - and
-  // is what every track uses until someone picks one.
-  const auto = document.createElement('button');
-  auto.type = 'button';
-  auto.className = 'swatch swatch-auto' + (picked === null ? ' on' : '');
-  auto.dataset.color = 'auto';
-  auto.textContent = 'auto';
-  auto.title = 'Follow the track order';
-  swatches.appendChild(auto);
-
   swatches.onclick = (e) => {
     const b = e.target.closest('[data-color]');
     if (!b) return;
-    picked = b.dataset.color === 'auto' ? null : Number(b.dataset.color);
+    picked = Number(b.dataset.color);
     for (const el of swatches.children) {
       el.classList.toggle('on', el === b);
     }

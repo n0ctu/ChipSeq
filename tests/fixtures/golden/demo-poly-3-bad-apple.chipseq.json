@@ -1,6 +1,6 @@
 # chipseq-golden digest v1
 # artifact exceeds 32768 bytes - compared by hash, head/tail for context
-bytes:  1221006
-sha256: 363f11df8e8b1eecbf10908b19753437ff2ab170a01732e812639b98d87d8712
+bytes:  1221114
+sha256: 7f05d5c5d63f5a9b00606d9223e78a0eafe562f64fbf27b508eabca52b278d06
 head:   {\n  \"schema\": \"chipseq-tune\",\n  \"version\": 4,\n  \"id\": \"a58ffd58-815c-4fd0-ae22-b2f1f767d559\",\n  \"name\": \"Bad Apple\",\n  \"mode\": \"poly\",\n  \"ppq\": 96,\n  \"song\": {\n    \"bpm\": 138,\n    \"timeSig\": {\n      \"num\": 4,\n      \"den\": 4\n    },\n    \"key\": {\n      \"tonic\": 3,\n      \"mode\": \"minor\"\n    },\n    \"temp
 tail:   13d\",\n  \"activeTrackId\": \"a7cb14ed-34bc-4efd-a7f2-61099d12a70c\",\n  \"melodyTrackId\": \"a7cb14ed-34bc-4efd-a7f2-61099d12a70c\",\n  \"loop\": null,\n  \"grid\": {\n    \"snapTicks\": 48,\n    \"triplet\": false\n  },\n  \"createdAt\": \"2026-08-04T20:09:36.678Z\",\n  \"updatedAt\": \"2026-08-04T05:40:00.000Z\",\n  \"uses\": []\n}\n

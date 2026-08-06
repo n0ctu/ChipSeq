@@ -275,7 +275,8 @@
             "curve": "step"
           }
         ]
-      }
+      },
+      "color": 0
     },
     {
       "id": "bd6d97c0-d89a-4813-a83d-cf9acc328b01",
@@ -715,7 +716,8 @@
             "curve": "step"
           }
         ]
-      }
+      },
+      "color": 1
     }
   ],
   "chordTrackId": null,

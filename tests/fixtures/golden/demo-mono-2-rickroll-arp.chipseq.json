@@ -1,6 +1,6 @@
 # chipseq-golden digest v1
 # artifact exceeds 32768 bytes - compared by hash, head/tail for context
-bytes:  441977
-sha256: 0b02a003384c73fdf0f73004b4bcb44996be4559dbd81f00b2dabd5c18050333
+bytes:  442067
+sha256: 17c5a3ee60667c82608f97858bc789c0fd33a6f4e5c0bae41c4fe9b144786c10
 head:   {\n  \"schema\": \"chipseq-tune\",\n  \"version\": 4,\n  \"id\": \"4b281855-35ad-45b6-a388-88f466318cb8\",\n  \"name\": \"Rickroll\",\n  \"mode\": \"mono\",\n  \"ppq\": 96,\n  \"song\": {\n    \"bpm\": 128,\n    \"timeSig\": {\n      \"num\": 4,\n      \"den\": 4\n    },\n    \"key\": {\n      \"tonic\": 9,\n      \"mode\": \"major\"\n    },\n    \"tempo
 tail:   26-08-03T13:00:02.872Z\",\n  \"updatedAt\": \"2026-08-04T06:30:00.000Z\",\n  \"loop\": {\n    \"startTick\": 288,\n    \"endTick\": 7968,\n    \"enabled\": true\n  },\n  \"grid\": {\n    \"snapTicks\": 24,\n    \"triplet\": false\n  },\n  \"melodyTrackId\": \"b28f6005-34f3-4852-9239-77ba6b72133e\",\n  \"uses\": [\n    \"harmonics\"\n  ]\n}\n

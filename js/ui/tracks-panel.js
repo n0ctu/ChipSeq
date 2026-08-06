@@ -1,6 +1,6 @@
 // Tracks panel: list, active selection, roles, instruments, add/remove.
 
-import { createTrack, moveTrack, TRACK_COLORS } from '../core/doc.js';
+import { createTrack, moveTrack, pickTrackColor, TRACK_COLORS } from '../core/doc.js';
 import { confirmDialog, trackDialog } from './dialogs.js';
 import { icon } from './icons.js';
 import { readTheme, trackColor } from './piano-roll/render.js';
@@ -154,8 +154,13 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker, onImportTr
 
         const mute = document.createElement('button');
         mute.className = 'btn-icon' + (track.role === 'muted' ? '' : ' on');
-        mute.textContent = track.role === 'muted' ? 'M' : '♪';
-        mute.title = track.role === 'muted' ? 'Unmute' : 'Mute';
+        // Always the same glyph, state carried by the class. It used to read
+        // "M" when muted, which sat two buttons from the M that marks the
+        // melody track - one letter, two meanings, in the same row.
+        mute.textContent = '♪';
+        mute.title = track.role === 'muted'
+          ? 'Unmute'
+          : 'Mute - silences the track and hides its notes from the grid';
         mute.addEventListener('click', (e) => {
           e.stopPropagation();
           store.commit('toggle mute', ['tracks', 'notes'], (d) => {
@@ -164,6 +169,21 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker, onImportTr
           });
         });
         li.appendChild(mute);
+
+        const solo = document.createElement('button');
+        solo.className = 'btn-icon role-btn solo' + (track.solo ? ' on' : '');
+        solo.textContent = 'S';
+        solo.title = 'Solo - hear only the soloed tracks. The others stay '
+          + 'visible in the grid, and levels are unchanged, so a soloed track '
+          + 'sounds exactly as it does in the mix.';
+        solo.addEventListener('click', (e) => {
+          e.stopPropagation();
+          store.commit('toggle solo', ['tracks', 'notes'], (d) => {
+            const t = d.tracks.find((x) => x.id === track.id);
+            t.solo = !t.solo;
+          });
+        });
+        li.appendChild(solo);
       }
 
       const del = document.createElement('button');
@@ -225,6 +245,7 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker, onImportTr
       const track = createTrack({
         name: 'Track ' + (d.tracks.length + 1),
         instrumentId: d.mode === 'mono' ? 'badge' : 'sine',
+        color: pickTrackColor(d), // the least-used palette entry
       });
       d.tracks.push(track);
       d.activeTrackId = track.id;

@@ -989,25 +989,128 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(limiterConfig({ master: { limiter: { ceilingDb: -6 } } }).kneeDb === cfg.kneeDb, 'partial overrides keep defaults');
 }
 
+// ---- mute vs solo ----
+{
+  const {
+    unmutedTracks, playableTracks, soloActive, createTrack: mkTrack, pickTrackColor,
+  } = await import('../js/core/doc.js');
+  const { flattenSong } = await import('../js/core/flatten.js');
+
+  const build = () => {
+    const d = createProject({ name: 'ms', mode: 'poly' });
+    d.tracks[0].name = 'A';
+    for (const n of ['B', 'C']) {
+      d.tracks.push(mkTrack({ name: n, role: 'melody', instrumentId: 'sine', color: pickTrackColor(d) }));
+    }
+    for (const t of d.tracks) {
+      for (const p of [60, 64, 67, 71]) {
+        addNote(d, t.id, createNote({ pitch: p, startTick: 0, durationTicks: 384 }));
+      }
+    }
+    return d;
+  };
+  const heard = (d) => [...new Set(flattenSong(d).events.map((e) => e.trackId))]
+    .map((id) => d.tracks.find((t) => t.id === id).name).sort();
+  const level = (d) => {
+    const ev = flattenSong(d).events[0];
+    return ev ? (ev.gainCurve ? Math.min(...ev.gainCurve) : ev.gainMul ?? 1) : 0;
+  };
+
+  {
+    const d = build();
+    eq(heard(d), ['A', 'B', 'C'], 'everything plays by default');
+    assert(soloActive(d) === false, 'and nothing is soloed');
+  }
+
+  // Solo: only the soloed tracks sound, several at once if several are set.
+  {
+    const d = build();
+    d.tracks[1].solo = true;
+    assert(soloActive(d) === true, 'solo is active');
+    eq(heard(d), ['B'], 'a soloed track plays alone');
+    d.tracks[2].solo = true;
+    eq(heard(d), ['B', 'C'], 'several soloed tracks play together');
+  }
+
+  // The headline distinction: solo must NOT change levels. A soloed track has
+  // to preview at the level it has IN the mix - that is the only level worth
+  // judging it at - so Levels keeps counting the tracks solo has silenced.
+  {
+    const full = build();
+    const soloed = build();
+    soloed.tracks[1].solo = true;
+    assert(Math.abs(level(full) - level(soloed)) < 1e-9,
+      `solo leaves levels alone (${level(full).toFixed(4)} vs ${level(soloed).toFixed(4)})`);
+  }
+
+  // Mute is the opposite: a muted track is not part of the piece, so the
+  // others get its headroom back.
+  {
+    const full = build();
+    const muted = build();
+    muted.tracks[1].role = 'muted';
+    eq(heard(muted), ['A', 'C'], 'a muted track does not play');
+    assert(level(muted) > level(full) * 1.05,
+      `mute frees headroom for the rest (${level(full).toFixed(4)} -> ${level(muted).toFixed(4)})`);
+    eq(unmutedTracks(muted).map((t) => t.name), ['A', 'C'], 'and leaves the unmuted set');
+  }
+
+  // Mute beats solo: soloing something you have muted does not unmute it, and
+  // if the ONLY soloed track is muted then nothing is really soloed.
+  {
+    const d = build();
+    d.tracks[1].solo = true;
+    d.tracks[1].role = 'muted';
+    assert(soloActive(d) === false, 'a muted solo is not a solo');
+    eq(heard(d), ['A', 'C'], 'so the rest keep playing');
+    d.tracks[2].solo = true;
+    eq(heard(d), ['C'], 'while an audible solo still takes over');
+  }
+
+  // Mono has one voice; neither flag applies.
+  {
+    const d = createProject({ name: 'mono', mode: 'mono' });
+    addNote(d, d.tracks[0].id, createNote({ pitch: 60, startTick: 0, durationTicks: 96 }));
+    d.tracks[0].solo = true;
+    assert(soloActive(d) === false, 'solo is a poly idea');
+    eq(playableTracks(d).map((t) => t.name), ['Lead'], 'mono plays its melody track regardless');
+  }
+}
+
 // ---- track colour and order ----
 {
-  const { trackColorIndex, moveTrack, TRACK_COLORS, createTrack: mkTrack } = await import('../js/core/doc.js');
+  const {
+    trackColorIndex, pickTrackColor, moveTrack, TRACK_COLORS, createTrack: mkTrack,
+  } = await import('../js/core/doc.js');
 
   const doc = createProject({ name: 'order', mode: 'poly' });
   doc.tracks[0].name = 'A';
   for (const n of ['B', 'C', 'D']) {
-    doc.tracks.push(mkTrack({ name: n, role: 'melody', instrumentId: 'sine' }));
+    doc.tracks.push(mkTrack({ name: n, role: 'melody', instrumentId: 'sine', color: pickTrackColor(doc) }));
   }
   const names = () => doc.tracks.map((t) => t.name).join('');
 
-  // Colour follows position until someone picks one, which is exactly how
-  // every project behaved before colours existed.
-  assert(trackColorIndex(doc, doc.tracks[0]) === 0, 'the first track takes the first colour');
-  assert(trackColorIndex(doc, doc.tracks[2]) === 2, 'and the third takes the third');
+  // Every track carries its colour explicitly, and a new one takes the
+  // least-used entry so tracks stay visually distinct as long as the palette
+  // allows.
+  eq(doc.tracks.map((t) => t.color), [0, 1, 2, 3], 'new tracks take the least-used colours');
+  assert(trackColorIndex(doc, doc.tracks[2]) === 2, 'the colour is read straight off the track');
   doc.tracks[2].color = 6;
-  assert(trackColorIndex(doc, doc.tracks[2]) === 6, 'an explicit colour wins');
+  assert(trackColorIndex(doc, doc.tracks[2]) === 6, 'and follows the track when changed');
   assert(trackColorIndex(doc, { ...doc.tracks[0], color: TRACK_COLORS + 3 }) === 3, 'out-of-range colours wrap');
   assert(trackColorIndex(doc, { ...doc.tracks[0], color: -1 }) === TRACK_COLORS - 1, 'and wrap the other way');
+
+  // pickTrackColor spreads before it repeats, and repeats evenly after that.
+  {
+    const d = createProject({ name: 'pick', mode: 'poly' }); // one track, colour 0
+    for (let i = 1; i < TRACK_COLORS; i++) {
+      d.tracks.push(mkTrack({ name: 'T' + i, color: pickTrackColor(d) }));
+    }
+    eq(d.tracks.map((t) => t.color), [0, 1, 2, 3, 4, 5, 6, 7], 'the palette fills before repeating');
+    assert(pickTrackColor(d) === 0, 'and then wraps to the least-used again');
+    d.tracks.push(mkTrack({ name: 'ninth', color: pickTrackColor(d) }));
+    assert(pickTrackColor(d) === 1, 'spreading evenly rather than piling up');
+  }
 
   // Reordering
   assert(moveTrack(doc, doc.tracks[0].id, 2) === true, 'a track moves');
@@ -1023,16 +1126,25 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   moveTrack(doc, doc.tracks[0].id, 99);
   assert(doc.tracks.length === 4 && doc.tracks[3].name === 'D', 'an out-of-range target clamps to the end');
 
-  // The point of explicit colours: reordering must not reshuffle them.
+  // The reason colours are baked in: reordering must not repaint anything.
   {
     const d = createProject({ name: 'colours', mode: 'poly' });
-    d.tracks[0].color = 5;
-    d.tracks.push(mkTrack({ name: 'second', role: 'melody', instrumentId: 'sine' }));
-    const pinned = d.tracks[0].id;
-    assert(trackColorIndex(d, d.tracks[1]) === 1, 'an auto track follows its index');
-    moveTrack(d, pinned, 1);
-    assert(trackColorIndex(d, d.tracks.find((t) => t.id === pinned)) === 5, 'a pinned colour survives the move');
-    assert(trackColorIndex(d, d.tracks[0]) === 0, 'while an auto one takes its new position');
+    d.tracks.push(mkTrack({ name: 'second', color: pickTrackColor(d) }));
+    const colors = () => d.tracks.map((t) => t.name + ':' + trackColorIndex(d, t)).sort().join();
+    const before2 = colors();
+    moveTrack(d, d.tracks[0].id, 1);
+    assert(colors() === before2, 'every colour survives a reorder: ' + colors());
+  }
+
+  // Old documents had no colour field at all; migrate bakes in what they
+  // looked like, so nothing changes visually on load.
+  {
+    const { migrate } = await import('../js/core/doc.js');
+    const legacy = JSON.parse(JSON.stringify(createProject({ name: 'legacy', mode: 'poly' })));
+    legacy.tracks.push(mkTrack({ name: 'two' }), mkTrack({ name: 'three' }));
+    for (const t of legacy.tracks) delete t.color;
+    const up = migrate(legacy);
+    eq(up.tracks.map((t) => t.color), [0, 1, 2], 'migrate bakes in the position-derived colours');
   }
 }
 
