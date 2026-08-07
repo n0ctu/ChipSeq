@@ -4,6 +4,7 @@ import { openDialog, downloadBlob } from './dialogs.js';
 import { exportHeader, sanitizeSymbolName } from '../core/export-h.js';
 import { exportFmf } from '../core/export-fmf.js';
 import { renderWav } from '../core/export-wav.js';
+import { EXPORTERS, exporterById, exportersFor } from '../core/exporters.js';
 import { exportProjectFile } from '../core/persist.js';
 import { ticksPerBar, needsStereo, trackPan, hasPanLane } from '../core/doc.js';
 
@@ -103,21 +104,28 @@ export function initExportDialog({ store, conflicts }) {
         : conflicts.count() > 0
           ? `Resolve ${conflicts.count()} overlapping notes first (press N)`
           : '';
-    if ((tab === 'h' || tab === 'fmf') && monoDisabled) tab = 'wav';
+    // Availability comes from the table: a format applies to this mode, and
+    // may be blocked while mono has unresolved conflicts.
+    const blocked = (fmt) => !fmt.modes.includes(doc.mode)
+      || (fmt.blockedByConflicts && conflicts.count() > 0);
+    if (blocked(exporterById(tab) || {})) tab = 'wav';
 
     for (const btn of dlg.querySelectorAll('#seg-export .seg-btn')) {
+      const fmt = exporterById(btn.dataset.tab);
       btn.classList.toggle('active', btn.dataset.tab === tab);
-      if (btn.dataset.tab === 'h' || btn.dataset.tab === 'fmf') {
-        btn.disabled = monoDisabled;
-        btn.title = monoTitle;
-      }
+      if (!fmt) continue;
+      btn.disabled = blocked(fmt);
+      btn.title = btn.disabled ? monoTitle : '';
+      // A tab the table does not offer for this mode should not be a
+      // disabled button either - it is not a thing you can have.
+      btn.hidden = !fmt.modes.includes(doc.mode) && !fmt.modes.includes('mono');
     }
-    $('export-h-pane').hidden = tab !== 'h';
-    $('export-fmf-pane').hidden = tab !== 'fmf';
-    $('export-wav-pane').hidden = tab !== 'wav';
+    for (const fmt of EXPORTERS) {
+      const pane = document.getElementById(`export-${fmt.id}-pane`);
+      if (pane) pane.hidden = tab !== fmt.id;
+    }
     renderChannels();
-    $('export-json-pane').hidden = tab !== 'json';
-    $('btn-export-copy').hidden = tab !== 'h' && tab !== 'fmf';
+    $('btn-export-copy').hidden = !(exporterById(tab) || {}).text;
     renderRegionRow();
 
     if (tab === 'h' || tab === 'fmf') renderPreview();
@@ -178,27 +186,33 @@ export function initExportDialog({ store, conflicts }) {
     const doc = store.getDoc();
     const base = fileBase(doc);
     const region = exportRegion();
-    const suffix = region ? '-loop' : '';
-    if (tab === 'h') {
+    const fmt = exporterById(tab);
+    if (!fmt) return;
+    const suffix = fmt.wholeSongOnly || !region ? '' : '-loop';
+    const name = base + suffix + fmt.ext;
+
+    // Text formats already have their preview rendered; reuse it so the file
+    // is byte-identical to what is on screen.
+    if (fmt.text) {
       renderPreview();
-      downloadBlob(new Blob([lastHeader.text], { type: 'text/plain' }), base + suffix + '.h');
-    } else if (tab === 'fmf') {
-      renderPreview();
-      if (lastFmf) downloadBlob(new Blob([lastFmf.text], { type: 'text/plain' }), base + suffix + '.fmf');
-    } else if (tab === 'wav') {
-      const btn = $('btn-export-download');
-      btn.disabled = true;
-      btn.textContent = 'Rendering…';
-      try {
-        const { blob, level } = await renderWav(doc, { region, stereo: $('chk-export-stereo').checked });
-        showLevel(level);
-        downloadBlob(blob, base + suffix + '.wav');
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Download';
-      }
-    } else {
-      downloadBlob(exportProjectFile(doc), base + '.chipseq.json');
+      const current = tab === 'fmf' ? lastFmf : lastHeader;
+      if (current) downloadBlob(new Blob([current.text], { type: fmt.mime }), name);
+      return;
+    }
+
+    const btn = $('btn-export-download');
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Rendering…';
+    try {
+      const out = await fmt.render(doc, {
+        region, stereo: $('chk-export-stereo').checked, symbol: $('inp-symbol').value,
+      });
+      if (out.level) showLevel(out.level);
+      if (out.blob) downloadBlob(out.blob, name);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
     }
   });
 

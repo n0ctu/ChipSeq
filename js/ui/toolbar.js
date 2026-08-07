@@ -6,6 +6,7 @@ import { activeTrack, updateNotes, setTempo, setTimeSig, bpmAt, timeSigAt } from
 import { effectiveSnap } from './piano-roll/coords.js';
 import { contextMenu } from './dialogs.js';
 import { icon } from './icons.js';
+import { COMMANDS, runCommand } from './commands.js';
 import { trimBeforeAction, trimAfterAction } from './trimmer.js';
 
 const TIME_SIGS = ['2/4', '3/4', '4/4', '5/4', '6/4', '3/8', '6/8', '7/8', '9/8', '12/8'];
@@ -223,14 +224,14 @@ export function initToolbar({ store, uiStore, engine, roll, openExport, goHome, 
   };
 
   // --- transport buttons ---
-  $('btn-play').addEventListener('click', () => actions.togglePlay());
-  $('btn-loop').addEventListener('click', () => actions.toggleLoop());
-  $('btn-metro').addEventListener('click', () => actions.toggleMetronome());
-  $('btn-quantize').addEventListener('click', () => actions.quantize());
-  $('btn-undo').addEventListener('click', () => store.undo());
-  $('btn-redo').addEventListener('click', () => store.redo());
-  $('btn-export').addEventListener('click', () => openExport());
-  $('btn-home').addEventListener('click', () => goHome());
+  // Buttons bind to the same table the shortcuts dispatch from, so a button
+  // and its key cannot drift apart - they were two definitions of one action.
+  const commandCtx = () => ({ store, uiStore, engine, actions, goHome });
+  for (const cmd of COMMANDS) {
+    if (!cmd.button) continue;
+    const el = $(cmd.button);
+    if (el) el.addEventListener('click', () => runCommand(cmd, commandCtx()));
+  }
 
   // --- trim dropdown ---
   const trimMenu = $('menu-trim');

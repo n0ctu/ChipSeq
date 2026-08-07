@@ -83,6 +83,7 @@ export function mount(body, { store }) {
           ${list.map((b) => `<option value="${b.id}"${b.id === bus.id ? ' selected' : ''}>${b.name}</option>`).join('')}
         </select>
         <button class="btn btn-icon" id="fx-add-bus" title="Add another bus">+</button>
+        <button class="btn btn-icon" id="fx-del-bus" title="Delete this bus and every send to it">${icon('trash')}</button>
       </div>
 
       ${track ? `
@@ -126,6 +127,25 @@ export function mount(body, { store }) {
         d.buses.push(bus);
         selectedBusId = bus.id;
       });
+      return;
+    }
+    if (e.target.closest('#fx-del-bus')) {
+      const busId = selectedBusId;
+      store.commit('delete bus', ['tracks', 'doc'], (d) => {
+        d.buses = (d.buses || []).filter((b) => b.id !== busId);
+        // Sends to it go too. A dangling send is preserved when the bus is
+        // merely UNKNOWN to this build - it may belong to a newer one - but
+        // deleting is a deliberate act, and leaving invisible sends behind
+        // would mean a later bus with a recycled id came back haunted.
+        for (const t of d.tracks) {
+          if (!Array.isArray(t.sends)) continue;
+          const kept = t.sends.filter((x) => x && x.busId !== busId);
+          if (kept.length) t.sends = kept;
+          else delete t.sends;
+        }
+        if (!d.buses.length) delete d.buses;
+      });
+      selectedBusId = null;
       return;
     }
     if (e.target.closest('#fx-add')) {

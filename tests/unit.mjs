@@ -1077,6 +1077,65 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   }
 }
 
+// ---- the command and exporter tables ----
+{
+  const { COMMANDS, commandForChord, commandById, chordOf, duplicateChords, available, runCommand } =
+    await import('../js/ui/commands.js');
+  const { EXPORTERS, exporterById, exportersFor } = await import('../js/core/exporters.js');
+
+  // The reason the table exists: two handlers could quietly claim one chord
+  // and whichever bound last would win, invisibly.
+  eq(duplicateChords(), [], 'no two commands claim the same chord');
+
+  const ids = COMMANDS.map((c) => c.id);
+  assert(new Set(ids).size === ids.length, 'command ids are unique');
+  for (const cmd of COMMANDS) {
+    assert(cmd.label && typeof cmd.run === 'function', `${cmd.id} has a label and something to run`);
+    assert(cmd.keys || cmd.button, `${cmd.id} is reachable by key or by button`);
+    for (const chord of cmd.keys || []) {
+      assert(commandForChord(chord) === cmd, `${chord} resolves back to ${cmd.id}`);
+    }
+  }
+
+  // Chords are built from the event the same way they are written down.
+  eq(chordOf({ ctrlKey: true, code: 'KeyZ' }), 'Ctrl+KeyZ', 'a ctrl chord');
+  eq(chordOf({ ctrlKey: true, shiftKey: true, code: 'KeyZ' }), 'Ctrl+Shift+KeyZ', 'modifier order is fixed');
+  eq(chordOf({ metaKey: true, code: 'KeyS' }), 'Ctrl+KeyS', 'meta counts as ctrl, for macOS');
+  eq(chordOf({ code: 'Space' }), 'Space', 'and a bare key is just itself');
+  assert(commandForChord('Ctrl+KeyZ').id === 'undo', 'Ctrl+Z is undo');
+  assert(commandForChord('Ctrl+Shift+KeyZ').id === 'redo' && commandForChord('Ctrl+KeyY').id === 'redo',
+    'redo answers to both of its chords');
+  assert(commandForChord('Ctrl+KeyJ') === null, 'an unbound chord is null');
+
+  // A guard that fails must BLOCK the run, not just grey a menu entry.
+  let ran = 0;
+  const guarded = { id: 'x', label: 'x', when: () => false, run: () => { ran++; } };
+  assert(runCommand(guarded, {}) === false && ran === 0, 'a failing guard stops the command');
+  assert(runCommand({ ...guarded, when: () => true }, {}) === true && ran === 1, 'and passing runs it');
+  assert(runCommand(null, {}) === false, 'a missing command is not an error');
+
+  {
+    const ctx = { store: { canUndo: () => false, canRedo: () => true } };
+    const list = available(ctx).map((c) => c.id);
+    assert(!list.includes('undo') && list.includes('redo'), 'the palette offers only what can run');
+  }
+
+  // ---- exporters ----
+  const eids = EXPORTERS.map((e) => e.id);
+  assert(new Set(eids).size === eids.length, 'exporter ids are unique');
+  for (const fmt of EXPORTERS) {
+    assert(fmt.label && fmt.ext && fmt.mime, `${fmt.id} is fully described`);
+    assert(typeof fmt.render === 'function', `${fmt.id} can render`);
+    assert(fmt.modes.length && fmt.modes.every((m) => m === 'mono' || m === 'poly'), `${fmt.id} names real modes`);
+    assert(exporterById(fmt.id) === fmt, `${fmt.id} is found by id`);
+  }
+  assert(exporterById('mid') === null, 'a format we do not have is null, not a guess');
+  eq(exportersFor('mono').map((e) => e.id), ['h', 'fmf', 'wav', 'json'], 'mono can export everything');
+  eq(exportersFor('poly').map((e) => e.id), ['wav', 'json'], 'poly cannot export the badge formats');
+  assert(EXPORTERS.filter((e) => e.blockedByConflicts).every((e) => e.modes.join() === 'mono'),
+    'only mono formats are blocked by overlaps - poly has voices to spare');
+}
+
 // ---- effects: buses, sends, chains ----
 {
   const {

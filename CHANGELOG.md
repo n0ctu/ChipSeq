@@ -22,7 +22,16 @@ tagged.
   generated from a seeded PRNG rather than fetched. Sends tap the track node
   post-fader, so a fader move takes its sends with it. An effect kind this build
   does not know is skipped rather than fatal, and a document using any of it
-  declares `effects@1` in `doc.uses`.
+  declares `effects@1` in `doc.uses`. Buses can be deleted, which takes every
+  send to them along.
+- **Command palette (Ctrl+K)** and a shared commands table. Actions that have
+  both a shortcut and a button were defined twice - once in the toolbar, once
+  in the keymap - and could drift apart. One array now feeds all three, and two
+  commands claiming the same chord is a test failure rather than whichever
+  handler bound last quietly winning.
+- **`js/core/exporters.js`** describes the export formats as data. The dialog
+  derives its tabs, disabled states and download step from it, so adding `.mid`
+  becomes one builder plus one entry.
 
 ## [0.2.1] - 2026-08-07
 
