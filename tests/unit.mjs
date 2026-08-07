@@ -1226,6 +1226,14 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(track.sends.length === 1, 'without touching the others');
   setSend(track, 'ghost-bus', 0);
   assert(track.sends === undefined, 'and the field disappears once empty');
+
+  // A send with no bus is refused outright. The Effects card could write one
+  // between deleting a bus and the next render, and it then sat in the saved
+  // file forever - inert, invisible, and impossible to explain.
+  setSend(track, null, 0.5);
+  setSend(track, undefined, 0.5);
+  setSend(track, '', 0.5);
+  assert(track.sends === undefined, 'a send needs a bus to point at');
 }
 
 // ---- spectrum: base wave x tilt x partial multipliers ----

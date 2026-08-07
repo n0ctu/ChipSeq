@@ -414,6 +414,11 @@ export function hasEffects(doc) {
 // Set (or clear, with level 0) one track's send to one bus, leaving its other
 // sends alone - the array is a matrix even while the UI shows one row.
 export function setSend(track, busId, level) {
+  // A send needs somewhere to go. Without this guard the Effects card could
+  // write { busId: null } - it commits against the selected bus, which is
+  // null between deleting one and the next render - and that lands in the
+  // saved file as permanent, inert junk.
+  if (!busId) return;
   const list = Array.isArray(track.sends) ? track.sends.filter((s) => s && s.busId !== busId) : [];
   if (level > 0) list.push({ busId, level: Math.max(0, Math.min(2, level)) });
   if (list.length) track.sends = list;

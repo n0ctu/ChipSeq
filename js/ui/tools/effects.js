@@ -172,7 +172,11 @@ export function mount(body, { store }) {
     }
     if (el.id === 'fx-send') {
       const trackId = doc().activeTrackId;
-      const busId = selectedBusId;
+      // Resolve through selected() rather than trusting the cached id: after
+      // a bus is deleted it is null until the next render.
+      const bus = selected();
+      const busId = bus && bus.id;
+      if (!busId) return;
       store.commit('set send', ['tracks'], (d) => {
         const t = getTrack(d, trackId);
         if (t) setSend(t, busId, Number(el.value) / 100);
