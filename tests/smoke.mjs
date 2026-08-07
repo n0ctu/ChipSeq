@@ -1407,20 +1407,23 @@ await check('gain reset returns the instrument to its calibrated level', `(async
   });
   await new Promise((r) => setTimeout(r, 250));
   const btn = document.querySelector('#instrument-body #in-gain-reset');
-  if (!btn) return 'no reset button';
+  if (!btn) return 'no reset link while the gain is drifted';
+  // it belongs beside the percentage, not on a line of its own
+  const label = document.querySelector('#instrument-body #in-gain-label');
+  const sameLine = Math.abs(btn.getBoundingClientRect().top - label.getBoundingClientRect().top) < 6;
+  if (!sameLine) return 'reset link is not on the value line';
   btn.click();
   await new Promise((r) => setTimeout(r, 250));
   const t = store.getDoc().tracks.find((x) => x.id === trackId);
   const want = defaultGainForWave(t.instrument.wave);
-  const label = document.querySelector('#instrument-body #in-gain-label').textContent;
-  // Always clickable and always visible: it was disabled at the calibrated
-  // level, and a disabled .btn-link looked exactly like a live one, so the
-  // control read as a line of dim text instead of a button.
+  const shown = document.querySelector('#instrument-body #in-gain-label').textContent;
+  // It appears only while there is something to reset, so after the click it
+  // must be GONE - along with the hint that explains it.
   const after = document.querySelector('#instrument-body #in-gain-reset');
-  const r = after.getBoundingClientRect();
-  const visible = r.width > 0 && r.height > 0 && !after.disabled;
-  return (Math.abs(t.instrument.gain - want) < 1e-9 && visible)
-    || 'gain=' + t.instrument.gain + ' want=' + want + ' label=' + label + ' visible=' + visible;
+  const hint = document.querySelector('#instrument-body .in-hint');
+  return (Math.abs(t.instrument.gain - want) < 1e-9 && !after && !hint)
+    || 'gain=' + t.instrument.gain + ' want=' + want + ' label=' + shown
+       + ' link=' + !!after + ' hint=' + !!hint;
 })()`);
 
 // Levels read as percentages, and boost past unity is allowed but flagged -
