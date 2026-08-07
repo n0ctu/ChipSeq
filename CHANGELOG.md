@@ -9,6 +9,22 @@ tagged.
 
 ## Unreleased
 
+### Added
+
+- **Make-up gain, with an Analyse button.** Levels only ever attenuates, so a
+  polyphonic song sat permanently below unity - Bad Apple left 6.8 dB of
+  headroom unused. Analyse renders once, reads the pre-limiter peak, and sets a
+  master gain so it lands at -1 dBFS. Never automatic, stored rather than
+  recomputed (so preview and export match), shown in the card, overridable by
+  hand and re-analysable.
+
+### Fixed
+
+- **The peak estimate ignored the mixer.** `predictPeak` never applied
+  `track.gain`, so it described a render nobody could produce - Bad Apple read
+  +1.1 dB where the true bound is -3.3 dB. It drives the clip warning, so it was
+  overstating danger in exactly the projects balanced most carefully.
+
 ### Changed
 
 - The Spectrum section moved below the envelope and became collapsible,

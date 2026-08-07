@@ -1136,6 +1136,29 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     'only mono formats are blocked by overlaps - poly has voices to spare');
 }
 
+// ---- make-up gain ----
+{
+  const {
+    makeupConfig, makeupGain, DEFAULT_MAKEUP, MAKEUP_TARGET_DB, MAKEUP_MIN_DB, MAKEUP_MAX_DB, dbToLin,
+  } = await import('../js/core/graph.js');
+
+  eq(makeupConfig({}), DEFAULT_MAKEUP, 'no block means no make-up');
+  assert(makeupGain({}) === 1, 'which is unity, not silence');
+  assert(Math.abs(makeupGain({ master: { makeup: { db: 6 } } }) - dbToLin(6)) < 1e-12, '+6 dB is a doubling');
+  assert(makeupConfig({ master: { makeup: { db: 999 } } }).db === MAKEUP_MAX_DB, 'it clamps up');
+  assert(makeupConfig({ master: { makeup: { db: -999 } } }).db === MAKEUP_MIN_DB, 'and down');
+  assert(makeupConfig({ master: { makeup: { db: 'loud' } } }).db === 0, 'junk is no make-up, not NaN');
+  assert(MAKEUP_TARGET_DB === -1, 'Analyse aims at -1 dBFS, leaving room for lossy encoding');
+
+  // The correction Analyse applies, as arithmetic: measure the pre-limiter
+  // peak, and move the make-up by the difference from the target. It has to
+  // work from whatever the current setting is, not only from zero.
+  const correct = (before, measuredDb) => before + (MAKEUP_TARGET_DB - measuredDb);
+  assert(Math.abs(correct(0, -6.81) - 5.81) < 1e-9, 'a quiet mix gets turned up');
+  assert(Math.abs(correct(5.81, -1) - 5.81) < 1e-9, 'a mix already on target is left alone');
+  assert(Math.abs(correct(3, 2) - 0) < 1e-9, 'and one that is too loud gets turned down');
+}
+
 // ---- effects: buses, sends, chains ----
 {
   const {

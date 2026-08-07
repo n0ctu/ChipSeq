@@ -7,6 +7,10 @@
 // be judged by number as well as by ear.
 
 import { getTrack } from '../../core/doc.js';
+import {
+  makeupConfig, DEFAULT_MAKEUP, MAKEUP_TARGET_DB, MAKEUP_MIN_DB, MAKEUP_MAX_DB,
+} from '../../core/graph.js';
+import { renderWav } from '../../core/export-wav.js';
 import { trackColorCss } from '../piano-roll/render.js';
 import { flattenSong } from '../../core/flatten.js';
 import { getInstrument } from '../../core/instruments.js';
@@ -61,6 +65,7 @@ export function mount(body, { store }) {
   function render() {
     const doc = store.getDoc();
     const cfg = normalizeConfig(doc);
+    const makeup = makeupConfig(doc);
     const slider = (id, label, value, max, step, fmt) => `
       <div class="mix-ctl">
         <label>${label}</label>
@@ -75,6 +80,21 @@ export function mount(body, { store }) {
       ${slider('track', 'Track', Math.round(cfg.track * 100), 100, 5, cfg.track.toFixed(2))}
       ${slider('smoothMs', 'Smooth', cfg.smoothMs, 60, 1, cfg.smoothMs + ' ms')}
       <div class="lv-legend">0 = off (voices sum) &middot; 0.5 = equal power &middot; 1 = constant sum</div>
+
+      <div class="harm-field">
+        <div class="harm-caption">Make-up <span class="mix-val" id="lv-makeup-label">${
+          makeup.db === 0 ? 'none' : (makeup.db > 0 ? '+' : '') + makeup.db.toFixed(1) + ' dB'}</span>${
+          makeup.db !== 0 ? '<button class="btn-link" id="lv-makeup-reset" title="Back to no make-up">reset to default</button>' : ''}</div>
+        <div class="harm-row">
+          <input type="range" id="lv-makeup" min="${MAKEUP_MIN_DB * 10}" max="${MAKEUP_MAX_DB * 10}" step="1"
+            value="${Math.round(makeup.db * 10)}"
+            title="A single gain on the master. Levels only ever turns things down, so this is what brings the finished mix back up." />
+          <button class="btn" id="lv-analyse" title="Render once, measure the true peak, and set the make-up so it lands at ${MAKEUP_TARGET_DB} dBFS">Analyse</button>
+        </div>
+        <div class="lv-legend" id="lv-makeup-note">Analyse renders the song once and aims the peak at
+          ${MAKEUP_TARGET_DB} dBFS. The result is stored, so preview and export apply the same gain -
+          adjust it by hand afterwards if you prefer.</div>
+      </div>
       <div id="lv-readout" class="lv-readout"></div>
       <div class="lv-tracks">${doc.tracks
         .map((t) => `<label class="lv-track"><input type="checkbox" data-track="${t.id}"
@@ -87,6 +107,12 @@ export function mount(body, { store }) {
   }
 
   body.addEventListener('input', (e) => {
+    if (e.target.id === 'lv-makeup') {
+      const label = body.querySelector('#lv-makeup-label');
+      const v = Number(e.target.value) / 10;
+      if (label) label.textContent = v === 0 ? 'none' : (v > 0 ? '+' : '') + v.toFixed(1) + ' dB';
+      return;
+    }
     const el = e.target;
     if (el.dataset && el.dataset.k) {
       const key = el.dataset.k;
@@ -100,6 +126,15 @@ export function mount(body, { store }) {
   });
 
   body.addEventListener('change', (e) => {
+    if (e.target.id === 'lv-makeup') {
+      const db = Number(e.target.value) / 10;
+      store.commit('set make-up', ['song'], (d) => {
+        d.master = d.master || {};
+        if (db === 0) delete d.master.makeup;
+        else d.master.makeup = { ...DEFAULT_MAKEUP, db };
+      });
+      return;
+    }
     const el = e.target;
     if (el.id === 'lv-on') {
       patch(() => ({ enabled: el.checked }));
@@ -121,7 +156,52 @@ export function mount(body, { store }) {
     }
   });
 
+  // Analyse: one render, one measurement, one stored number.
+  //
+  // renderWav reports the PRE-limiter peak, so the correction is exact even
+  // when the current setting is already driving the limiter - which a peak
+  // read off the shaped output could not be.
+  async function analyse() {
+    const btn = body.querySelector('#lv-analyse');
+    const note = body.querySelector('#lv-makeup-note');
+    if (!btn) return;
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Rendering…';
+    try {
+      const doc = store.getDoc();
+      const before = makeupConfig(doc).db;
+      const { level } = await renderWav(doc);
+      if (!Number.isFinite(level.peakDb)) {
+        if (note) note.textContent = 'Nothing to measure - the song rendered silent.';
+        return;
+      }
+      const next = Math.max(MAKEUP_MIN_DB, Math.min(MAKEUP_MAX_DB, before + (MAKEUP_TARGET_DB - level.peakDb)));
+      store.commit('set make-up', ['song'], (d) => {
+        d.master = d.master || {};
+        d.master.makeup = { ...DEFAULT_MAKEUP, db: Math.round(next * 10) / 10 };
+      });
+      if (note) {
+        note.textContent = `Measured ${level.peakDb.toFixed(1)} dBFS at ${before.toFixed(1)} dB make-up`
+          + ` - set to ${next.toFixed(1)} dB to land at ${MAKEUP_TARGET_DB} dBFS.`;
+      }
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  }
+
   body.addEventListener('click', (e) => {
+    if (e.target.closest('#lv-analyse')) {
+      analyse();
+      return;
+    }
+    if (e.target.closest('#lv-makeup-reset')) {
+      store.commit('clear make-up', ['song'], (d) => {
+        if (d.master) delete d.master.makeup;
+      });
+      return;
+    }
     if (!e.target.closest('#lv-reset')) return;
     store.commit('reset normalization', ['song', 'tracks'], (doc) => {
       doc.master = doc.master || {};

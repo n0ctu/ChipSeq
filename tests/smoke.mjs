@@ -1593,6 +1593,73 @@ await check('the palette hides commands that cannot run', `(async () => {
     || 'undo=' + undoOffered + '/' + store.canUndo() + ' conflict=' + conflictOffered;
 })()`);
 
+// ---- make-up ----
+//
+// The point of Analyse is that the rendered file actually lands on target,
+// so this measures the render before and after rather than trusting the
+// arithmetic.
+await check('Analyse brings the rendered peak to the target', `(async () => {
+  ${WAV_HELPERS}
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const { MAKEUP_TARGET_DB, makeupConfig } = await import('/js/core/graph.js');
+  const store = window.__chipseq.store;
+
+  const doc = structuredClone(store.getDoc());
+  doc.mode = 'poly';
+  doc.tracks = [{
+    id: 'mk-t', name: 'mk', role: 'melody', instrumentId: 'badge', color: 0,
+    notes: [{ id: 'mk-n', pitch: 60, startTick: 0, durationTicks: 192, velocity: 100, harmonics: null }],
+  }];
+  doc.activeTrackId = doc.melodyTrackId = 'mk-t';
+  delete doc.master;
+
+  const first = await renderWav(structuredClone(doc));
+  const before = first.level.peakDb;
+  if (!(before < MAKEUP_TARGET_DB - 1)) return 'fixture is not quiet enough to test: ' + before;
+
+  // what Analyse computes
+  const db = Math.round((0 + (MAKEUP_TARGET_DB - before)) * 10) / 10;
+  const raised = structuredClone(doc);
+  raised.master = { makeup: { kind: 'makeup', v: 1, db } };
+  const second = await renderWav(raised);
+  const after = second.level.peakDb;
+
+  // within a rounding step of the target, and demonstrably louder
+  const onTarget = Math.abs(after - MAKEUP_TARGET_DB) < 0.15;
+  const louder = after > before + 1;
+  const stored = makeupConfig(raised).db === db;
+  return (onTarget && louder && stored)
+    || JSON.stringify({ before: +before.toFixed(2), db, after: +after.toFixed(2), onTarget, louder, stored });
+})()`);
+
+await check('the make-up slider overrides Analyse and clears at zero', `(async () => {
+  const store = window.__chipseq.store;
+  const { makeupConfig } = await import('/js/core/graph.js');
+  const sec = document.getElementById('sec-levels');
+  if (!sec) return 'no levels card';
+  if (!sec.classList.contains('open')) sec.querySelector('.tool-card-head').click();
+  await new Promise((r) => setTimeout(r, 500));
+
+  const el = document.querySelector('#levels-body #lv-makeup');
+  if (!el) return 'no make-up slider';
+  el.value = '35'; // +3.5 dB
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 350));
+  const set = makeupConfig(store.getDoc()).db === 3.5;
+  const shown = document.querySelector('#levels-body #lv-makeup-label').textContent;
+
+  // back to zero must remove the block, not store a zero
+  const el2 = document.querySelector('#levels-body #lv-makeup');
+  el2.value = '0';
+  el2.dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 350));
+  const doc = store.getDoc();
+  const cleared = !(doc.master && doc.master.makeup);
+  return (set && shown === '+3.5 dB' && cleared)
+    || 'set=' + set + ' shown=' + shown + ' cleared=' + cleared;
+})()`);
+
 // ---- effects: buses and sends ----
 //
 // The plan's verification for this phase: identical topology in an

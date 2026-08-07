@@ -183,6 +183,24 @@ smoothing let a six-voice stack back over full scale where 10 ms held it
 under. The card shows the predicted peak with and without normalization so a
 setting can be judged by number as well as by ear.
 
+### Make-up
+
+Levels only ever attenuates - `N^-k` is at most 1 - so a mostly polyphonic
+song sits permanently below unity and nothing brings it back. Measured on Bad
+Apple, that left **6.8 dB of headroom unused**, which is quiet for a finished
+piece.
+
+**Analyse** renders the song once, reads the *pre-limiter* peak, and sets a
+single master gain so that peak lands at **-1 dBFS**. It is not automatic:
+nothing changes until you press it, and the result is a stored number
+(`doc.master.makeup`), so preview and export apply exactly the same gain - a
+value recomputed per render could not promise that.
+
+The card shows what it measured and what it set, the slider overrides it by
+hand, and pressing Analyse again re-measures. Reading the pre-limiter peak is
+what makes the correction exact even when the current setting is already
+driving the limiter.
+
 All of it is a pure function of the flattened score, so it is deterministic
 and preview still equals export. **Mono is never touched** - one voice has
 nothing to normalize - which is what keeps `.h`/`.fmf` and the badge-accurate
