@@ -7,29 +7,21 @@
 // transient patch that only becomes an undoable commit on release.
 
 import { getTrack, activeTrack, uid, defaultGainForWave } from '../../core/doc.js';
-import { HARMONIC_PRESETS, MAX_PARTIALS, sanitizeHarmonics } from '../../core/instruments.js';
+import {
+  MAX_PARTIALS, TILT_MIN, TILT_MAX, spectrumOf, hasSpectrum, sanitizePartials, DEFAULT_SPECTRUM,
+} from '../../core/instruments.js';
 import { promptDialog } from '../dialogs.js';
 import { formatPercent, formatSeconds, isHot } from '../../core/units.js';
 import { envToAdsr, isAdsrShaped, effectiveEnvelope } from '../../core/modulation.js';
 import { initEnvelopeEditor } from './envelope-editor.js';
 
-// The last two are both `wave: 'custom'` in the document - PWM carries a
-// duty, additive carries a partial list. They are separate buttons because
-// they are separate ideas to the person choosing one.
 const WAVES = [
   ['square', 'Square'],
   ['sine', 'Sine'],
   ['sawtooth', 'Saw'],
   ['triangle', 'Tri'],
-  ['pwm', 'PWM'],
-  ['harmonic', 'Harm.'],
+  ['custom', 'PWM'],
 ];
-
-// Which button is lit: 'custom' alone does not say which of the two it is.
-function waveKind(inst) {
-  if (inst.wave !== 'custom') return inst.wave;
-  return inst.harmonics && inst.harmonics.length ? 'harmonic' : 'pwm';
-}
 
 // Mounted by tools-panel.js on first expand; the manifest owns the header.
 // Edits the ACTIVE track, so the card always shows the instrument of whatever
@@ -119,9 +111,11 @@ export function mount(body, { store, uiStore, engine }) {
     const drawn = !isAdsrShaped(env);
     // Read from the built-in presets, not the document: a project whose stored
     // gains have drifted still resets to the level the wave was calibrated at.
-    const kind = waveKind(inst);
-    const partials = (inst.harmonics && inst.harmonics.length ? inst.harmonics : HARMONIC_PRESETS[0][1])
-      .slice(0, MAX_PARTIALS);
+    const spec = spectrumOf(inst);
+    const partials = spec.partials || new Array(MAX_PARTIALS).fill(1);
+    const shaped = hasSpectrum(inst);
+    // A sine has one partial, so there is nothing for a spectrum to scale.
+    const shapeable = inst.wave !== 'sine';
     const gainDefault = defaultGainForWave(inst.wave);
     // The reset link and its explanation appear only when there is something
     // to reset - at the calibrated level they would be noise on every track.
@@ -130,27 +124,30 @@ export function mount(body, { store, uiStore, engine }) {
     body.innerHTML = `
       <div class="harm-field">Wave
         <div class="seg seg-wrap" id="in-wave">
-          ${WAVES.map(([id, label]) => `<button class="seg-btn ${kind === id ? 'active' : ''}" data-v="${id}">${label}</button>`).join('')}
+          ${WAVES.map(([id, label]) => `<button class="seg-btn ${inst.wave === id ? 'active' : ''}" data-v="${id}">${label}</button>`).join('')}
         </div>
       </div>
-      ${kind === 'pwm' ? `
+      ${inst.wave === 'custom' ? `
       <div class="harm-field">Duty cycle <span id="in-duty-label">${formatPercent(duty)}</span>
         <div class="harm-row"><input type="range" id="in-duty" min="5" max="50" step="1" value="${Math.round(duty * 100)}" /></div>
       </div>` : ''}
-      ${kind === 'harmonic' ? `
-      <div class="harm-field">Partials
+      ${shapeable ? `
+      <div class="harm-field">
+        <div class="harm-caption">Spectrum <span id="in-tilt-label">${spec.tilt === 0 ? 'neutral' : (spec.tilt > 0 ? '+' : '') + spec.tilt + ' dB/oct'}</span>${
+          shaped ? '<button class="btn-link" id="in-spec-reset" title="Back to the raw wave">reset to default</button>' : ''}</div>
+        <div class="harm-row"><input type="range" id="in-tilt" min="${TILT_MIN * 10}" max="${TILT_MAX * 10}" step="1"
+          value="${Math.round(spec.tilt * 10)}"
+          title="Tilts the wave's own harmonics: negative is darker, positive brighter. One knob over the whole series." /></div>
         <div class="drawbars" id="in-partials">
-          ${partials.map((v, i) => `<label class="drawbar" title="Partial ${i + 1}${i === 0 ? ' (fundamental)' : ''}">
-            <input type="range" data-h="${i}" min="0" max="100" step="1" value="${Math.round(v * 100)}"
+          ${partials.map((v, i) => `<label class="drawbar" title="Partial ${i + 1}${i === 0 ? ' (fundamental)' : ''} - 100% leaves it as the wave has it">
+            <input type="range" data-h="${i}" min="0" max="200" step="5" value="${Math.round(v * 100)}"
               orient="vertical" aria-label="Partial ${i + 1}" />
             <span>${i + 1}</span></label>`).join('')}
         </div>
-        <div class="harm-presets" id="in-partial-presets">
-          ${HARMONIC_PRESETS.map(([name]) => `<button class="btn-link" data-p="${name}">${name}</button>`).join('')}
-        </div>
-        <div class="in-hint">Amplitude of each harmonic above the fundamental. The
-          wave is peak-normalised, so adding partials changes character rather
-          than level.</div>
+        <div class="in-hint">Scales the harmonics the wave already has, so 100% everywhere
+          is the raw wave. Multipliers cannot invent a partial that is not there -
+          start from <b>Saw</b> to sculpt freely, since it is the one wave carrying
+          every harmonic.</div>
       </div>` : ''}
       <div class="harm-field">Envelope
         <span class="tool-ctx" id="in-env-mode">${drawn ? 'drawn' : 'ADSR'}</span>
@@ -218,11 +215,9 @@ export function mount(body, { store, uiStore, engine }) {
       const btn = e.target.closest('[data-v]');
       if (!btn) return;
       const wave = btn.dataset.v;
-      // Both custom kinds store wave:'custom'; which one it is follows from
-      // whether a duty or a partial list is present.
-      if (wave === 'pwm') applyPatch({ wave: 'custom', duty: inst.duty ?? 0.25, harmonics: null });
-      else if (wave === 'harmonic') applyPatch({ wave: 'custom', duty: null, harmonics: partials.slice() });
-      else applyPatch({ wave, duty: null, harmonics: null });
+      applyPatch(wave === 'custom'
+        ? { wave, duty: inst.duty ?? 0.25, harmonics: null }
+        : { wave, duty: null, harmonics: null });
       auditionOnce();
     });
 
@@ -254,29 +249,51 @@ export function mount(body, { store, uiStore, engine }) {
     slider('in-r', (v) => ({ adsr: { ...inst.adsr, r: v / 1000 } }), (v) => fmtS(v / 1000));
     slider('in-gain', (v) => ({ gain: v / 100 }), (v) => formatPercent(v / 100), (v) => isHot(v / 100));
 
-    // Drawbars: live while dragging (so you hear the wave change under the
-    // audition loop), committed on release, like every other slider here.
+    // Spectrum edits are patches on the instrument's spectrum block, so they
+    // compose rather than clobber - the tilt slider must not wipe the bars.
+    const patchSpectrum = (patch) => {
+      // The INSTRUMENT carries the block, not the track - reading it off the
+      // track silently returned the default and wiped whatever was set.
+      const doc2 = store.getDoc();
+      const t2 = target();
+      const cur = t2 ? spectrumOf(effective(doc2, t2)) : DEFAULT_SPECTRUM;
+      const next = { ...cur, ...patch };
+      const neutral = next.tilt === 0 && !sanitizePartials(next.partials);
+      applyPatch({ spectrum: neutral ? null : { kind: 'spectrum', v: 1, tilt: next.tilt, partials: sanitizePartials(next.partials) } });
+    };
+
+    const tilt = body.querySelector('#in-tilt');
+    if (tilt) {
+      const label = body.querySelector('#in-tilt-label');
+      tilt.addEventListener('input', () => {
+        const v = Number(tilt.value) / 10;
+        if (label) label.textContent = v === 0 ? 'neutral' : (v > 0 ? '+' : '') + v + ' dB/oct';
+        livePatch = { spectrum: { kind: 'spectrum', v: 1, tilt: v, partials: spec.partials } };
+      });
+      tilt.addEventListener('change', () => {
+        patchSpectrum({ tilt: Number(tilt.value) / 10 });
+        auditionOnce();
+      });
+    }
+
     const bars = body.querySelector('#in-partials');
     if (bars) {
       const readBars = () => [...bars.querySelectorAll('input[data-h]')]
         .sort((a, b) => Number(a.dataset.h) - Number(b.dataset.h))
         .map((el) => Number(el.value) / 100);
       bars.addEventListener('input', () => {
-        livePatch = { harmonics: sanitizeHarmonics(readBars()) || partials.slice() };
+        livePatch = { spectrum: { kind: 'spectrum', v: 1, tilt: spec.tilt, partials: sanitizePartials(readBars()) } };
       });
       bars.addEventListener('change', () => {
-        applyPatch({ wave: 'custom', duty: null, harmonics: sanitizeHarmonics(readBars()) || partials.slice() });
+        patchSpectrum({ partials: readBars() });
         auditionOnce();
       });
     }
-    const presetRow = body.querySelector('#in-partial-presets');
-    if (presetRow) {
-      presetRow.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-p]');
-        if (!btn) return;
-        const found = HARMONIC_PRESETS.find(([name]) => name === btn.dataset.p);
-        if (!found) return;
-        applyPatch({ wave: 'custom', duty: null, harmonics: found[1].slice() });
+
+    const specReset = body.querySelector('#in-spec-reset');
+    if (specReset) {
+      specReset.addEventListener('click', () => {
+        applyPatch({ spectrum: null });
         auditionOnce();
       });
     }

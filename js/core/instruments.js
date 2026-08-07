@@ -14,46 +14,107 @@ export function dutyHarmonics(duty, n = 32) {
   return imag;
 }
 
-// ---- additive (harmonic) waves ----
+// ---- spectrum: a base wave, then multipliers on its own harmonics ----
 //
-// A custom wave is stored as `wave: 'custom'` with `duty: null` and a list of
-// partial amplitudes in `instrument.harmonics` - deliberately NOT a new wave
-// id. An older build meeting this file takes the 'custom' branch, finds no
-// duty, and falls through to exactly the same harmonics path, so it plays the
-// sound correctly rather than throwing on an oscillator type it has never
-// heard of. The capability has been in the engine since the beginning; only
-// the editor is new.
+// A base wave IS its harmonic series - a saw is every harmonic at 1/n, a
+// square the odd ones, a triangle the odd ones at 1/n^2 with alternating
+// sign. So "pick a wave, then tune its harmonics" is one idea, not two: the
+// wave supplies the series and the spectrum scales it.
+//
+// This follows how additive engines actually work. In Harmor and Razor a
+// filter acts at the GENERATION stage, scaling partial amplitudes in the
+// oscillator rather than processing audio afterwards; Harmor starts from
+// "the classic all-overtone saw wave" for exactly the reason below. The
+// alternative - a slider per partial - is how the Kawai K5000 ended up with
+// over a thousand parameters per patch and a reputation for being unusable.
+// The Hammond's nine drawbars are the counter-example worth copying.
+//
+// TILT is the primary control: dB per octave across the series, so one knob
+// darkens or brightens the whole wave. PARTIALS are the detail layer, eight
+// multipliers on the lowest harmonics where the ear is most sensitive.
+//
+// Multipliers can only scale what the base already has. A sine has a single
+// partial, so nothing to shape; start from SAW to sculpt freely, since it is
+// the one wave containing every harmonic.
 export const MAX_PARTIALS = 8;
 
-// Amplitudes are 0..1 and rounded, so a saved file stays readable and two
-// documents that sound the same compare equal.
-export function sanitizeHarmonics(list) {
-  if (!Array.isArray(list)) return null;
-  const out = list.slice(0, MAX_PARTIALS).map((v) => {
-    const n = Number(v);
-    if (!Number.isFinite(n)) return 0;
-    return Math.round(Math.max(0, Math.min(1, n)) * 1000) / 1000;
-  });
-  return out.some((v) => v > 0) ? out : null; // all-silent is not a wave
-}
+// Far enough that the top partial of the series sits at 1/256 (-48 dB) for a
+// saw, which is inaudible - and the browser band-limits per note anyway, so
+// nothing above Nyquist is ever heard.
+export const SERIES_LENGTH = 256;
 
-// Partial amplitudes -> the imaginary part of a PeriodicWave. Index 0 is DC
-// and stays 0; partial n lands at index n. Pure, so the wave a document
-// describes can be asserted without an AudioContext.
-export function harmonicImag(list) {
-  const clean = sanitizeHarmonics(list) || [];
-  const imag = new Float32Array(clean.length + 1);
-  clean.forEach((v, i) => (imag[i + 1] = v));
+export const DEFAULT_SPECTRUM = { kind: 'spectrum', v: 1, tilt: 0, partials: null };
+export const TILT_MIN = -12;
+export const TILT_MAX = 6;
+
+// The Fourier series of each base wave, as the imaginary (sine) coefficients.
+// Index 0 is DC and stays zero. Signs matter - a triangle alternates - which
+// is the other reason multipliers beat absolute amplitudes: the base carries
+// the signs and the editor stays unsigned.
+export function baseSeries(wave, duty = null, n = SERIES_LENGTH) {
+  if (wave === 'custom') return dutyHarmonics(duty ?? 0.5, n);
+  const imag = new Float32Array(n + 1);
+  for (let k = 1; k <= n; k++) {
+    if (wave === 'sine') imag[k] = k === 1 ? 1 : 0;
+    else if (wave === 'sawtooth') imag[k] = 1 / k;
+    else if (wave === 'square') imag[k] = k % 2 ? 1 / k : 0;
+    else if (wave === 'triangle') imag[k] = k % 2 ? (((k - 1) / 2) % 2 ? -1 : 1) / (k * k) : 0;
+    else imag[k] = k === 1 ? 1 : 0;
+  }
   return imag;
 }
 
-// Starting points, not a fixed menu - each is just a partial list.
-export const HARMONIC_PRESETS = [
-  ['Organ', [1, 0.6, 0, 0.4, 0, 0, 0, 0.25]],
-  ['Hollow', [1, 0, 0.33, 0, 0.2, 0, 0.14, 0]],
-  ['Bright', [1, 0.5, 0.33, 0.25, 0.2, 0.17, 0.14, 0.13]],
-  ['Reed', [1, 0.8, 0.6, 0.7, 0.3, 0.35, 0.15, 0.2]],
-];
+// 0..2, so a partial can be pushed above what the base gives it as well as
+// pulled down - otherwise a saw could only ever get duller.
+export function sanitizePartials(list) {
+  if (!Array.isArray(list)) return null;
+  const out = list.slice(0, MAX_PARTIALS).map((v) => {
+    const x = Number(v);
+    if (!Number.isFinite(x)) return 1;
+    return Math.round(Math.max(0, Math.min(2, x)) * 1000) / 1000;
+  });
+  return out.some((v) => v !== 1) ? out : null; // all-neutral is no spectrum
+}
+
+export function spectrumOf(instrument) {
+  const raw = instrument && instrument.spectrum;
+  if (!raw) return DEFAULT_SPECTRUM;
+  const tilt = Number.isFinite(Number(raw.tilt))
+    ? Math.max(TILT_MIN, Math.min(TILT_MAX, Number(raw.tilt))) : 0;
+  return { ...DEFAULT_SPECTRUM, ...raw, tilt, partials: sanitizePartials(raw.partials) };
+}
+
+// Does this instrument actually shape anything? A neutral spectrum must fall
+// back to the browser's own oscillator, so merely opening the editor cannot
+// change the sound.
+export function hasSpectrum(instrument) {
+  const s = spectrumOf(instrument);
+  return s.tilt !== 0 || !!s.partials;
+}
+
+// base x tilt x per-partial multipliers.
+export function applySpectrum(base, spectrum) {
+  const s = spectrum || DEFAULT_SPECTRUM;
+  const out = new Float32Array(base.length);
+  // dB per octave: partial n is log2(n) octaves above the fundamental.
+  const slope = s.tilt ? s.tilt / 20 : 0;
+  for (let k = 1; k < base.length; k++) {
+    let v = base[k];
+    if (slope) v *= Math.pow(10, slope * Math.log2(k));
+    if (s.partials && k <= s.partials.length) v *= s.partials[k - 1];
+    out[k] = v;
+  }
+  return out;
+}
+
+// A pre-existing field: an ABSOLUTE list of partial amplitudes, read by the
+// engine since the beginning. Treated as a base series so it composes with
+// the spectrum rather than competing with it.
+function legacyImag(list) {
+  const imag = new Float32Array(list.length + 1);
+  list.forEach((v, i) => (imag[i + 1] = Number(v) || 0));
+  return imag;
+}
 
 const waveCache = new WeakMap(); // ctx -> Map<instrumentKey, PeriodicWave>
 
@@ -64,17 +125,18 @@ function getPeriodicWave(ctx, instrument, dutyOverride = null) {
     waveCache.set(ctx, byKey);
   }
   const effDuty = dutyOverride ?? instrument.duty;
-  const key = instrument.id + ':' + (effDuty ?? '') + ':' + (instrument.harmonics ? instrument.harmonics.join(',') : '');
+  const spec = spectrumOf(instrument);
+  const key = [
+    instrument.id, effDuty ?? '', instrument.wave,
+    instrument.harmonics ? instrument.harmonics.join(',') : '',
+    spec.tilt, spec.partials ? spec.partials.join(',') : '',
+  ].join(':');
   let wave = byKey.get(key);
   if (!wave) {
-    let imag;
-    if (effDuty != null) {
-      imag = dutyHarmonics(effDuty);
-    } else if (instrument.harmonics && instrument.harmonics.length) {
-      imag = harmonicImag(instrument.harmonics);
-    } else {
-      imag = dutyHarmonics(0.5);
-    }
+    const base = instrument.harmonics && instrument.harmonics.length
+      ? legacyImag(instrument.harmonics)
+      : baseSeries(instrument.wave, effDuty);
+    const imag = applySpectrum(base, spec);
     const real = new Float32Array(imag.length);
     wave = ctx.createPeriodicWave(real, imag, { disableNormalization: false });
     byKey.set(key, wave);
@@ -129,7 +191,12 @@ export function scheduleNote(
   }
 ) {
   const osc = ctx.createOscillator();
-  if (instrument.wave === 'custom') {
+  // A neutral spectrum falls through to the browser's own band-limited
+  // oscillator: opening the editor and changing nothing must change nothing.
+  const shaped = instrument.wave === 'custom'
+    || hasSpectrum(instrument)
+    || (instrument.harmonics && instrument.harmonics.length);
+  if (shaped) {
     osc.setPeriodicWave(getPeriodicWave(ctx, instrument, duty));
   } else {
     osc.type = instrument.wave;

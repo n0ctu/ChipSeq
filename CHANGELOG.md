@@ -11,11 +11,12 @@ tagged.
 
 ### Added
 
-- **Additive waves.** An instrument can be a list of partial amplitudes -
-  eight drawbars with Organ / Hollow / Bright / Reed starting points. Stored as
-  `wave: 'custom'` with `duty: null` and a `harmonics` array, which is what the
-  engine has always read, so there is no schema bump and an older build plays
-  such a file correctly rather than choking on an unknown oscillator type.
+- **Spectrum shaping.** A base wave is its harmonic series, so the new Spectrum
+  section scales that series rather than replacing it: a **tilt** knob in dB per
+  octave, plus eight drawbars as multipliers on the lowest partials. Neutral is
+  the raw wave, and an unshaped instrument still uses the browser's own
+  oscillator. Stored as an optional `instrument.spectrum` block, so an older
+  build ignores it and plays the base wave.
 
 ## [0.2.1] - 2026-08-07
 

@@ -1415,85 +1415,88 @@ await check('slider release (change) commits the value', `(() => {
   el.dispatchEvent(new Event('change', { bubbles: true }));
   return window.__chipseq.store.getDoc().tracks[0].instrument.gain === 0.8 || window.__chipseq.store.getDoc().tracks[0].instrument.gain;
 })()`);
-// Additive waves change the active track's instrument, which adds a Duty
-// automation lane and would leak into every test after this one - so the
-// instrument is snapshotted here and put back at the end of the block.
+// The spectrum shapes whatever wave is selected, so this checks BOTH that a
+// neutral spectrum leaves the audio alone and that a tilt actually changes it.
 await evaluate(`(() => {
   const d = window.__chipseq.store.getDoc();
   const t = d.tracks.find((x) => x.id === d.activeTrackId);
   window.__waveSnapshot = { id: t.id, instrument: t.instrument ? JSON.parse(JSON.stringify(t.instrument)) : null, instrumentId: t.instrumentId };
 })()`);
-// Additive waves: the engine has always been able to render a partial list,
-// so this asserts the editor writes one AND that it reaches the audio.
-await check('picking Harm. writes a partial list and renders differently', `(async () => {
+
+await check('a neutral spectrum renders identically to the raw wave', `(async () => {
   ${WAV_HELPERS}
   const store = window.__chipseq.store;
   const { renderWav } = await import('/js/core/export-wav.js');
   const trackId = store.getDoc().activeTrackId;
-  const inst = () => {
-    const t = store.getDoc().tracks.find((x) => x.id === trackId);
-    return t.instrument || store.getDoc().instruments.find((i) => i.id === t.instrumentId);
-  };
-  const render = async () => {
-    const { blob } = await renderWav(store.getDoc());
-    const w = await readWav(blob);
-    return w.rms;
-  };
+  const setInst = (patch) => store.commit('spec fixture', ['tracks'], (doc) => {
+    const t = doc.tracks.find((x) => x.id === trackId);
+    t.instrumentId = 'track:' + t.id;
+    t.instrument = { id: 'track:' + t.id, name: 'X', wave: 'sawtooth', harmonics: null, duty: null,
+      adsr: { a: 0.001, d: 0, s: 1, r: 0.001 }, gain: 0.5, ...patch };
+  });
+  const rms = async () => (await readWav((await renderWav(store.getDoc())).blob)).rms;
 
-  const pick = (id) => {
-    const btn = document.querySelector('#instrument-body #in-wave [data-v="' + id + '"]');
-    if (!btn) throw new Error('no ' + id + ' button');
-    btn.click();
-  };
-  pick('sine');
-  await new Promise((r) => setTimeout(r, 300));
-  const sineRms = await render();
+  setInst({});
+  await new Promise((r) => setTimeout(r, 250));
+  const raw = await rms();
+  // an explicitly neutral block must be indistinguishable from no block
+  setInst({ spectrum: { kind: 'spectrum', v: 1, tilt: 0, partials: null } });
+  await new Promise((r) => setTimeout(r, 250));
+  const neutral = await rms();
+  // ...and a tilt must not be
+  setInst({ spectrum: { kind: 'spectrum', v: 1, tilt: -12, partials: null } });
+  await new Promise((r) => setTimeout(r, 250));
+  const dark = await rms();
 
-  pick('harmonic');
-  await new Promise((r) => setTimeout(r, 300));
-  const i = inst();
-  if (i.wave !== 'custom') return 'wave is ' + i.wave + ', expected custom';
-  if (!Array.isArray(i.harmonics) || !i.harmonics.length) return 'no partial list';
-  if (i.duty !== null) return 'duty should be null for an additive wave, got ' + i.duty;
-  // the Harm. button must light up even though the stored wave says 'custom'
-  const lit = document.querySelector('#instrument-body #in-wave [data-v="harmonic"]').classList.contains('active');
-  const bars = document.querySelectorAll('#instrument-body #in-partials input[data-h]').length;
-  const harmRms = await render();
-
-  // a different wave has to make a different sound
-  const changed = Math.abs(harmRms - sineRms) > 1e-4;
-  return (lit && bars === i.harmonics.length && changed)
-    || JSON.stringify({ lit, bars, partials: i.harmonics.length, sineRms, harmRms });
+  const same = Math.abs(raw - neutral) < 1e-6;
+  const changed = Math.abs(dark - raw) > 1e-4;
+  return (same && changed) || JSON.stringify({ raw, neutral, dark, same, changed });
 })()`);
 
-await check('a drawbar edit changes the stored partials', `(async () => {
+await check('the tilt slider writes a spectrum block', `(async () => {
   const store = window.__chipseq.store;
-  const trackId = store.getDoc().activeTrackId;
-  const before = store.getDoc().tracks.find((x) => x.id === trackId).instrument.harmonics.slice();
-  const bar = document.querySelector('#instrument-body #in-partials input[data-h="3"]');
+  const el = document.querySelector('#instrument-body #in-tilt');
+  if (!el) return 'no tilt slider';
+  el.value = '-60'; // -6.0 dB/oct
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 300));
+  const t = store.getDoc().tracks.find((x) => x.id === store.getDoc().activeTrackId);
+  return (t.instrument.spectrum && t.instrument.spectrum.tilt === -6 && t.instrument.spectrum.kind === 'spectrum')
+    || JSON.stringify(t.instrument.spectrum);
+})()`);
+
+await check('a drawbar multiplies without wiping the tilt', `(async () => {
+  const store = window.__chipseq.store;
+  const bar = document.querySelector('#instrument-body #in-partials input[data-h="2"]');
   if (!bar) return 'no drawbar';
-  bar.value = '90';
+  bar.value = '50';
   bar.dispatchEvent(new Event('input', { bubbles: true }));
   bar.dispatchEvent(new Event('change', { bubbles: true }));
   await new Promise((r) => setTimeout(r, 300));
-  const after = store.getDoc().tracks.find((x) => x.id === trackId).instrument.harmonics;
-  return (Math.abs(after[3] - 0.9) < 1e-6 && after.length === before.length)
-    || 'before=' + JSON.stringify(before) + ' after=' + JSON.stringify(after);
+  const spec = store.getDoc().tracks.find((x) => x.id === store.getDoc().activeTrackId).instrument.spectrum;
+  return (spec.partials[2] === 0.5 && spec.tilt === -6) || JSON.stringify(spec);
 })()`);
 
-// Presets are starting points, so picking one must land exactly on it.
-await check('a partial preset lands exactly on its list', `(async () => {
+await check('reset removes the spectrum block entirely', `(async () => {
   const store = window.__chipseq.store;
-  const { HARMONIC_PRESETS } = await import('/js/core/instruments.js');
-  const trackId = store.getDoc().activeTrackId;
-  const [name, list] = HARMONIC_PRESETS[1];
-  document.querySelector('#instrument-body #in-partial-presets [data-p="' + name + '"]').click();
+  const btn = document.querySelector('#instrument-body #in-spec-reset');
+  if (!btn) return 'no spectrum reset link';
+  btn.click();
   await new Promise((r) => setTimeout(r, 300));
-  const got = store.getDoc().tracks.find((x) => x.id === trackId).instrument.harmonics;
-  return JSON.stringify(got) === JSON.stringify(list) || 'got ' + JSON.stringify(got) + ' want ' + JSON.stringify(list);
+  const inst = store.getDoc().tracks.find((x) => x.id === store.getDoc().activeTrackId).instrument;
+  const gone = !document.querySelector('#instrument-body #in-spec-reset');
+  return (!inst.spectrum && gone) || 'spectrum=' + JSON.stringify(inst.spectrum) + ' linkGone=' + gone;
 })()`);
 
-await check('the additive block leaves the track as it found it', `(async () => {
+await check('a sine offers no spectrum, having nothing to shape', `(async () => {
+  const store = window.__chipseq.store;
+  document.querySelector('#instrument-body #in-wave [data-v="sine"]').click();
+  await new Promise((r) => setTimeout(r, 300));
+  return !document.querySelector('#instrument-body #in-tilt') || 'tilt slider shown for a sine';
+})()`);
+
+await check('the spectrum block leaves the track as it found it', `(async () => {
   const store = window.__chipseq.store;
   const snap = window.__waveSnapshot;
   store.commit('restore instrument', ['tracks'], (doc) => {

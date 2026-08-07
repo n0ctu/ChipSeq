@@ -72,25 +72,43 @@ both dying. `workflow_dispatch` republishes without minting a tag.
   the track "Custom" until saved as a named preset, which then appears in
   every track's picker and travels in the project file.
 
-## Additive waves
+## Spectrum: shaping a wave's own harmonics
 
-Besides the four oscillator shapes and PWM, an instrument can be a list of
-**partial amplitudes** - eight vertical drawbars in the Instrument card,
-fundamental on the left, with Organ / Hollow / Bright / Reed as starting
-points. The wave is peak-normalised by Web Audio, so adding partials changes
-character rather than level.
+A base wave **is** its harmonic series - a saw is every harmonic at 1/n, a
+square the odd ones, a triangle the odd ones at 1/n² with alternating sign. So
+"pick a wave, then tune its harmonics" is one idea rather than two: the wave
+supplies the series and the **Spectrum** section scales it.
 
-It is stored as `wave: 'custom'` with `duty: null` and
-`harmonics: [1, 0.6, 0, …]` - deliberately **not** a new wave id. An older
-build meeting such a file takes the `custom` branch, finds no duty, and falls
-through to the same harmonics path, so it plays the sound correctly instead of
-throwing on an oscillator type it has never heard of. No schema bump, no
-migration: `instrument.harmonics` has been read by the engine since the
-beginning and only the editor is new.
+- **Tilt** is the primary control: dB per octave across the whole series, so
+  one knob darkens or brightens. At +6 dB/oct a saw comes out flat; at -6 its
+  1/n slope becomes 1/n².
+- **Eight drawbars** are the detail layer, multipliers (0-200%) on the lowest
+  partials, where the ear is most sensitive.
 
-`PeriodicWave` band-limits per note, so a bright partial set cannot alias the
-way a naive wavetable would. Poly only - mono is badge-accurate square by
-definition, so `.h` and `.fmf` are untouched by construction.
+100% everywhere with zero tilt is the raw wave, and an instrument with no
+spectrum block falls through to the browser's own band-limited oscillator - so
+opening the editor and changing nothing changes nothing.
+
+Multipliers scale what the base already has and cannot invent a partial that is
+not there: a sine has one harmonic, so it offers no spectrum at all. **Start
+from Saw to sculpt freely**, since it is the one wave carrying every harmonic.
+
+This follows how additive engines actually work. In Harmor and Razor the filter
+acts at the *generation* stage, scaling partial amplitudes inside the
+oscillator rather than processing audio afterwards, and Harmor starts from "the
+classic all-overtone saw wave" for the reason above. The alternative - one
+slider per partial - is how the Kawai K5000 reached a thousand parameters per
+patch and a reputation for being unusable; the Hammond's nine drawbars are the
+counter-example this copies.
+
+Stored as an optional `instrument.spectrum = { kind:'spectrum', v:1, tilt,
+partials }` block, so an older build ignores it and plays the base wave - it
+loses the shaping but sounds sensible. No schema bump.
+
+One limit worth knowing: the shaped wave is baked into a `PeriodicWave`, so it
+is **static for the note's duration**. A moving filter sweep needs a real
+filter node, which is what the effects phase adds - the two are complementary
+rather than competing.
 
 ## Automation lanes (poly)
 
