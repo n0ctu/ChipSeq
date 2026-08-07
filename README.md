@@ -131,6 +131,21 @@ per-track **gain** and **pan** are audio operations rather than numbers baked
 into each voice. The **Mixer** card in the sidebar edits both (gain as a
 percentage, pan as `L50`/`C`/`R100`), plus **solo**.
 
+### Two gain stages, and which one to reach for
+
+`instrument.gain` is the instrument's own level, and the presets are
+calibrated against each other so a sine and a saw sit at a similar loudness.
+`track.gain` in the **Mixer** is where a track is balanced against the others.
+
+Reach for the **Mixer** to mix. The Instrument tool's Gain is part of the
+sound's design, and changing it makes the track Custom - which is why the
+control now says so underneath itself rather than only in here.
+
+Editing any instrument parameter is **copy-on-write**: it writes an inline
+`track.instrument` and never modifies the shared preset, so a preset used by
+three tracks stays put when one of them is edited. The gain lane multiplies
+on top of both, so a lane at 100% with the track at 80% is 80%.
+
 **Pan** also exists as an automation lane, so a voice can sweep across the
 field over time - the classic ping-pong. A lane overrides the track's static
 pan (the same rule every other lane follows), and because position then

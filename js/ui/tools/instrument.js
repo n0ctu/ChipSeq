@@ -136,7 +136,10 @@ export function mount(body, { store, uiStore, engine }) {
       </div>
       <div class="harm-field">Gain <span id="in-gain-label" class="${isHot(inst.gain) ? 'hot' : ''}">${formatPercent(inst.gain)}</span>
         <div class="harm-row"><input type="range" id="in-gain" min="5" max="150" step="1" value="${Math.round(inst.gain * 100)}"
-          title="100% is unity - above that the master limiter starts working" /></div>
+          title="The instrument's own level, part of how it sounds. To balance this track against the others, use the Mixer's Gain instead. 100% is unity - above that the master limiter starts working." /></div>
+        <div class="in-hint">The instrument's own level - presets are calibrated so a
+          sine and a saw sit at a similar loudness. To balance this track in the mix,
+          reach for the <b>Mixer</b> first; changing this makes the track Custom.</div>
       </div>
       <div class="btn-pair">
         <button class="btn btn-toggle ${engine.isAuditioning() ? 'active' : ''}" id="in-audition"
