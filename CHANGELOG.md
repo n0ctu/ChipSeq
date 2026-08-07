@@ -9,6 +9,10 @@ tagged.
 
 ## Unreleased
 
+_Nothing yet._
+
+## [0.3.0] - 2026-08-07
+
 ### Added
 
 - **Spectrum shaping.** A base wave is its harmonic series, so the new Spectrum
