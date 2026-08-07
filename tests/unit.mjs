@@ -1077,6 +1077,98 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   }
 }
 
+// ---- effects: buses, sends, chains ----
+{
+  const {
+    EFFECTS, EFFECT_KINDS, DEFAULT_EFFECTS, impulseResponse, buildChain,
+  } = await import('../js/core/effects.js');
+  const {
+    createBus, buses, busById, trackSends, setSend, hasEffects, createProject: mkProj,
+  } = await import('../js/core/doc.js');
+
+  // Every kind must be registered, defaulted and buildable - a kind that
+  // exists in one table but not the other is a card that renders nothing.
+  for (const kind of EFFECT_KINDS) {
+    assert(typeof EFFECTS[kind].build === 'function', `${kind} has a builder`);
+    assert(EFFECTS[kind].name, `${kind} has a display name`);
+    assert(DEFAULT_EFFECTS[kind] && DEFAULT_EFFECTS[kind].kind === kind, `${kind} has defaults naming itself`);
+    assert(DEFAULT_EFFECTS[kind].v === 1, `${kind} defaults carry a version`);
+  }
+
+  // The impulse is generated, never fetched, and must be identical every time
+  // or live and offline renders would reverberate differently.
+  const a = impulseResponse(44100, 0.1, 2);
+  const b = impulseResponse(44100, 0.1, 2);
+  assert(a.length === b.length && a.left.every((v, i) => v === b.left[i]), 'the reverb impulse is deterministic');
+  assert(a.left.some((v) => v !== 0), 'and is not silence');
+  assert(Math.abs(a.left[a.length - 1]) < Math.abs(a.left[0]), 'it decays');
+  assert(a.left.some((v, i) => v !== a.right[i]), 'the two channels differ, so it is not mono');
+
+  // A fake context: enough surface for the builders, so chain assembly can be
+  // asserted in node without Web Audio.
+  const fakeCtx = () => {
+    const made = [];
+    // nodeType, not type: BiquadFilterNode HAS a `type` property and the
+    // builder sets it, so a marker called `type` would be overwritten.
+    const node = (nodeType) => {
+      const n = { nodeType, connections: [], connect(x) { this.connections.push(x); }, disconnect() {} };
+      made.push(n);
+      return n;
+    };
+    return {
+      made,
+      sampleRate: 44100,
+      createGain: () => ({ ...node('gain'), gain: { value: 1 } }),
+      createDelay: () => ({ ...node('delay'), delayTime: { value: 0 } }),
+      createBiquadFilter: () => ({ ...node('filter'), frequency: { value: 0 }, Q: { value: 0 }, type: '' }),
+      createConvolver: () => ({ ...node('convolver'), buffer: null, normalize: true }),
+      createBuffer: (ch, len) => ({ ch, len, copyToChannel() {} }),
+    };
+  };
+
+  {
+    const ctx = fakeCtx();
+    const built = buildChain(ctx, [DEFAULT_EFFECTS.filter, DEFAULT_EFFECTS.delay]);
+    assert(built.input && built.output, 'a chain has both ends');
+    assert(built.input !== built.output, 'and they differ once something is in it');
+    eq(built.skipped, [], 'nothing was skipped');
+  }
+  {
+    // The forward-compat rule, at the audio layer: an effect from a newer
+    // build costs you that effect, not the whole bus.
+    const ctx = fakeCtx();
+    const built = buildChain(ctx, [{ kind: 'granulator', v: 1 }, DEFAULT_EFFECTS.filter]);
+    eq(built.skipped, ['granulator'], 'an unknown kind is reported');
+    assert(built.output.nodeType === 'filter', 'and the rest of the chain is still built');
+  }
+  {
+    const ctx = fakeCtx();
+    const built = buildChain(ctx, []);
+    assert(built.input === built.output, 'an empty chain is a pass-through');
+  }
+
+  // ---- document helpers ----
+  const doc = mkProj({ name: 'fx', mode: 'poly' });
+  assert(hasEffects(doc) === false, 'a new project uses no effects');
+  const bus = createBus({ name: 'Space', chain: [DEFAULT_EFFECTS.reverb] });
+  doc.buses = [bus];
+  assert(buses(doc).length === 1 && busById(doc, bus.id) === bus, 'buses are found by id');
+  assert(busById(doc, 'nope') === null, 'and a missing one is null, not a guess');
+  assert(hasEffects(doc) === true, 'a bus with a chain counts as using effects');
+
+  const track = doc.tracks[0];
+  setSend(track, bus.id, 0.4);
+  eq(trackSends(doc, track), [{ busId: bus.id, level: 0.4 }], 'a send is stored and read back');
+  setSend(track, 'ghost-bus', 0.5);
+  assert(track.sends.length === 2, 'a send to an unknown bus is kept in the document');
+  eq(trackSends(doc, track), [{ busId: bus.id, level: 0.4 }], 'but is not routed, having nowhere to go');
+  setSend(track, bus.id, 0);
+  assert(!trackSends(doc, track).length, 'level 0 removes the send');
+  assert(track.sends.length === 1, 'without touching the others');
+  setSend(track, 'ghost-bus', 0);
+  assert(track.sends === undefined, 'and the field disappears once empty');
+}
+
 // ---- spectrum: base wave x tilt x partial multipliers ----
 {
   const {
@@ -2222,12 +2314,12 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   // Recomputing doc.uses from scratch would strip it - which is the very
   // data loss the field exists to prevent.
   const fromFuture = createProject({ name: 'future', mode: 'poly' });
-  fromFuture.uses = ['effects@1', 'wavetable@2'];
+  fromFuture.uses = ['granular@1', 'wavetable@2'];
   normalizeDoc(fromFuture);
-  assert(fromFuture.uses.includes('effects@1'), 'an unknown declaration is carried over');
+  assert(fromFuture.uses.includes('granular@1'), 'an unknown declaration is carried over');
   assert(fromFuture.uses.includes('wavetable@2'), 'every unknown declaration is carried over');
   normalizeDoc(fromFuture);
-  assert(fromFuture.uses.filter((u) => u === 'effects@1').length === 1, 'carrying over does not duplicate');
+  assert(fromFuture.uses.filter((u) => u === 'granular@1').length === 1, 'carrying over does not duplicate');
   // ...but a KNOWN feature that is no longer present is dropped, because we
   // can actually check that one.
   fromFuture.uses.push('harmonics');
@@ -2256,7 +2348,9 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
 
   eq(unsupportedFeatures({ uses: [] }), [], 'nothing declared, nothing unsupported');
   eq(unsupportedFeatures({ uses: ['harmonics', 'automation'] }), [], 'known features are supported');
-  eq(unsupportedFeatures({ uses: ['effects@1'] }), ['effects@1'], 'an unknown feature is reported');
+  eq(unsupportedFeatures({ uses: ['granular@1'] }), ['granular@1'], 'an unknown feature is reported');
+  eq(unsupportedFeatures({ uses: ['effects@1'] }), [], 'effects are supported as of this build');
+  eq(unsupportedFeatures({ uses: ['effects@2'] }), ['effects@2'], 'but a newer major of them is not');
   eq(unsupportedFeatures({ uses: ['harmonics@9'] }), ['harmonics@9'], 'a known feature at a newer major is reported');
   eq(unsupportedFeatures({ uses: ['harmonics@1'] }), [], 'an explicit supported major is fine');
 }

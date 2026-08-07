@@ -1515,6 +1515,113 @@ await check('the spectrum block leaves the track as it found it', `(async () => 
     || 'instrument=' + JSON.stringify(t.instrument);
 })()`);
 
+// ---- effects: buses and sends ----
+//
+// The plan's verification for this phase: identical topology in an
+// AudioContext and an OfflineAudioContext, and a MEASURED difference in the
+// rendered file when a send is open.
+await check('a bus builds the same graph offline as it does live', `(async () => {
+  const { buildGraph } = await import('/js/core/graph.js');
+  const { DEFAULT_EFFECTS } = await import('/js/core/effects.js');
+  const { createBus } = await import('/js/core/doc.js');
+  const doc = structuredClone(window.__chipseq.store.getDoc());
+  doc.mode = 'poly';
+  const bus = createBus({ name: 'Space', chain: [DEFAULT_EFFECTS.delay, DEFAULT_EFFECTS.reverb] });
+  doc.buses = [bus];
+  doc.tracks[0].sends = [{ busId: bus.id, level: 0.5 }];
+
+  const shape = (ctx) => {
+    const g = buildGraph(ctx, doc);
+    return {
+      buses: g.busNodes.size,
+      tracks: g.trackNodes.size,
+      skipped: g.busNodes.skipped.length,
+      limited: g.limited,
+    };
+  };
+  const live = shape(new (window.AudioContext || window.webkitAudioContext)());
+  const offline = shape(new OfflineAudioContext(1, 1024, 44100));
+  return JSON.stringify(live) === JSON.stringify(offline)
+    || 'live=' + JSON.stringify(live) + ' offline=' + JSON.stringify(offline);
+})()`);
+
+await check('an open send is audible in the rendered file', `(async () => {
+  ${WAV_HELPERS}
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const { createBus } = await import('/js/core/doc.js');
+  const { DEFAULT_EFFECTS } = await import('/js/core/effects.js');
+
+  const base = structuredClone(window.__chipseq.store.getDoc());
+  base.mode = 'poly';
+  // one short note, so a delay tail shows up as energy that was not there
+  base.tracks = [{
+    id: 'fx-t', name: 'fx', role: 'melody', instrumentId: 'badge', color: 0,
+    notes: [{ id: 'fx-n', pitch: 60, startTick: 0, durationTicks: 48, velocity: 100, harmonics: null }],
+  }];
+  base.activeTrackId = base.melodyTrackId = 'fx-t';
+  const bus = createBus({ name: 'Echo', chain: [DEFAULT_EFFECTS.delay] });
+  base.buses = [bus];
+
+  const render = async (level) => {
+    const doc = structuredClone(base);
+    if (level > 0) doc.tracks[0].sends = [{ busId: bus.id, level }];
+    const { blob } = await renderWav(doc);
+    return readWav(blob);
+  };
+  const dry = await render(0);
+  const wet = await render(1);
+  // a delay adds repeats after the note, so total energy must rise
+  const louder = wet.rms > dry.rms * 1.05;
+  const longer = wet.sampleCount >= dry.sampleCount;
+  return (louder && longer) || JSON.stringify({ dryRms: dry.rms, wetRms: wet.rms, louder, longer });
+})()`);
+
+await check('an effect from a newer build is skipped, not fatal', `(async () => {
+  const { buildGraph } = await import('/js/core/graph.js');
+  const { DEFAULT_EFFECTS } = await import('/js/core/effects.js');
+  const { createBus } = await import('/js/core/doc.js');
+  const doc = structuredClone(window.__chipseq.store.getDoc());
+  doc.mode = 'poly';
+  const bus = createBus({ name: 'Future', chain: [{ kind: 'granulator', v: 9 }, DEFAULT_EFFECTS.filter] });
+  doc.buses = [bus];
+  doc.tracks[0].sends = [{ busId: bus.id, level: 0.5 }];
+  const g = buildGraph(new OfflineAudioContext(1, 1024, 44100), doc);
+  return (g.busNodes.size === 1 && g.busNodes.skipped.length === 1 && g.busNodes.skipped[0] === 'granulator')
+    || 'skipped=' + JSON.stringify(g.busNodes.skipped);
+})()`);
+
+await check('the Effects card creates a bus and opens a send', `(async () => {
+  const store = window.__chipseq.store;
+  const before = JSON.stringify(store.getDoc().buses || []);
+  const sec = document.getElementById('sec-effects');
+  if (!sec) return 'no effects card';
+  if (!sec.classList.contains('open')) sec.querySelector('.tool-card-head').click();
+  await new Promise((r) => setTimeout(r, 500));
+  const add = document.querySelector('#effects-body #fx-add-bus');
+  if (!add) return 'no add-bus button';
+  add.click();
+  await new Promise((r) => setTimeout(r, 350));
+  const list = store.getDoc().buses || [];
+  if (list.length !== 1) return 'buses=' + list.length;
+
+  const send = document.querySelector('#effects-body #fx-send');
+  if (!send) return 'no send slider';
+  send.value = '40';
+  send.dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 350));
+  const doc = store.getDoc();
+  const t = doc.tracks.find((x) => x.id === doc.activeTrackId);
+  const declared = (doc.uses || []).includes('effects@1');
+  const ok = t.sends && t.sends[0].level === 0.4 && declared;
+  // put the project back the way it was
+  store.commit('clear fx', ['tracks', 'doc'], (d) => {
+    d.buses = JSON.parse(before);
+    for (const tr of d.tracks) delete tr.sends;
+  });
+  await new Promise((r) => setTimeout(r, 250));
+  return ok || 'sends=' + JSON.stringify(t.sends) + ' declared=' + declared;
+})()`);
+
 // The reset button exists because a project's stored gains can drift away
 // from what the wave was calibrated at. It reads the built-in level, not the
 // document's, so a drifted project still lands on the right number.
@@ -1860,10 +1967,10 @@ await check('a mid-song tempo change is declared in doc.uses', `(async () => {
 
 await check('unsupported features are reported, never dropped', `(async () => {
   const { unsupportedFeatures, migrate } = await import('/js/core/doc.js');
-  const raw = JSON.stringify({ ...window.__chipseq.store.getDoc(), uses: ['harmonics', 'effects@1'], futureBlock: { kind: 'x', v: 1 } });
+  const raw = JSON.stringify({ ...window.__chipseq.store.getDoc(), uses: ['harmonics', 'granular@1'], futureBlock: { kind: 'x', v: 1 } });
   const doc = migrate(JSON.parse(raw));
   const missing = unsupportedFeatures(doc);
-  return (missing.length === 1 && missing[0] === 'effects@1' && !!doc.futureBlock)
+  return (missing.length === 1 && missing[0] === 'granular@1' && !!doc.futureBlock)
     || JSON.stringify({ missing, kept: !!doc.futureBlock });
 })()`);
 

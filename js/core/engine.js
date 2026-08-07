@@ -5,7 +5,7 @@ import { flattenSong } from './flatten.js';
 import { scheduleNote, getInstrument } from './instruments.js';
 import { ticksPerBeat, ticksPerBar, songEndTick, tickToSeconds, secondsToTick } from './doc.js';
 import { createEmitter } from './store.js';
-import { buildGraph, buildTrackNodes } from './graph.js';
+import { buildGraph, buildRouting } from './graph.js';
 
 const SCHEDULE_INTERVAL_MS = 25;
 const LOOKAHEAD_S = 0.12;
@@ -235,7 +235,9 @@ export function createEngine(store) {
   store.subscribe(['tracks', 'doc'], () => {
     if (!audioCtx || !graph) return;
     graph.disconnect();
-    Object.assign(graph, buildTrackNodes(audioCtx, store.getDoc(), graph.master));
+    // Routing, not just the track layer: a bus added or an effect retuned has
+    // to be rebuilt too, and a send needs its bus to exist first.
+    Object.assign(graph, buildRouting(audioCtx, store.getDoc(), graph.master));
   });
 
   // Re-flatten mid-playback when the document changes (edit while playing).

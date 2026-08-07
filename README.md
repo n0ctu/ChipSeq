@@ -242,6 +242,43 @@ save a re-flatten that costs nothing. Solo beats mute-by-omission, and mono
 ignores all of it: the melody track is the voice, which is what keeps `.h` and
 `.fmf` out of reach of the mixer entirely.
 
+## Effects (poly)
+
+A **bus** is a shared effect. Tracks send part of their signal to it and the
+result is mixed back in, so one reverb serving six tracks is one convolver
+rather than six.
+
+```jsonc
+doc.buses   = [{ id, name, chain: [{ kind: 'delay', v: 1, params: {…} }] }]
+track.sends = [{ busId, level }]
+```
+
+Routing is **per-track node + sends**, chosen over an insert chain per track
+because sends map 1:1 onto MIDI (CC91 reverb, CC93 chorus) while inserts map
+onto nothing. `track.sends` is an array, so a full matrix is already
+expressible even though the card edits one send at a time.
+
+The tap comes off the track node - post-fader, pre-pan - so a track's fader
+moves its sends with it, and pulling a track down does not leave its reverb
+hanging there.
+
+Three kinds ship: **delay** (time synced to the grid in ticks, so it follows
+the tempo), **filter** (`BiquadFilterNode`), and **reverb** (`ConvolverNode`
+fed a *generated* impulse - decaying noise from a seeded PRNG, because
+fetching an impulse would break the no-external-requests rule and
+`Math.random` would give live and offline renders different reverbs).
+
+There is deliberately no per-effect dry/wet: the dry path is the track's own
+output and the send level decides how much arrives. A mix knob would be a
+second control for one thing.
+
+Adding an effect is one entry in `EFFECTS` plus one `build(ctx, spec, env) ->
+{ input, output }`. An unknown kind is **skipped** rather than fatal, so a
+project from a newer build loses that effect and not its whole sound - the
+same rule `doc.uses` follows, applied at the audio layer.
+
+Poly only, and `.h`/`.fmf` never see this graph.
+
 ## Envelopes and modulation
 
 There used to be two systems for "a value that moves over time" - ADSR

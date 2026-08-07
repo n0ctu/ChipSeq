@@ -340,6 +340,7 @@ export const KNOWN_FEATURES = {
   automation: 1,
   tempoMap: 1,
   meterMap: 1,
+  effects: 1,
 };
 
 // Recompute doc.uses from what the document actually contains. Only features
@@ -354,6 +355,10 @@ export function updateUses(doc) {
     uses.push('automation');
   }
   if (doc.song.tempo && doc.song.tempo.length > 1) uses.push('tempoMap');
+  // Effects change what the mix SOUNDS like, so a reader that ignores them
+  // plays the file wrong rather than merely plainly - which is the bar for
+  // being declared here.
+  if (hasEffects(doc)) uses.push('effects@1');
   if (doc.song.meter && doc.song.meter.length > 1) uses.push('meterMap');
 
   // Entries this build cannot evaluate are CARRIED OVER rather than
@@ -365,6 +370,54 @@ export function updateUses(doc) {
     if (unsupportedFeatures({ uses: [entry] }).length && !uses.includes(entry)) uses.push(entry);
   }
   doc.uses = uses.sort();
+}
+
+// ---- effects: buses and sends ----
+//
+// Routing is per-track node + sends, chosen over an insert chain per track
+// because sends map 1:1 onto MIDI (CC91 reverb, CC93 chorus) while inserts
+// map onto nothing, and because one reverb shared by six tracks is one
+// convolver rather than six.
+//
+// track.sends is an ARRAY, so the matrix is already expressible even though
+// the shipped UI edits one send at a time.
+
+export function createBus({ name = 'Bus', chain = [] } = {}) {
+  return { id: uid(), name, chain };
+}
+
+export function buses(doc) {
+  return Array.isArray(doc && doc.buses) ? doc.buses : [];
+}
+
+export function busById(doc, id) {
+  return buses(doc).find((b) => b.id === id) || null;
+}
+
+// Sends whose bus actually exists. A send to a missing bus is PRESERVED in the
+// document (it may belong to a build that knows more than this one) but is not
+// routed, because there is nothing to route it to.
+export function trackSends(doc, track) {
+  const list = Array.isArray(track && track.sends) ? track.sends : [];
+  return list
+    .filter((s) => s && busById(doc, s.busId))
+    .map((s) => ({ busId: s.busId, level: Math.max(0, Math.min(2, Number(s.level) || 0)) }))
+    .filter((s) => s.level > 0);
+}
+
+export function hasEffects(doc) {
+  return buses(doc).some((b) => Array.isArray(b.chain) && b.chain.length)
+    || (doc.tracks || []).some((t) => Array.isArray(t.sends) && t.sends.length)
+    || !!(doc.master && Array.isArray(doc.master.chain) && doc.master.chain.length);
+}
+
+// Set (or clear, with level 0) one track's send to one bus, leaving its other
+// sends alone - the array is a matrix even while the UI shows one row.
+export function setSend(track, busId, level) {
+  const list = Array.isArray(track.sends) ? track.sends.filter((s) => s && s.busId !== busId) : [];
+  if (level > 0) list.push({ busId, level: Math.max(0, Math.min(2, level)) });
+  if (list.length) track.sends = list;
+  else delete track.sends;
 }
 
 // Entries of doc.uses this build cannot honour: an unknown name, or a known

@@ -462,3 +462,12 @@ body.dragging::after {
   height: 56px;
   accent-color: var(--accent);
 }
+
+/* Effects card: a bus is a stack of effects, so each one is a boxed group
+   with its own params rather than a flat list of controls. */
+.fx-chain { display: flex; flex-direction: column; gap: 6px; }
+.fx-item { border: 1px solid var(--line); border-radius: 4px; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.fx-param { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); }
+.fx-param input[type="range"] { flex: 1; accent-color: var(--accent); }
+.fx-param select { flex: 1; }
+.fx-param .mix-val { min-width: 46px; text-align: right; font-family: var(--font-mono); color: var(--text); }

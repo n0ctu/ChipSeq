@@ -17,6 +17,12 @@ tagged.
   the raw wave, and an unshaped instrument still uses the browser's own
   oscillator. Stored as an optional `instrument.spectrum` block, so an older
   build ignores it and plays the base wave.
+- **Effects: buses and sends.** A bus is a shared chain that tracks send part of
+  their signal to - delay (grid-synced), filter, and a reverb whose impulse is
+  generated from a seeded PRNG rather than fetched. Sends tap the track node
+  post-fader, so a fader move takes its sends with it. An effect kind this build
+  does not know is skipped rather than fatal, and a document using any of it
+  declares `effects@1` in `doc.uses`.
 
 ## [0.2.1] - 2026-08-07
 

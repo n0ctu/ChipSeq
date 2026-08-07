@@ -11,7 +11,8 @@
 // state, which would let realtime and offline renders drift apart, and
 // preview === export is the invariant the whole app rests on.
 
-import { trackGain, trackPan, needsStereo, hasPanLane } from './doc.js';
+import { trackGain, trackPan, needsStereo, hasPanLane, buses, trackSends, tickToSeconds } from './doc.js';
+import { buildChain } from './effects.js';
 
 // Level of the summed mix before the clipper. Unchanged from the engine's
 // original master so existing projects keep their balance.
@@ -118,13 +119,53 @@ export function buildOutputGraph(ctx, doc, { metronome = false, limiter = true }
 // mean one thing live and another in the file.
 export function buildGraph(ctx, doc, opts = {}) {
   const out = buildOutputGraph(ctx, doc, opts);
-  return { ...out, ...buildTrackNodes(ctx, doc, out.master) };
+  return { ...out, ...buildRouting(ctx, doc, out.master) };
+}
+
+// Buses first, then tracks - a send needs somewhere to arrive.
+//
+//   voices -> track gain [-> pan] -> master
+//                        \-> send gain -> bus chain -> master
+//
+// The send tap comes off the track node, so a track's fader moves its sends
+// with it. That is what "send" means on every desk ever built, and it is why
+// pulling a track down does not leave its reverb hanging there.
+export function buildRouting(ctx, doc, master) {
+  const busNodes = buildBuses(ctx, doc, master);
+  const tracks = buildTrackNodes(ctx, doc, master, busNodes);
+  return {
+    ...tracks,
+    busNodes,
+    disconnect: () => {
+      tracks.disconnect();
+      busNodes.disconnect();
+    },
+  };
+}
+
+// One chain per bus, each landing on the master so bus output is limited
+// along with everything else.
+export function buildBuses(ctx, doc, master) {
+  const byId = new Map();
+  const nodes = [];
+  const skipped = [];
+  const env = { tickSeconds: (ticks) => tickToSeconds(doc, ticks) };
+  for (const bus of buses(doc)) {
+    const built = buildChain(ctx, bus.chain, env);
+    built.output.connect(master);
+    byId.set(bus.id, built);
+    nodes.push(built.input, built.output);
+    skipped.push(...built.skipped);
+  }
+  byId.skipped = skipped;
+  byId.disconnect = () => nodes.forEach((n) => n.disconnect());
+  return byId;
 }
 
 // Just the per-track layer, so the engine can rebuild it when tracks are
 // added, removed or panned without tearing down the output stage (and with
 // it the limiter and the peak tap the UI reads).
-export function buildTrackNodes(ctx, doc, master) {
+export function buildTrackNodes(ctx, doc, master, busNodes = null) {
   const trackNodes = new Map();
   const nodes = []; // everything to disconnect on rebuild, panners included
   const stereo = ctx.destination.channelCount > 1 && needsStereo(doc);
@@ -146,6 +187,20 @@ export function buildTrackNodes(ctx, doc, master) {
       nodes.push(panner);
     } else {
       node.connect(master);
+    }
+    // Sends tap the track node - post-fader, pre-pan. Post-fader so the send
+    // follows the fader; pre-pan because a bus is mono-in by construction and
+    // panning the send would only halve it.
+    if (busNodes) {
+      for (const send of trackSends(doc, track)) {
+        const bus = busNodes.get(send.busId);
+        if (!bus) continue;
+        const tap = ctx.createGain();
+        tap.gain.value = send.level;
+        node.connect(tap);
+        tap.connect(bus.input);
+        nodes.push(tap);
+      }
     }
     nodes.push(node);
     trackNodes.set(track.id, node);
