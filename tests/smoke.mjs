@@ -820,10 +820,14 @@ await check('returning to a throttled tab resyncs instead of firing a backlog', 
   const e = window.__chipseq.engine;
   const s = window.__chipseq.store;
   const { createNote, addNote } = await import('/js/core/doc.js');
-  // a long stream of notes so a stalled scheduler would have a big backlog
+  // a long stream of notes so a stalled scheduler would have a big backlog.
+  // Pentatonic rather than chromatic - it is the same 64 notes to the
+  // scheduler and much easier on anyone within earshot.
+  const PENTA = [0, 2, 4, 7, 9];
   s.commit('stream', ['notes'], (d) => {
     for (let i = 0; i < 64; i++) {
-      addNote(d, d.tracks[0].id, createNote({ pitch: 60 + (i % 12), startTick: 96 * 60 + i * 24, durationTicks: 24 }));
+      const pitch = 60 + PENTA[i % PENTA.length] + 12 * Math.floor((i % 15) / 5);
+      addNote(d, d.tracks[0].id, createNote({ pitch, startTick: 96 * 60 + i * 24, durationTicks: 24 }));
     }
   });
   e.play(96 * 60);
@@ -1945,9 +1949,12 @@ await check('a deliberately hot mix is limited, not clipped, and is reported', `
   doc.master = { ...(doc.master || {}), normalize: { kind: 'normalize', v: 1, enabled: false } };
   // eight loud voices stacked on the same beat - guaranteed to sum over 1.0
   doc.instruments.forEach((i) => { i.gain = 1; });
-  doc.tracks = [0,1,2,3,4,5,6,7].map((i) => ({
+  // A spread C major rather than eight chromatic semitones: same voice count
+  // and the same summed level, but the suite is audible on whoever runs it.
+  const HOT_CHORD = [36, 48, 55, 60, 64, 67, 72, 79];
+  doc.tracks = HOT_CHORD.map((pitch, i) => ({
     id: 'hot-' + i, name: 'hot' + i, role: 'melody', instrumentId: 'badge',
-    notes: [{ id: 'hn-' + i, pitch: 60 + i, startTick: 0, durationTicks: 384, velocity: 127, harmonics: null }],
+    notes: [{ id: 'hn-' + i, pitch, startTick: 0, durationTicks: 384, velocity: 127, harmonics: null }],
   }));
   doc.activeTrackId = doc.melodyTrackId = 'hot-0';
   const { blob, level } = await renderWav(doc);
