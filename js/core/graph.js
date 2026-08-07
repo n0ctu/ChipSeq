@@ -139,6 +139,26 @@ export function buildOutputGraph(ctx, doc, { metronome = false, limiter = true }
   return { master, metro, limited: tail !== master };
 }
 
+// Push the document's master level onto a graph that already exists.
+//
+// buildOutputGraph sets it once, at construction, and the engine builds the
+// graph on first play and then only ever rebuilds ROUTING - which reuses the
+// same master node. So without this, changing make-up moved the number in the
+// document and the exported file while the preview carried on at whatever
+// level it was built with.
+//
+// Ramped rather than assigned: a gain step during playback is a click.
+export function applyMasterLevel(graph, doc, when = 0) {
+  if (!graph || !graph.master) return;
+  const target = MASTER_GAIN * makeupGain(doc);
+  const param = graph.master.gain;
+  if (when > 0 && param.setTargetAtTime) {
+    param.setTargetAtTime(target, when, 0.01);
+  } else {
+    param.value = target;
+  }
+}
+
 // The full graph: one node per track, feeding the shared output stage.
 //
 //   voices -> track gain [-> pan] -> master -> limiter -> destination
