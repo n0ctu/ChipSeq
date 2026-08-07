@@ -1077,37 +1077,58 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   }
 }
 
-// ---- additive (harmonic) waves ----
+// ---- spectrum: base wave x tilt x partial multipliers ----
 {
   const {
-    sanitizeHarmonics, harmonicImag, HARMONIC_PRESETS, MAX_PARTIALS,
+    baseSeries, applySpectrum, spectrumOf, hasSpectrum, sanitizePartials,
+    DEFAULT_SPECTRUM, MAX_PARTIALS, SERIES_LENGTH, TILT_MIN, TILT_MAX,
   } = await import('../js/core/instruments.js');
 
-  eq(sanitizeHarmonics([1, 0.5]), [1, 0.5], 'a plain list passes through');
-  eq(sanitizeHarmonics([2, -1]), [1, 0], 'amplitudes are clamped to 0..1');
-  eq(sanitizeHarmonics([0.123456]), [0.123], 'and rounded, so files stay readable');
-  eq(sanitizeHarmonics(['x', null, 1]), [0, 0, 1], 'junk becomes silence rather than NaN');
-  eq(sanitizeHarmonics([0, 0, 0]), null, 'an all-silent list is not a wave');
-  eq(sanitizeHarmonics('nope'), null, 'and neither is a non-array');
-  assert(sanitizeHarmonics(new Array(40).fill(1)).length === MAX_PARTIALS, 'the list is capped');
+  // The series each base wave IS. Measured against the rendered audio of the
+  // browser's own oscillators, so these are not just textbook numbers.
+  const at = (a, k) => Number(a[k].toFixed(4));
+  const saw = baseSeries('sawtooth');
+  assert(at(saw, 1) === 1 && at(saw, 2) === 0.5 && at(saw, 3) === 0.3333, 'a saw is every harmonic at 1/n');
+  const sq = baseSeries('square');
+  assert(at(sq, 2) === 0 && at(sq, 3) === 0.3333 && at(sq, 5) === 0.2, 'a square is the odd ones at 1/n');
+  const tri = baseSeries('triangle');
+  assert(at(tri, 3) === -0.1111 && at(tri, 5) === 0.04, 'a triangle is odd at 1/n^2 with alternating sign');
+  assert(at(baseSeries('sine'), 1) === 1 && at(baseSeries('sine'), 2) === 0, 'a sine is the fundamental alone');
+  assert(saw[0] === 0 && sq[0] === 0, 'DC is always zero');
+  assert(saw.length === SERIES_LENGTH + 1, 'the series runs to SERIES_LENGTH');
 
-  // Index 0 is DC and must stay silent - a non-zero there is an offset, not a
-  // partial, and would push the whole wave off centre.
-  const imag = harmonicImag([1, 0.5, 0.25]);
-  assert(imag[0] === 0, 'DC stays zero');
-  assert(Math.abs(imag[1] - 1) < 1e-6 && Math.abs(imag[2] - 0.5) < 1e-6 && Math.abs(imag[3] - 0.25) < 1e-6,
-    'partial n lands at index n');
-  assert(imag.length === 4, 'and the array is exactly as long as it needs to be');
+  // Tilt is dB per octave, so it should exactly cancel a saw's own 1/n slope
+  // at +6 and square it at -6.
+  const flat = applySpectrum(saw, { tilt: 6, partials: null });
+  assert(Math.abs(flat[2] - 1) < 0.01 && Math.abs(flat[8] - 1) < 0.02, '+6 dB/oct flattens a saw');
+  const steep = applySpectrum(saw, { tilt: -6, partials: null });
+  assert(Math.abs(steep[2] - 0.25) < 0.01, '-6 dB/oct squares the slope (1/n -> 1/n^2)');
 
-  // Every preset must survive the same sanitising the UI applies, or a
-  // starting point would change the moment you touched it.
-  for (const [name, list] of HARMONIC_PRESETS) {
-    const clean = sanitizeHarmonics(list);
-    assert(clean !== null, `preset ${name} is a real wave`);
-    eq(clean, list, `preset ${name} is already in canonical form`);
-    assert(list.length <= MAX_PARTIALS, `preset ${name} fits the editor`);
-    assert(list[0] > 0, `preset ${name} has a fundamental`);
-  }
+  // The property the whole design rests on: neutral changes nothing.
+  const neutral = applySpectrum(saw, spectrumOf({}));
+  assert([...saw].every((v, i) => Math.abs(v - neutral[i]) < 1e-12), 'a neutral spectrum is the raw wave');
+  assert(hasSpectrum({}) === false, 'and does not count as shaping');
+  assert(hasSpectrum({ spectrum: { tilt: -3 } }) === true, 'a tilt counts');
+  assert(hasSpectrum({ spectrum: { partials: [1, 0.5] } }) === true, 'so does a partial multiplier');
+  assert(hasSpectrum({ spectrum: { tilt: 0, partials: [1, 1, 1] } }) === false, 'all-neutral multipliers do not');
+
+  // Multipliers scale what is there and cannot invent what is not.
+  const shaped = applySpectrum(baseSeries('sine'), { tilt: 0, partials: [1, 2, 2, 2] });
+  assert(shaped[2] === 0 && shaped[3] === 0, 'a sine has nothing above the fundamental to boost');
+  const boosted = applySpectrum(saw, { tilt: 0, partials: [1, 2] });
+  assert(Math.abs(boosted[2] - 1) < 1e-6, 'but a saw partial can be pushed above its natural level');
+
+  eq(sanitizePartials([1, 0.5]), [1, 0.5], 'a plain list passes through');
+  eq(sanitizePartials([5, -1]), [2, 0], 'multipliers clamp to 0..2');
+  eq(sanitizePartials([1, 1, 1]), null, 'an all-neutral list is not a spectrum');
+  eq(sanitizePartials(['x', 2]), [1, 2], 'junk becomes neutral, not NaN');
+  assert(sanitizePartials(new Array(40).fill(0.5)).length === MAX_PARTIALS, 'the editable list is capped');
+  eq(sanitizePartials('nope'), null, 'and a non-array is nothing');
+
+  const clamped = spectrumOf({ spectrum: { tilt: 99 } });
+  assert(clamped.tilt === TILT_MAX, 'tilt clamps up');
+  assert(spectrumOf({ spectrum: { tilt: -99 } }).tilt === TILT_MIN, 'and down');
+  assert(spectrumOf({}) === DEFAULT_SPECTRUM, 'no block means the shared default');
 }
 
 // ---- the calibrated gain a wave resets to ----
