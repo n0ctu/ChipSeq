@@ -85,6 +85,12 @@ supplies the series and the **Spectrum** section scales it.
 - **Eight drawbars** are the detail layer, multipliers (0-200%) on the lowest
   partials, where the ear is most sensitive.
 
+The section sits below the envelope and folds away, following the same rule
+the tool cards do: open when the instrument is shaped, closed when it is
+neutral, and sticky once you have opened or closed it yourself. Its summary
+reports the state, so a collapsed section still tells you whether anything is
+happening.
+
 100% everywhere with zero tilt is the raw wave, and an instrument with no
 spectrum block falls through to the browser's own band-limited oscillator - so
 opening the editor and changing nothing changes nothing.

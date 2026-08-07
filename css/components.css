@@ -486,3 +486,13 @@ body.dragging::after {
   border: 1px solid var(--line); border-radius: 3px; padding: 1px 4px;
 }
 .palette-empty { color: var(--text-dim); font-size: 12px; padding: 6px 8px; }
+
+/* A collapsible group inside a tool card: same idea as the cards themselves,
+   one level down, so a section you are not using costs one line. */
+.in-details { border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; }
+.in-details > summary {
+  cursor: pointer; font-size: 12px; color: var(--text-dim);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.in-details > summary::marker { color: var(--text-dim); }
+.in-details[open] > summary { margin-bottom: 6px; }

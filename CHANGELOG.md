@@ -9,7 +9,12 @@ tagged.
 
 ## Unreleased
 
-_Nothing yet._
+### Changed
+
+- The Spectrum section moved below the envelope and became collapsible,
+  following the tool cards' rule: open when the instrument is shaped, closed
+  when neutral, sticky once you toggle it. The summary reports the state, so a
+  closed section is still informative.
 
 ## [0.3.0] - 2026-08-07
 

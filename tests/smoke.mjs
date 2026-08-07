@@ -1493,6 +1493,38 @@ await check('reset removes the spectrum block entirely', `(async () => {
   return (!inst.spectrum && gone) || 'spectrum=' + JSON.stringify(inst.spectrum) + ' linkGone=' + gone;
 })()`);
 
+await check('the spectrum sits below ADSR and folds like the cards do', `(async () => {
+  const store = window.__chipseq.store;
+  const trackId = store.getDoc().activeTrackId;
+  const set = (spectrum) => store.commit('fold fixture', ['tracks'], (d) => {
+    const t = d.tracks.find((x) => x.id === trackId);
+    t.instrumentId = 'track:' + t.id;
+    t.instrument = { id: 'track:' + t.id, name: 'X', wave: 'sawtooth', harmonics: null, duty: null,
+      adsr: { a: 0.001, d: 0, s: 1, r: 0.001 }, gain: 0.5, ...(spectrum ? { spectrum } : {}) };
+  });
+
+  set(null);
+  await new Promise((r) => setTimeout(r, 350));
+  const det = document.querySelector('#instrument-body #in-spec');
+  if (!det) return 'no spectrum section';
+  const closedWhenNeutral = !det.open;
+
+  // it belongs after the ADSR sliders and before Gain
+  const top = (sel) => document.querySelector(sel).getBoundingClientRect().top;
+  const ordered = top('#instrument-body #in-r') < top('#instrument-body #in-spec')
+    && top('#instrument-body #in-spec') < top('#instrument-body #in-gain');
+
+  set({ kind: 'spectrum', v: 1, tilt: -6, partials: null });
+  await new Promise((r) => setTimeout(r, 350));
+  const det2 = document.querySelector('#instrument-body #in-spec');
+  const openWhenShaped = det2.open;
+  // the summary reports the state, so a closed section is still informative
+  const labelled = det2.querySelector('summary').textContent.includes('dB');
+
+  return (closedWhenNeutral && ordered && openWhenShaped && labelled)
+    || JSON.stringify({ closedWhenNeutral, ordered, openWhenShaped, labelled });
+})()`);
+
 await check('a sine offers no spectrum, having nothing to shape', `(async () => {
   const store = window.__chipseq.store;
   document.querySelector('#instrument-body #in-wave [data-v="sine"]').click();
