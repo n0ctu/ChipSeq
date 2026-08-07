@@ -33,12 +33,43 @@ export const DEFAULT_LIMITER = {
   kneeDb: -3, // below this the response is exactly unity - untouched
 };
 
+// ---- make-up ----
+//
+// Levels only ever attenuates: N^-k is <= 1 by definition, so a mostly
+// polyphonic song sits permanently below unity and nothing brings it back.
+// Measured on Bad Apple that left 6.8 dB of headroom unused - quiet for a
+// finished piece.
+//
+// Make-up is the missing half, and it is deliberately NOT automatic: it is
+// set by pressing Analyse, which renders once and measures the true
+// pre-limiter peak. A stored number means preview and export apply exactly
+// the same gain, which a value recomputed per render could not promise.
+export const MAKEUP_TARGET_DB = -1; // where Analyse aims the peak
+export const MAKEUP_MIN_DB = -24;
+export const MAKEUP_MAX_DB = 24;
+export const DEFAULT_MAKEUP = { kind: 'makeup', v: 1, db: 0 };
+
 export const dbToLin = (db) => Math.pow(10, db / 20);
 export const linToDb = (lin) => (lin > 0 ? 20 * Math.log10(lin) : -Infinity);
 
 // Projects carry their own limiter block (schema rule: nested, self-versioned,
 // so it can evolve without a document version bump). There is deliberately no
 // UI switch yet - the data supports one when we want it.
+export function makeupConfig(doc) {
+  const cfg = doc && doc.master && doc.master.makeup;
+  if (!cfg) return DEFAULT_MAKEUP;
+  const db = Number(cfg.db);
+  return {
+    ...DEFAULT_MAKEUP,
+    ...cfg,
+    db: Number.isFinite(db) ? Math.max(MAKEUP_MIN_DB, Math.min(MAKEUP_MAX_DB, db)) : 0,
+  };
+}
+
+export function makeupGain(doc) {
+  return dbToLin(makeupConfig(doc).db);
+}
+
 export function limiterConfig(doc) {
   const cfg = doc && doc.master && doc.master.limiter;
   return cfg ? { ...DEFAULT_LIMITER, ...cfg } : DEFAULT_LIMITER;
@@ -83,7 +114,8 @@ export function softClipCurve(cfg = DEFAULT_LIMITER, n = 4097) {
 export function buildOutputGraph(ctx, doc, { metronome = false, limiter = true } = {}) {
   const cfg = limiterConfig(doc);
   const master = ctx.createGain();
-  master.gain.value = MASTER_GAIN;
+  // The one place make-up is applied, so live and offline cannot differ.
+  master.gain.value = MASTER_GAIN * makeupGain(doc);
 
   let tail = master;
   if (limiter && cfg.enabled) {
