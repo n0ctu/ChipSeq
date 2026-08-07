@@ -45,9 +45,11 @@ jobs:
       - run: node tests/check.mjs
       - run: node tests/golden.mjs
 
-      # The tag and the version the footer shows must agree, or the site
-      # announces a version that does not exist in the history.
-      - name: Tag matches APP_VERSION
+      # Three things have to agree before a release ships: the tag, the
+      # version the footer shows, and the changelog entry people read. Any
+      # one of them drifting means the site announces something that cannot
+      # be found - so this fails the release rather than publishing it.
+      - name: Tag matches APP_VERSION and CHANGELOG
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           tag="${GITHUB_REF_NAME#v}"
@@ -57,6 +59,11 @@ jobs:
             echo "::error::tag $GITHUB_REF_NAME does not match APP_VERSION $app in js/core/version.js"
             exit 1
           fi
+          if ! grep -qE "^## \[$tag\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [$tag]' section for this release"
+            exit 1
+          fi
+          echo "changelog entry found"
 
   deploy:
     needs: test
