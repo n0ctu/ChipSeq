@@ -101,6 +101,26 @@ export const TOOLS = [
     load: () => import(`./mixer.js?v=${APP_VERSION}`),
   },
   {
+    id: 'effects',
+    name: 'Effects',
+    // Poly only: mono is the badge voice, and .h/.fmf carry no effects, so
+    // there is nothing here that a mono project could use.
+    when: (ctx) => ctx.store.getDoc().mode === 'poly',
+    status: (ctx) => {
+      const doc = ctx.store.getDoc();
+      const list = Array.isArray(doc.buses) ? doc.buses : [];
+      const sending = doc.tracks.filter((t) => Array.isArray(t.sends) && t.sends.length).length;
+      if (!list.length) return { on: false, label: 'none' };
+      return {
+        on: sending > 0,
+        label: sending
+          ? `${sending} track${sending === 1 ? '' : 's'} sending`
+          : `${list.length} bus${list.length === 1 ? '' : 'es'}, unused`,
+      };
+    },
+    load: () => import(`./effects.js?v=${APP_VERSION}`),
+  },
+  {
     id: 'levels',
     name: 'Levels',
     when: (ctx) => ctx.store.getDoc().mode === 'poly',
