@@ -496,3 +496,23 @@ body.dragging::after {
 }
 .in-details > summary::marker { color: var(--text-dim); }
 .in-details[open] > summary { margin-bottom: 6px; }
+
+/* Levels: the MEASURED output leads, the estimate is footnotes. It used to
+   be the other way round - the estimate had the bordered panel and the real
+   measurement a line of small print. */
+.lv-output {
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 4px; padding: 8px;
+}
+.lv-out-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; color: var(--text-dim); }
+.lv-mode { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.lv-out-peak { display: flex; align-items: baseline; gap: 6px; flex-wrap: nowrap; }
+.lv-out-peak b { font-family: var(--font-mono); font-size: 17px; color: var(--text); white-space: nowrap; }
+.lv-out-peak span { font-size: 10px; color: var(--text-dim); }
+.lv-out-sub { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+.lv-out-sub b { font-family: var(--font-mono); color: var(--text); }
+.lv-output input[type="range"] { width: 100%; accent-color: var(--accent); }
+.lv-output .btn { width: 100%; }
+.lv-note { font-size: 10px; color: var(--text-dim); line-height: 1.4; }
+/* the estimate, demoted */
+.lv-readout b { font-size: 11px; }
