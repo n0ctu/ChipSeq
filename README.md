@@ -45,9 +45,13 @@ Pushes to `main` do **not** publish. Tags do:
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
+Before tagging, bump `APP_VERSION` in `js/core/version.js` and add the matching
+`## [x.y.z]` section to `CHANGELOG.md`. The workflow checks all three agree and
+fails the release if they do not - a site that announces a version nobody can
+find in the history is worse than a late release.
+
 `.github/workflows/pages.yml` runs the unit, module-import and golden suites,
-checks that the tag matches `APP_VERSION` in `js/core/version.js`, and then
-deploys. Branch-based publishing was dropped because Pages runs one deployment
+checks the tag against `APP_VERSION` and the changelog, and then deploys. Branch-based publishing was dropped because Pages runs one deployment
 at a time per repository: a burst of pushes queues up, and each deploy step
 aborts itself after ~10 minutes of waiting. The workflow sets
 `cancel-in-progress`, so a newer release supersedes an older one instead of
