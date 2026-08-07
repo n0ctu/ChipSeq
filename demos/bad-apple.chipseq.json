@@ -1,7 +1,7 @@
 {
   "schema": "chipseq-tune",
   "version": 4,
-  "id": "6f2e1431-e27e-4d1e-bdb5-b4f41576d763",
+  "id": "4bd0a248-5953-490c-97ad-eddf21dccf6c",
   "name": "Bad Apple",
   "mode": "poly",
   "ppq": 96,
@@ -80,6 +80,14 @@
       "role": "melody",
       "instrumentId": "badge",
       "notes": [
+        {
+          "id": "3bc60959-0202-45d6-8026-0216a7952322",
+          "pitch": 66,
+          "startTick": 5616,
+          "durationTicks": 48,
+          "velocity": 100,
+          "harmonics": null
+        },
         {
           "id": "eeeaa629-9a3e-42db-9079-ac0a15989d0c",
           "pitch": 63,
@@ -7457,7 +7465,7 @@
         "gain": 0.35,
         "spectrum": null
       },
-      "gain": 0.3,
+      "gain": 0.25,
       "solo": false,
       "normalize": false,
       "sends": [
@@ -45453,8 +45461,8 @@
     "snapTicks": 48,
     "triplet": false
   },
-  "createdAt": "2026-08-06T12:00:55.431Z",
-  "updatedAt": "2026-08-07T12:51:14.444Z",
+  "createdAt": "2026-08-07T13:31:48.288Z",
+  "updatedAt": "2026-08-07T14:16:46.095Z",
   "uses": [
     "effects@1"
   ],
@@ -45465,7 +45473,7 @@
     "scrollPitch": 97,
     "pxPerTick": 0.11628401968068898,
     "cursorTick": 0,
-    "cursorPitch": 45
+    "cursorPitch": 66
   },
   "master": {
     "normalize": {
@@ -45475,6 +45483,13 @@
       "track": 0.5,
       "song": 0.5,
       "smoothMs": 10
+    },
+    "makeup": {
+      "kind": "makeup",
+      "v": 1,
+      "db": 6.3,
+      "auto": true,
+      "measuredDb": -7.3
     }
   },
   "buses": [
