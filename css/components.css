@@ -435,3 +435,7 @@ body.dragging::after {
 .track-hex { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 11px; color: var(--text-dim); }
 .track-hex input { width: 90px; font-family: var(--font-mono); }
 .track-hex input.invalid { border-color: var(--danger); color: var(--danger); }
+
+/* Small print under a control: says which knob to reach for, so the advice
+   sits where the wrong choice would be made rather than in the README. */
+.in-hint { font-size: 10px; color: var(--text-dim); line-height: 1.4; margin-top: 4px; }
