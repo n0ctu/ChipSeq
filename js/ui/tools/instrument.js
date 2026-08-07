@@ -6,7 +6,7 @@
 // always plays the current values - slider drags are audible live via a
 // transient patch that only becomes an undoable commit on release.
 
-import { getTrack, activeTrack, uid } from '../../core/doc.js';
+import { getTrack, activeTrack, uid, defaultGainForWave } from '../../core/doc.js';
 import { promptDialog } from '../dialogs.js';
 import { formatPercent, formatSeconds, isHot } from '../../core/units.js';
 import { envToAdsr, isAdsrShaped, effectiveEnvelope } from '../../core/modulation.js';
@@ -106,6 +106,9 @@ export function mount(body, { store, uiStore, engine }) {
     const env = effectiveEnvelope(inst);
     const adsrView = envToAdsr(env) || { a: 0, d: 0, s: 1, r: 0 };
     const drawn = !isAdsrShaped(env);
+    // Read from the built-in presets, not the document: a project whose stored
+    // gains have drifted still resets to the level the wave was calibrated at.
+    const gainDefault = defaultGainForWave(inst.wave);
 
     body.innerHTML = `
       <div class="harm-field">Wave
@@ -135,6 +138,8 @@ export function mount(body, { store, uiStore, engine }) {
         <div class="harm-row"><input type="range" id="in-r" min="0" max="800" step="5" value="${Math.round(adsrView.r * 1000)}" /></div>
       </div>
       <div class="harm-field">Gain <span id="in-gain-label" class="${isHot(inst.gain) ? 'hot' : ''}">${formatPercent(inst.gain)}</span>
+        <button class="btn-link" id="in-gain-reset" ${Math.abs(inst.gain - gainDefault) < 1e-9 ? 'disabled' : ''}
+          title="Back to the calibrated level for a ${inst.wave} wave (${formatPercent(gainDefault)})">reset</button>
         <div class="harm-row"><input type="range" id="in-gain" min="5" max="150" step="1" value="${Math.round(inst.gain * 100)}"
           title="The instrument's own level, part of how it sounds. To balance this track against the others, use the Mixer's Gain instead. 100% is unity - above that the master limiter starts working." /></div>
         <div class="in-hint">The instrument's own level - presets are calibrated so a
@@ -210,6 +215,14 @@ export function mount(body, { store, uiStore, engine }) {
     slider('in-s', (v) => ({ adsr: { ...inst.adsr, s: v / 100 } }), (v) => formatPercent(v / 100));
     slider('in-r', (v) => ({ adsr: { ...inst.adsr, r: v / 1000 } }), (v) => fmtS(v / 1000));
     slider('in-gain', (v) => ({ gain: v / 100 }), (v) => formatPercent(v / 100), (v) => isHot(v / 100));
+
+    const resetBtn = body.querySelector('#in-gain-reset');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        applyPatch({ gain: gainDefault });
+        auditionOnce();
+      });
+    }
 
     body.querySelector('#in-audition').addEventListener('click', () => {
       setAuditionLoop(!engine.isAuditioning());

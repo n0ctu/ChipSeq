@@ -1392,6 +1392,33 @@ await check('slider release (change) commits the value', `(() => {
   el.dispatchEvent(new Event('change', { bubbles: true }));
   return window.__chipseq.store.getDoc().tracks[0].instrument.gain === 0.8 || window.__chipseq.store.getDoc().tracks[0].instrument.gain;
 })()`);
+// The reset button exists because a project's stored gains can drift away
+// from what the wave was calibrated at. It reads the built-in level, not the
+// document's, so a drifted project still lands on the right number.
+await check('gain reset returns the instrument to its calibrated level', `(async () => {
+  const store = window.__chipseq.store;
+  const { defaultGainForWave } = await import('/js/core/doc.js');
+  const trackId = store.getDoc().activeTrackId;
+  // drift it somewhere else entirely, the way the flattened v5 docs did
+  store.commit('drift gain', ['tracks'], (doc) => {
+    const t = doc.tracks.find((x) => x.id === trackId);
+    t.instrument = { ...(t.instrument || { wave: 'square', adsr: { a: 0.002, d: 0, s: 1, r: 0.002 } }),
+      id: 'track:' + t.id, name: 'Custom', gain: 0.5 };
+  });
+  await new Promise((r) => setTimeout(r, 250));
+  const btn = document.querySelector('#instrument-body #in-gain-reset');
+  if (!btn) return 'no reset button';
+  if (btn.disabled) return 'reset disabled while gain is drifted';
+  btn.click();
+  await new Promise((r) => setTimeout(r, 250));
+  const t = store.getDoc().tracks.find((x) => x.id === trackId);
+  const want = defaultGainForWave(t.instrument.wave);
+  const label = document.querySelector('#instrument-body #in-gain-label').textContent;
+  const nowDisabled = document.querySelector('#instrument-body #in-gain-reset').disabled;
+  return (Math.abs(t.instrument.gain - want) < 1e-9 && nowDisabled)
+    || 'gain=' + t.instrument.gain + ' want=' + want + ' label=' + label + ' disabled=' + nowDisabled;
+})()`);
+
 // Levels read as percentages, and boost past unity is allowed but flagged -
 // the master limiter is what makes going over safe rather than forbidden.
 await check('gain above unity is allowed and flagged as hot', `(() => {
