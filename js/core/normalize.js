@@ -34,6 +34,7 @@
 // badge-accurate preview cannot be affected by any of this.
 
 import { VELOCITY_GAIN } from './instruments.js';
+import { trackGain } from './doc.js';
 
 export const DEFAULT_NORMALIZE = {
   kind: 'normalize',
@@ -294,6 +295,8 @@ export function applyNormalization(doc, events, tickToSeconds) {
 export function predictPeak(doc, events, resolveInstrument, masterGain = 0.9) {
   if (!events.length) return { peak: 0, tick: 0, voices: 0 };
   const starts = [...new Set(events.map((e) => e.startTick))].sort((a, b) => a - b);
+  const gains = new Map((doc.tracks || []).map((t) => [t.id, trackGain(t)]));
+  const trackGainOf = (id) => (gains.has(id) ? gains.get(id) : 1);
   let best = { peak: 0, tick: 0, voices: 0 };
   for (const tick of starts) {
     let sum = 0;
@@ -314,7 +317,11 @@ export function predictPeak(doc, events, resolveInstrument, masterGain = 0.9) {
       // Ignores ev.velocity for the same reason the voice does, and must:
       // an estimate that disagreed with what is rendered would warn about
       // clipping that cannot happen, or miss clipping that can.
-      sum += (inst ? inst.gain : 1) * VELOCITY_GAIN * level;
+      // x the TRACK's fader. Leaving it out meant the estimate ignored the
+      // mixer entirely and reported a peak no render could produce - Bad
+      // Apple read +1.1 dB where the true bound was -3.3 dB, because its
+      // faders sit between 30% and 100%.
+      sum += (inst ? inst.gain : 1) * VELOCITY_GAIN * level * trackGainOf(ev.trackId);
     }
     const peak = sum * masterGain;
     if (peak > best.peak) best = { peak, tick, voices };
