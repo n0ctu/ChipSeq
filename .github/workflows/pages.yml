@@ -74,3 +74,11 @@ jobs:
           path: .
       - id: deploy
         uses: actions/deploy-pages@v4
+        with:
+          # 30 minutes, not the default 10. The action only POLLS for the
+          # deployment to finish - when it gives up it reports failure while
+          # the deployment carries on and publishes anyway. That happened on
+          # the v0.2.0 release: three red runs, and the site was live. A red
+          # build that actually shipped is worse than a slow one, because it
+          # sends you looking for a fault that is not there.
+          timeout: 1800000
