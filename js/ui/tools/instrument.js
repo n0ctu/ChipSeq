@@ -32,6 +32,9 @@ export function mount(body, { store, uiStore, engine }) {
 
   // Uncommitted values while a slider is being dragged.
   let livePatch = null;
+  // null = follow whether the instrument is shaped, as the tool cards do;
+  // true/false once the user has opened or closed it themselves.
+  let specFold = null;
 
   function target() {
     const doc = store.getDoc();
@@ -114,6 +117,7 @@ export function mount(body, { store, uiStore, engine }) {
     const spec = spectrumOf(inst);
     const partials = spec.partials || new Array(MAX_PARTIALS).fill(1);
     const shaped = hasSpectrum(inst);
+    const specOpen = specFold === null ? shaped : specFold;
     // A sine has one partial, so there is nothing for a spectrum to scale.
     const shapeable = inst.wave !== 'sine';
     const gainDefault = defaultGainForWave(inst.wave);
@@ -130,24 +134,6 @@ export function mount(body, { store, uiStore, engine }) {
       ${inst.wave === 'custom' ? `
       <div class="harm-field">Duty cycle <span id="in-duty-label">${formatPercent(duty)}</span>
         <div class="harm-row"><input type="range" id="in-duty" min="5" max="50" step="1" value="${Math.round(duty * 100)}" /></div>
-      </div>` : ''}
-      ${shapeable ? `
-      <div class="harm-field">
-        <div class="harm-caption">Spectrum <span id="in-tilt-label">${spec.tilt === 0 ? 'neutral' : (spec.tilt > 0 ? '+' : '') + spec.tilt + ' dB/oct'}</span>${
-          shaped ? '<button class="btn-link" id="in-spec-reset" title="Back to the raw wave">reset to default</button>' : ''}</div>
-        <div class="harm-row"><input type="range" id="in-tilt" min="${TILT_MIN * 10}" max="${TILT_MAX * 10}" step="1"
-          value="${Math.round(spec.tilt * 10)}"
-          title="Tilts the wave's own harmonics: negative is darker, positive brighter. One knob over the whole series." /></div>
-        <div class="drawbars" id="in-partials">
-          ${partials.map((v, i) => `<label class="drawbar" title="Partial ${i + 1}${i === 0 ? ' (fundamental)' : ''} - 100% leaves it as the wave has it">
-            <input type="range" data-h="${i}" min="0" max="200" step="5" value="${Math.round(v * 100)}"
-              orient="vertical" aria-label="Partial ${i + 1}" />
-            <span>${i + 1}</span></label>`).join('')}
-        </div>
-        <div class="in-hint">Scales the harmonics the wave already has, so 100% everywhere
-          is the raw wave. Multipliers cannot invent a partial that is not there -
-          start from <b>Saw</b> to sculpt freely, since it is the one wave carrying
-          every harmonic.</div>
       </div>` : ''}
       <div class="harm-field">Envelope
         <span class="tool-ctx" id="in-env-mode">${drawn ? 'drawn' : 'ADSR'}</span>
@@ -166,6 +152,32 @@ export function mount(body, { store, uiStore, engine }) {
       <div class="harm-field${drawn ? ' disabled' : ''}">Release <span id="in-r-label">${fmtS(adsrView.r)}</span>
         <div class="harm-row"><input type="range" id="in-r" min="0" max="800" step="5" value="${Math.round(adsrView.r * 1000)}" /></div>
       </div>
+      ${shapeable ? `
+      <details class="in-details" id="in-spec"${specOpen ? ' open' : ''}>
+        <summary>Spectrum <span class="mix-val">${
+          shaped
+            ? [spec.tilt ? (spec.tilt > 0 ? '+' : '') + spec.tilt + ' dB/oct' : null,
+               spec.partials ? spec.partials.filter((v) => v !== 1).length + ' partial' + (spec.partials.filter((v) => v !== 1).length === 1 ? '' : 's') : null]
+              .filter(Boolean).join(', ')
+            : 'neutral'}</span></summary>
+        <div class="harm-field">
+          <div class="harm-caption">Tilt <span id="in-tilt-label">${spec.tilt === 0 ? 'neutral' : (spec.tilt > 0 ? '+' : '') + spec.tilt + ' dB/oct'}</span>${
+            shaped ? '<button class="btn-link" id="in-spec-reset" title="Back to the raw wave">reset to default</button>' : ''}</div>
+          <div class="harm-row"><input type="range" id="in-tilt" min="${TILT_MIN * 10}" max="${TILT_MAX * 10}" step="1"
+            value="${Math.round(spec.tilt * 10)}"
+            title="Tilts the wave's own harmonics: negative is darker, positive brighter. One knob over the whole series." /></div>
+          <div class="drawbars" id="in-partials">
+            ${partials.map((v, i) => `<label class="drawbar" title="Partial ${i + 1}${i === 0 ? ' (fundamental)' : ''} - 100% leaves it as the wave has it">
+              <input type="range" data-h="${i}" min="0" max="200" step="5" value="${Math.round(v * 100)}"
+                orient="vertical" aria-label="Partial ${i + 1}" />
+              <span>${i + 1}</span></label>`).join('')}
+          </div>
+          <div class="in-hint">Scales the harmonics the wave already has, so 100% everywhere
+            is the raw wave. Multipliers cannot invent a partial that is not there -
+            start from <b>Saw</b> to sculpt freely, since it is the one wave carrying
+            every harmonic.</div>
+        </div>
+      </details>` : ''}
       <div class="harm-field">
         <div class="harm-caption">Gain <span id="in-gain-label" class="${isHot(inst.gain) ? 'hot' : ''}">${formatPercent(inst.gain)}</span>${
           gainDrifted ? `<button class="btn-link" id="in-gain-reset"
@@ -288,6 +300,17 @@ export function mount(body, { store, uiStore, engine }) {
         patchSpectrum({ partials: readBars() });
         auditionOnce();
       });
+    }
+
+    const details = body.querySelector('#in-spec');
+    if (details) {
+      // The SUMMARY's click, not the details' toggle: Blink fires toggle when
+      // a <details open> is inserted, so every re-render of a shaped
+      // instrument looked like the user had opened it and pinned the fold
+      // open for the session. A click is unambiguous, and keyboard
+      // activation of a summary dispatches one too.
+      const summary = details.querySelector('summary');
+      if (summary) summary.addEventListener('click', () => { specFold = !details.open; });
     }
 
     const specReset = body.querySelector('#in-spec-reset');
