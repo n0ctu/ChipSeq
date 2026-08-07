@@ -1,5 +1,13 @@
 // The tool registry: one entry per card in the right sidebar.
 //
+// Every load() carries ?v=APP_VERSION. GitHub Pages serves JS with
+// cache-control: max-age=600, and these modules are fetched LAZILY - long
+// after the page loaded - so a visitor can hold a fresh main.js next to a
+// tool card from the previous release for up to ten minutes. Tagging the URL
+// makes a release invalidate every lazily-loaded module at once: main.js is
+// what carries the new version string, so the moment it is fresh, so is
+// everything it asks for.
+//
 // Adding a tool is one file plus one entry here. Nothing looks a tool up by
 // string - the panel iterates this array - so a typo is a missing card at
 // load time rather than a card that silently renders nothing.
@@ -20,6 +28,7 @@
 //           starts open.
 //   label - short context line, shown open or closed.
 
+import { APP_VERSION } from '../../core/version.js';
 import { activeTrack, getTrack, trackGain, trackPan, DEFAULT_INSTRUMENTS } from '../../core/doc.js';
 import { DEFAULT_NORMALIZE, normalizeConfig } from '../../core/normalize.js';
 
@@ -59,7 +68,7 @@ export const TOOLS = [
           : `${notes.length} note${notes.length === 1 ? '' : 's'}`,
       };
     },
-    load: () => import('./harmonics.js'),
+    load: () => import(`./harmonics.js?v=${APP_VERSION}`),
   },
   {
     id: 'transpose',
@@ -69,7 +78,7 @@ export const TOOLS = [
     // anything to light up - it just says what it would act on, and stays
     // closed until asked for.
     status: (ctx) => ({ on: false, label: (transposeScope(ctx) || {}).label || '' }),
-    load: () => import('./transpose.js'),
+    load: () => import(`./transpose.js?v=${APP_VERSION}`),
   },
   {
     id: 'mixer',
@@ -89,7 +98,7 @@ export const TOOLS = [
             : `${tracks.length} track${tracks.length === 1 ? '' : 's'}`,
       };
     },
-    load: () => import('./mixer.js'),
+    load: () => import(`./mixer.js?v=${APP_VERSION}`),
   },
   {
     id: 'levels',
@@ -115,7 +124,7 @@ export const TOOLS = [
             : 'default',
       };
     },
-    load: () => import('./levels.js'),
+    load: () => import(`./levels.js?v=${APP_VERSION}`),
   },
   {
     id: 'instrument',
@@ -143,7 +152,7 @@ export const TOOLS = [
       const stock = DEFAULT_INSTRUMENTS.some((i) => i.id === track.instrumentId);
       return { on: custom || !stock, label: `${track.name} - ${custom ? 'Custom' : inst.name}` };
     },
-    load: () => import('./instrument.js'),
+    load: () => import(`./instrument.js?v=${APP_VERSION}`),
   },
 ];
 

@@ -29,6 +29,12 @@ ordinary fetch obeying the ordinary cache. `python3 -m http.server` sends no
 `Last-Modified` and can hand you a stale tool card while the statically
 imported core around it is already up to date. The app then looks broken
 rather than stale, which is a genuinely nasty thing to debug.
+
+In production the same shape exists with a shorter fuse: Pages serves JS with
+`cache-control: max-age=600`, so a visitor could hold a fresh `main.js` beside
+a tool card from the previous release. Every `load()` in the tool manifest
+therefore carries `?v=${APP_VERSION}` - `main.js` is what supplies the version
+string, so the moment it is fresh, every module it lazily asks for is too.
 It's a fully static site - GitHub Pages serves it as-is.
 
 ## Releasing
@@ -152,11 +158,13 @@ Reach for the **Mixer** to mix. The Instrument tool's Gain is part of the
 sound's design, and changing it makes the track Custom - which is why the
 control now says so underneath itself rather than only in here.
 
-A **reset** link next to it puts the gain back to the level its wave was
-calibrated at (square 35%, sine 50%, sawtooth 35%; anything else follows the
-square). It reads the built-in presets rather than the document's own, so a
-project whose stored gains have drifted still resets to the right number
-instead of back to whatever it drifted to.
+A **reset to default** link appears beside the percentage - and only while
+the gain has drifted from the level its wave was calibrated at (square 35%,
+sine 50%, sawtooth 35%; anything else follows the square). At the calibrated
+level there is nothing to reset, so neither the link nor the explanation
+under the slider is drawn. It reads the built-in presets rather than the
+document's own, so a project whose stored gains have drifted still resets to
+the right number instead of back to whatever it drifted to.
 
 Editing any instrument parameter is **copy-on-write**: it writes an inline
 `track.instrument` and never modifies the shared preset, so a preset used by

@@ -109,6 +109,9 @@ export function mount(body, { store, uiStore, engine }) {
     // Read from the built-in presets, not the document: a project whose stored
     // gains have drifted still resets to the level the wave was calibrated at.
     const gainDefault = defaultGainForWave(inst.wave);
+    // The reset link and its explanation appear only when there is something
+    // to reset - at the calibrated level they would be noise on every track.
+    const gainDrifted = Math.abs(inst.gain - gainDefault) > 1e-9;
 
     body.innerHTML = `
       <div class="harm-field">Wave
@@ -137,14 +140,16 @@ export function mount(body, { store, uiStore, engine }) {
       <div class="harm-field${drawn ? ' disabled' : ''}">Release <span id="in-r-label">${fmtS(adsrView.r)}</span>
         <div class="harm-row"><input type="range" id="in-r" min="0" max="800" step="5" value="${Math.round(adsrView.r * 1000)}" /></div>
       </div>
-      <div class="harm-field">Gain <span id="in-gain-label" class="${isHot(inst.gain) ? 'hot' : ''}">${formatPercent(inst.gain)}</span>
-        <button class="btn-link" id="in-gain-reset"
-          title="Back to the calibrated level for a ${inst.wave} wave (${formatPercent(gainDefault)})">reset to ${formatPercent(gainDefault)}</button>
+      <div class="harm-field">
+        <div class="harm-caption">Gain <span id="in-gain-label" class="${isHot(inst.gain) ? 'hot' : ''}">${formatPercent(inst.gain)}</span>${
+          gainDrifted ? `<button class="btn-link" id="in-gain-reset"
+            title="Back to the calibrated level for a ${inst.wave} wave (${formatPercent(gainDefault)})">reset to default</button>` : ''}</div>
         <div class="harm-row"><input type="range" id="in-gain" min="5" max="150" step="1" value="${Math.round(inst.gain * 100)}"
-          title="The instrument's own level, part of how it sounds. To balance this track against the others, use the Mixer's Gain instead. 100% is unity - above that the master limiter starts working." /></div>
-        <div class="in-hint">The instrument's own level - presets are calibrated so a
-          sine and a saw sit at a similar loudness. To balance this track in the mix,
-          reach for the <b>Mixer</b> first; changing this makes the track Custom.</div>
+          title="The instrument's own level, part of how it sounds. To balance this track against the others, use the Mixer's Gain instead. 100% is unity - above that the master limiter starts working." /></div>${
+        gainDrifted ? `
+        <div class="in-hint">This instrument sits away from the level its wave is
+          calibrated at (${formatPercent(gainDefault)}). To balance the track in the mix,
+          reach for the <b>Mixer</b> instead.</div>` : ''}
       </div>
       <div class="btn-pair">
         <button class="btn btn-toggle ${engine.isAuditioning() ? 'active' : ''}" id="in-audition"
