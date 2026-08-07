@@ -9,6 +9,10 @@ tagged.
 
 ## Unreleased
 
+_Nothing yet._
+
+## [0.3.1] - 2026-08-07
+
 ### Added
 
 - **Make-up gain, with an Analyse button.** Levels only ever attenuates, so a
@@ -47,6 +51,9 @@ tagged.
   app will not overwrite a number you chose.
 - The Analyse button no longer overflows the card, and the make-up value no
   longer wraps onto two lines.
+- **Tetris and Bad Apple revised**, both analysed to peak at -1 dBFS: Bad Apple
+  gains a reverb bus with the Lead excluded from Levels, and both are panned
+  rather than stacked dead centre.
 
 ### Fixed
 

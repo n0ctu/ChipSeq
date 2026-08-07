@@ -1,6 +1,6 @@
 # chipseq-golden digest v1
 # artifact exceeds 32768 bytes - compared by hash, head/tail for context
-bytes:  826009
-sha256: b625c8462c65b70b720700a8fe03c3069b65d247b5191ec432e140b3a2c1f89b
+bytes:  825047
+sha256: 5db541dfce21cb14d63f182434ccd6d9ef85aacb166337cc4856a32a7506a9d4
 head:   {\n \"warnings\": [],\n \"events\": [\n  {\n   \"pitch\": 40,\n   \"startTick\": 0,\n   \"durationTicks\": 48,\n   \"velocity\": 100,\n   \"trackId\": \"a7290cea-79c9-4f9f-b185-c330625a88a4\",\n   \"instrumentId\": \"track:a7290cea-79c9-4f9f-b185-c330625a88a4\",\n   \"noteId\": \"c2f5f935-d1bb-4d06-8fc2-f9abfaa63190\",\n   \"gainCurve
 tail:   14\n  },\n  {\n   \"pitch\": 88,\n   \"startTick\": 21120,\n   \"durationTicks\": 384,\n   \"velocity\": 100,\n   \"trackId\": \"d4303650-9978-40cb-973c-38e389f01a5a\",\n   \"instrumentId\": \"track:d4303650-9978-40cb-973c-38e389f01a5a\",\n   \"noteId\": \"a90f7071-02e6-445d-9026-c070a6f7060d\",\n   \"gainMul\": 0.158114\n  }\n ]\n}\n
