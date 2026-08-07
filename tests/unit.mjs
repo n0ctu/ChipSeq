@@ -1136,6 +1136,27 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     'only mono formats are blocked by overlaps - poly has voices to spare');
 }
 
+// ---- commitDerived: measured values must not enter undo history ----
+{
+  const { createStore } = await import('../js/core/store.js');
+  const store = createStore(createProject({ name: 'derived', mode: 'poly' }));
+
+  store.commit('a real edit', ['song'], (d) => { d.name = 'edited'; });
+  const depthAfterEdit = store.canUndo();
+  assert(depthAfterEdit === true, 'an edit is undoable');
+
+  store.commitDerived('measured', ['song'], (d) => {
+    d.master = { makeup: { kind: 'makeup', v: 1, db: 5.8, auto: true } };
+  });
+  assert(store.getDoc().master.makeup.db === 5.8, 'a derived commit does change the document');
+
+  // The property: undoing must reach the EDIT, not the measurement. An
+  // automatic re-measure every five minutes would otherwise bury real work.
+  store.undo();
+  assert(store.getDoc().name !== 'edited', 'undo reaches past the measurement to the edit');
+  assert(store.canUndo() === false, 'and the measurement pushed no snapshot of its own');
+}
+
 // ---- make-up gain ----
 {
   const {

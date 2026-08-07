@@ -47,7 +47,16 @@ export const DEFAULT_LIMITER = {
 export const MAKEUP_TARGET_DB = -1; // where Analyse aims the peak
 export const MAKEUP_MIN_DB = -24;
 export const MAKEUP_MAX_DB = 24;
-export const DEFAULT_MAKEUP = { kind: 'makeup', v: 1, db: 0 };
+// auto: whether the app may re-measure this on its own. Analyse sets it true;
+// moving the slider by hand sets it false, because a number you chose must
+// not be quietly replaced by one the app preferred.
+export const DEFAULT_MAKEUP = { kind: 'makeup', v: 1, db: 0, auto: true };
+
+// How often to reconsider, and how far the cheap estimate must have drifted
+// before spending a whole render on it. A full analyse of Bad Apple is a few
+// seconds of work; predictPeak is microseconds, so it decides when to bother.
+export const AUTO_ANALYSE_MS = 5 * 60 * 1000;
+export const AUTO_ANALYSE_DRIFT_DB = 1;
 
 export const dbToLin = (db) => Math.pow(10, db / 20);
 export const linToDb = (lin) => (lin > 0 ? 20 * Math.log10(lin) : -Infinity);
@@ -63,6 +72,7 @@ export function makeupConfig(doc) {
     ...DEFAULT_MAKEUP,
     ...cfg,
     db: Number.isFinite(db) ? Math.max(MAKEUP_MIN_DB, Math.min(MAKEUP_MAX_DB, db)) : 0,
+    auto: cfg.auto !== false,
   };
 }
 

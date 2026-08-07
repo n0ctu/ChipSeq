@@ -110,6 +110,18 @@ export function createStore(doc) {
       emitChange(['view'], 'set view');
     },
 
+    // Like commit, but for a value the APP measured rather than one the user
+    // chose: no undo snapshot, so an automatic re-measurement cannot bury the
+    // edit you actually made under a pile of history you never asked for.
+    // Still marks the document changed, so the result is saved and does not
+    // have to be recomputed on every load.
+    commitDerived(label, scopes, fn) {
+      fn(current);
+      reportRepairs(normalizeDoc(current));
+      current.updatedAt = new Date().toISOString();
+      emitChange([...scopes], label);
+    },
+
     // commit(label, scopes, fn): push snapshot, mutate, notify.
     commit(label, scopes, fn) {
       undoStack.push(JSON.stringify(current));

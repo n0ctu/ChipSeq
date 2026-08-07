@@ -32,6 +32,29 @@ tagged.
 
 ### Changed
 
+- **The Levels card speaks one unit system.** Peaks read in dBFS everywhere -
+  the estimate used to show bare linear amplitudes (`1.24`, `0.67`) beside a
+  make-up in dB and exponents printed as `0.50`. The two exponents are now
+  percentages, matching the rest of the app, and the legend says what the
+  number means rather than listing values.
+- **The measurement leads, the estimate is a footnote.** The estimate had the
+  bordered panel while the measured peak got a line of small print; they have
+  swapped, and the estimate is labelled as "an upper bound, not a measurement".
+- Levels measures once when the card is opened, then re-measures at most every
+  five minutes and only when the cheap estimate has drifted by more than 1 dB -
+  never while playing. Automatic measurements use a derived commit, so they
+  push no undo snapshot, and dragging the slider marks the value manual so the
+  app will not overwrite a number you chose.
+- The Analyse button no longer overflows the card, and the make-up value no
+  longer wraps onto two lines.
+
+### Fixed
+
+- The Levels estimate panel rendered empty until something else changed - it
+  was only filled from a subscription, never on open.
+
+### Changed
+
 - The Spectrum section moved below the envelope and became collapsible,
   following the tool cards' rule: open when the instrument is shaped, closed
   when neutral, sticky once you toggle it. The summary reports the state, so a

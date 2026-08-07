@@ -1682,15 +1682,22 @@ await check('the make-up slider overrides Analyse and clears at zero', `(async (
   const set = makeupConfig(store.getDoc()).db === 3.5;
   const shown = document.querySelector('#levels-body #lv-makeup-label').textContent;
 
-  // back to zero must remove the block, not store a zero
+  // Dragging the slider is a decision, so it must switch OFF auto - otherwise
+  // the next automatic measurement would quietly replace the chosen value.
+  const manual = makeupConfig(store.getDoc()).auto === false;
+
+  // ...and that holds at zero too: "no make-up, and leave it alone" is a
+  // different statement from "never measured", so the block stays.
   const el2 = document.querySelector('#levels-body #lv-makeup');
   el2.value = '0';
   el2.dispatchEvent(new Event('change', { bubbles: true }));
   await new Promise((r) => setTimeout(r, 350));
-  const doc = store.getDoc();
-  const cleared = !(doc.master && doc.master.makeup);
-  return (set && shown === '+3.5 dB' && cleared)
-    || 'set=' + set + ' shown=' + shown + ' cleared=' + cleared;
+  const zeroed = makeupConfig(store.getDoc());
+  const heldAtZero = zeroed.db === 0 && zeroed.auto === false;
+  // leave the project as we found it
+  store.commit('clear makeup', ['song'], (d) => { if (d.master) delete d.master.makeup; });
+  return (set && shown === '+3.5 dB' && manual && heldAtZero)
+    || 'set=' + set + ' shown=' + shown + ' manual=' + manual + ' heldAtZero=' + heldAtZero;
 })()`);
 
 // ---- effects: buses and sends ----
