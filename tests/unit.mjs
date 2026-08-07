@@ -1077,6 +1077,39 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   }
 }
 
+// ---- additive (harmonic) waves ----
+{
+  const {
+    sanitizeHarmonics, harmonicImag, HARMONIC_PRESETS, MAX_PARTIALS,
+  } = await import('../js/core/instruments.js');
+
+  eq(sanitizeHarmonics([1, 0.5]), [1, 0.5], 'a plain list passes through');
+  eq(sanitizeHarmonics([2, -1]), [1, 0], 'amplitudes are clamped to 0..1');
+  eq(sanitizeHarmonics([0.123456]), [0.123], 'and rounded, so files stay readable');
+  eq(sanitizeHarmonics(['x', null, 1]), [0, 0, 1], 'junk becomes silence rather than NaN');
+  eq(sanitizeHarmonics([0, 0, 0]), null, 'an all-silent list is not a wave');
+  eq(sanitizeHarmonics('nope'), null, 'and neither is a non-array');
+  assert(sanitizeHarmonics(new Array(40).fill(1)).length === MAX_PARTIALS, 'the list is capped');
+
+  // Index 0 is DC and must stay silent - a non-zero there is an offset, not a
+  // partial, and would push the whole wave off centre.
+  const imag = harmonicImag([1, 0.5, 0.25]);
+  assert(imag[0] === 0, 'DC stays zero');
+  assert(Math.abs(imag[1] - 1) < 1e-6 && Math.abs(imag[2] - 0.5) < 1e-6 && Math.abs(imag[3] - 0.25) < 1e-6,
+    'partial n lands at index n');
+  assert(imag.length === 4, 'and the array is exactly as long as it needs to be');
+
+  // Every preset must survive the same sanitising the UI applies, or a
+  // starting point would change the moment you touched it.
+  for (const [name, list] of HARMONIC_PRESETS) {
+    const clean = sanitizeHarmonics(list);
+    assert(clean !== null, `preset ${name} is a real wave`);
+    eq(clean, list, `preset ${name} is already in canonical form`);
+    assert(list.length <= MAX_PARTIALS, `preset ${name} fits the editor`);
+    assert(list[0] > 0, `preset ${name} has a fundamental`);
+  }
+}
+
 // ---- the calibrated gain a wave resets to ----
 {
   const { defaultGainForWave, DEFAULT_INSTRUMENTS } = await import('../js/core/doc.js');

@@ -7,18 +7,29 @@
 // transient patch that only becomes an undoable commit on release.
 
 import { getTrack, activeTrack, uid, defaultGainForWave } from '../../core/doc.js';
+import { HARMONIC_PRESETS, MAX_PARTIALS, sanitizeHarmonics } from '../../core/instruments.js';
 import { promptDialog } from '../dialogs.js';
 import { formatPercent, formatSeconds, isHot } from '../../core/units.js';
 import { envToAdsr, isAdsrShaped, effectiveEnvelope } from '../../core/modulation.js';
 import { initEnvelopeEditor } from './envelope-editor.js';
 
+// The last two are both `wave: 'custom'` in the document - PWM carries a
+// duty, additive carries a partial list. They are separate buttons because
+// they are separate ideas to the person choosing one.
 const WAVES = [
   ['square', 'Square'],
   ['sine', 'Sine'],
   ['sawtooth', 'Saw'],
   ['triangle', 'Tri'],
-  ['custom', 'PWM'],
+  ['pwm', 'PWM'],
+  ['harmonic', 'Harm.'],
 ];
+
+// Which button is lit: 'custom' alone does not say which of the two it is.
+function waveKind(inst) {
+  if (inst.wave !== 'custom') return inst.wave;
+  return inst.harmonics && inst.harmonics.length ? 'harmonic' : 'pwm';
+}
 
 // Mounted by tools-panel.js on first expand; the manifest owns the header.
 // Edits the ACTIVE track, so the card always shows the instrument of whatever
@@ -108,6 +119,9 @@ export function mount(body, { store, uiStore, engine }) {
     const drawn = !isAdsrShaped(env);
     // Read from the built-in presets, not the document: a project whose stored
     // gains have drifted still resets to the level the wave was calibrated at.
+    const kind = waveKind(inst);
+    const partials = (inst.harmonics && inst.harmonics.length ? inst.harmonics : HARMONIC_PRESETS[0][1])
+      .slice(0, MAX_PARTIALS);
     const gainDefault = defaultGainForWave(inst.wave);
     // The reset link and its explanation appear only when there is something
     // to reset - at the calibrated level they would be noise on every track.
@@ -116,12 +130,27 @@ export function mount(body, { store, uiStore, engine }) {
     body.innerHTML = `
       <div class="harm-field">Wave
         <div class="seg seg-wrap" id="in-wave">
-          ${WAVES.map(([id, label]) => `<button class="seg-btn ${inst.wave === id ? 'active' : ''}" data-v="${id}">${label}</button>`).join('')}
+          ${WAVES.map(([id, label]) => `<button class="seg-btn ${kind === id ? 'active' : ''}" data-v="${id}">${label}</button>`).join('')}
         </div>
       </div>
-      ${inst.wave === 'custom' ? `
+      ${kind === 'pwm' ? `
       <div class="harm-field">Duty cycle <span id="in-duty-label">${formatPercent(duty)}</span>
         <div class="harm-row"><input type="range" id="in-duty" min="5" max="50" step="1" value="${Math.round(duty * 100)}" /></div>
+      </div>` : ''}
+      ${kind === 'harmonic' ? `
+      <div class="harm-field">Partials
+        <div class="drawbars" id="in-partials">
+          ${partials.map((v, i) => `<label class="drawbar" title="Partial ${i + 1}${i === 0 ? ' (fundamental)' : ''}">
+            <input type="range" data-h="${i}" min="0" max="100" step="1" value="${Math.round(v * 100)}"
+              orient="vertical" aria-label="Partial ${i + 1}" />
+            <span>${i + 1}</span></label>`).join('')}
+        </div>
+        <div class="harm-presets" id="in-partial-presets">
+          ${HARMONIC_PRESETS.map(([name]) => `<button class="btn-link" data-p="${name}">${name}</button>`).join('')}
+        </div>
+        <div class="in-hint">Amplitude of each harmonic above the fundamental. The
+          wave is peak-normalised, so adding partials changes character rather
+          than level.</div>
       </div>` : ''}
       <div class="harm-field">Envelope
         <span class="tool-ctx" id="in-env-mode">${drawn ? 'drawn' : 'ADSR'}</span>
@@ -147,7 +176,7 @@ export function mount(body, { store, uiStore, engine }) {
         <div class="harm-row"><input type="range" id="in-gain" min="5" max="150" step="1" value="${Math.round(inst.gain * 100)}"
           title="The instrument's own level, part of how it sounds. To balance this track against the others, use the Mixer's Gain instead. 100% is unity - above that the master limiter starts working." /></div>${
         gainDrifted ? `
-        <div class="in-hint">This instrument sits away from the level its wave is
+        <div class="in-hint" id="in-gain-hint">This instrument sits away from the level its wave is
           calibrated at (${formatPercent(gainDefault)}). To balance the track in the mix,
           reach for the <b>Mixer</b> instead.</div>` : ''}
       </div>
@@ -189,7 +218,11 @@ export function mount(body, { store, uiStore, engine }) {
       const btn = e.target.closest('[data-v]');
       if (!btn) return;
       const wave = btn.dataset.v;
-      applyPatch(wave === 'custom' ? { wave, duty: inst.duty ?? 0.25, harmonics: null } : { wave, duty: null, harmonics: null });
+      // Both custom kinds store wave:'custom'; which one it is follows from
+      // whether a duty or a partial list is present.
+      if (wave === 'pwm') applyPatch({ wave: 'custom', duty: inst.duty ?? 0.25, harmonics: null });
+      else if (wave === 'harmonic') applyPatch({ wave: 'custom', duty: null, harmonics: partials.slice() });
+      else applyPatch({ wave, duty: null, harmonics: null });
       auditionOnce();
     });
 
@@ -220,6 +253,33 @@ export function mount(body, { store, uiStore, engine }) {
     slider('in-s', (v) => ({ adsr: { ...inst.adsr, s: v / 100 } }), (v) => formatPercent(v / 100));
     slider('in-r', (v) => ({ adsr: { ...inst.adsr, r: v / 1000 } }), (v) => fmtS(v / 1000));
     slider('in-gain', (v) => ({ gain: v / 100 }), (v) => formatPercent(v / 100), (v) => isHot(v / 100));
+
+    // Drawbars: live while dragging (so you hear the wave change under the
+    // audition loop), committed on release, like every other slider here.
+    const bars = body.querySelector('#in-partials');
+    if (bars) {
+      const readBars = () => [...bars.querySelectorAll('input[data-h]')]
+        .sort((a, b) => Number(a.dataset.h) - Number(b.dataset.h))
+        .map((el) => Number(el.value) / 100);
+      bars.addEventListener('input', () => {
+        livePatch = { harmonics: sanitizeHarmonics(readBars()) || partials.slice() };
+      });
+      bars.addEventListener('change', () => {
+        applyPatch({ wave: 'custom', duty: null, harmonics: sanitizeHarmonics(readBars()) || partials.slice() });
+        auditionOnce();
+      });
+    }
+    const presetRow = body.querySelector('#in-partial-presets');
+    if (presetRow) {
+      presetRow.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-p]');
+        if (!btn) return;
+        const found = HARMONIC_PRESETS.find(([name]) => name === btn.dataset.p);
+        if (!found) return;
+        applyPatch({ wave: 'custom', duty: null, harmonics: found[1].slice() });
+        auditionOnce();
+      });
+    }
 
     const resetBtn = body.querySelector('#in-gain-reset');
     if (resetBtn) {

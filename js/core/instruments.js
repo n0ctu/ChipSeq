@@ -14,6 +14,47 @@ export function dutyHarmonics(duty, n = 32) {
   return imag;
 }
 
+// ---- additive (harmonic) waves ----
+//
+// A custom wave is stored as `wave: 'custom'` with `duty: null` and a list of
+// partial amplitudes in `instrument.harmonics` - deliberately NOT a new wave
+// id. An older build meeting this file takes the 'custom' branch, finds no
+// duty, and falls through to exactly the same harmonics path, so it plays the
+// sound correctly rather than throwing on an oscillator type it has never
+// heard of. The capability has been in the engine since the beginning; only
+// the editor is new.
+export const MAX_PARTIALS = 8;
+
+// Amplitudes are 0..1 and rounded, so a saved file stays readable and two
+// documents that sound the same compare equal.
+export function sanitizeHarmonics(list) {
+  if (!Array.isArray(list)) return null;
+  const out = list.slice(0, MAX_PARTIALS).map((v) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 0;
+    return Math.round(Math.max(0, Math.min(1, n)) * 1000) / 1000;
+  });
+  return out.some((v) => v > 0) ? out : null; // all-silent is not a wave
+}
+
+// Partial amplitudes -> the imaginary part of a PeriodicWave. Index 0 is DC
+// and stays 0; partial n lands at index n. Pure, so the wave a document
+// describes can be asserted without an AudioContext.
+export function harmonicImag(list) {
+  const clean = sanitizeHarmonics(list) || [];
+  const imag = new Float32Array(clean.length + 1);
+  clean.forEach((v, i) => (imag[i + 1] = v));
+  return imag;
+}
+
+// Starting points, not a fixed menu - each is just a partial list.
+export const HARMONIC_PRESETS = [
+  ['Organ', [1, 0.6, 0, 0.4, 0, 0, 0, 0.25]],
+  ['Hollow', [1, 0, 0.33, 0, 0.2, 0, 0.14, 0]],
+  ['Bright', [1, 0.5, 0.33, 0.25, 0.2, 0.17, 0.14, 0.13]],
+  ['Reed', [1, 0.8, 0.6, 0.7, 0.3, 0.35, 0.15, 0.2]],
+];
+
 const waveCache = new WeakMap(); // ctx -> Map<instrumentKey, PeriodicWave>
 
 function getPeriodicWave(ctx, instrument, dutyOverride = null) {
@@ -30,8 +71,7 @@ function getPeriodicWave(ctx, instrument, dutyOverride = null) {
     if (effDuty != null) {
       imag = dutyHarmonics(effDuty);
     } else if (instrument.harmonics && instrument.harmonics.length) {
-      imag = new Float32Array(instrument.harmonics.length + 1);
-      instrument.harmonics.forEach((v, i) => (imag[i + 1] = v));
+      imag = harmonicImag(instrument.harmonics);
     } else {
       imag = dutyHarmonics(0.5);
     }

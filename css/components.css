@@ -448,3 +448,17 @@ body.dragging::after {
    line of its own, reading as another sentence of hint rather than a
    control sitting beside the number it acts on. */
 .harm-caption { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+
+/* Additive drawbars: one vertical slider per partial, fundamental on the
+   left. Vertical because that is what a drawbar looks like, and because
+   eight horizontal sliders would be taller than the whole card. */
+.drawbars { display: flex; gap: 6px; align-items: end; justify-content: space-between; }
+.drawbar { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 9px; color: var(--text-dim); }
+.drawbar input[type="range"] {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  appearance: slider-vertical; /* older Chromium/Safari */
+  width: 14px;
+  height: 56px;
+  accent-color: var(--accent);
+}

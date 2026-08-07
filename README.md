@@ -72,6 +72,26 @@ both dying. `workflow_dispatch` republishes without minting a tag.
   the track "Custom" until saved as a named preset, which then appears in
   every track's picker and travels in the project file.
 
+## Additive waves
+
+Besides the four oscillator shapes and PWM, an instrument can be a list of
+**partial amplitudes** - eight vertical drawbars in the Instrument card,
+fundamental on the left, with Organ / Hollow / Bright / Reed as starting
+points. The wave is peak-normalised by Web Audio, so adding partials changes
+character rather than level.
+
+It is stored as `wave: 'custom'` with `duty: null` and
+`harmonics: [1, 0.6, 0, …]` - deliberately **not** a new wave id. An older
+build meeting such a file takes the `custom` branch, finds no duty, and falls
+through to the same harmonics path, so it plays the sound correctly instead of
+throwing on an oscillator type it has never heard of. No schema bump, no
+migration: `instrument.harmonics` has been read by the engine since the
+beginning and only the editor is new.
+
+`PeriodicWave` band-limits per note, so a bright partial set cannot alias the
+way a naive wavetable would. Poly only - mono is badge-accurate square by
+definition, so `.h` and `.fmf` are untouched by construction.
+
 ## Automation lanes (poly)
 
 Below the piano roll, every control of the active track's instrument gets its

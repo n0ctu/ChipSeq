@@ -100,6 +100,29 @@ async function check(label, expr) {
   }
 }
 
+// Shared by every test that measures rendered audio. Defined up here so a
+// test's position in the file does not decide whether it can measure.
+const WAV_HELPERS = `
+  const readWav = async (blob) => {
+    const buf = new Uint8Array(await blob.arrayBuffer());
+    const dv = new DataView(buf.buffer);
+    const str = (o, n) => String.fromCharCode(...buf.slice(o, o + n));
+    const samples = new Int16Array(buf.buffer, 44, (buf.length - 44) / 2);
+    let peak = 0, sumSq = 0;
+    for (const s of samples) { const a = Math.abs(s / 32768); if (a > peak) peak = a; sumSq += a * a; }
+    return {
+      riff: str(0, 4), wave: str(8, 4), fmt: str(12, 4), dataTag: str(36, 4),
+      fmtSize: dv.getUint32(16, true), format: dv.getUint16(20, true),
+      channels: dv.getUint16(22, true), rate: dv.getUint32(24, true),
+      byteRate: dv.getUint32(28, true), blockAlign: dv.getUint16(32, true),
+      bits: dv.getUint16(34, true), dataSize: dv.getUint32(40, true),
+      riffSize: dv.getUint32(4, true),
+      bytes: buf.length, sampleCount: samples.length,
+      peak, rms: Math.sqrt(sumSq / samples.length),
+    };
+  };
+`;
+
 await send('Runtime.enable');
 await send('Page.enable');
 await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
@@ -1392,6 +1415,99 @@ await check('slider release (change) commits the value', `(() => {
   el.dispatchEvent(new Event('change', { bubbles: true }));
   return window.__chipseq.store.getDoc().tracks[0].instrument.gain === 0.8 || window.__chipseq.store.getDoc().tracks[0].instrument.gain;
 })()`);
+// Additive waves change the active track's instrument, which adds a Duty
+// automation lane and would leak into every test after this one - so the
+// instrument is snapshotted here and put back at the end of the block.
+await evaluate(`(() => {
+  const d = window.__chipseq.store.getDoc();
+  const t = d.tracks.find((x) => x.id === d.activeTrackId);
+  window.__waveSnapshot = { id: t.id, instrument: t.instrument ? JSON.parse(JSON.stringify(t.instrument)) : null, instrumentId: t.instrumentId };
+})()`);
+// Additive waves: the engine has always been able to render a partial list,
+// so this asserts the editor writes one AND that it reaches the audio.
+await check('picking Harm. writes a partial list and renders differently', `(async () => {
+  ${WAV_HELPERS}
+  const store = window.__chipseq.store;
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const trackId = store.getDoc().activeTrackId;
+  const inst = () => {
+    const t = store.getDoc().tracks.find((x) => x.id === trackId);
+    return t.instrument || store.getDoc().instruments.find((i) => i.id === t.instrumentId);
+  };
+  const render = async () => {
+    const { blob } = await renderWav(store.getDoc());
+    const w = await readWav(blob);
+    return w.rms;
+  };
+
+  const pick = (id) => {
+    const btn = document.querySelector('#instrument-body #in-wave [data-v="' + id + '"]');
+    if (!btn) throw new Error('no ' + id + ' button');
+    btn.click();
+  };
+  pick('sine');
+  await new Promise((r) => setTimeout(r, 300));
+  const sineRms = await render();
+
+  pick('harmonic');
+  await new Promise((r) => setTimeout(r, 300));
+  const i = inst();
+  if (i.wave !== 'custom') return 'wave is ' + i.wave + ', expected custom';
+  if (!Array.isArray(i.harmonics) || !i.harmonics.length) return 'no partial list';
+  if (i.duty !== null) return 'duty should be null for an additive wave, got ' + i.duty;
+  // the Harm. button must light up even though the stored wave says 'custom'
+  const lit = document.querySelector('#instrument-body #in-wave [data-v="harmonic"]').classList.contains('active');
+  const bars = document.querySelectorAll('#instrument-body #in-partials input[data-h]').length;
+  const harmRms = await render();
+
+  // a different wave has to make a different sound
+  const changed = Math.abs(harmRms - sineRms) > 1e-4;
+  return (lit && bars === i.harmonics.length && changed)
+    || JSON.stringify({ lit, bars, partials: i.harmonics.length, sineRms, harmRms });
+})()`);
+
+await check('a drawbar edit changes the stored partials', `(async () => {
+  const store = window.__chipseq.store;
+  const trackId = store.getDoc().activeTrackId;
+  const before = store.getDoc().tracks.find((x) => x.id === trackId).instrument.harmonics.slice();
+  const bar = document.querySelector('#instrument-body #in-partials input[data-h="3"]');
+  if (!bar) return 'no drawbar';
+  bar.value = '90';
+  bar.dispatchEvent(new Event('input', { bubbles: true }));
+  bar.dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 300));
+  const after = store.getDoc().tracks.find((x) => x.id === trackId).instrument.harmonics;
+  return (Math.abs(after[3] - 0.9) < 1e-6 && after.length === before.length)
+    || 'before=' + JSON.stringify(before) + ' after=' + JSON.stringify(after);
+})()`);
+
+// Presets are starting points, so picking one must land exactly on it.
+await check('a partial preset lands exactly on its list', `(async () => {
+  const store = window.__chipseq.store;
+  const { HARMONIC_PRESETS } = await import('/js/core/instruments.js');
+  const trackId = store.getDoc().activeTrackId;
+  const [name, list] = HARMONIC_PRESETS[1];
+  document.querySelector('#instrument-body #in-partial-presets [data-p="' + name + '"]').click();
+  await new Promise((r) => setTimeout(r, 300));
+  const got = store.getDoc().tracks.find((x) => x.id === trackId).instrument.harmonics;
+  return JSON.stringify(got) === JSON.stringify(list) || 'got ' + JSON.stringify(got) + ' want ' + JSON.stringify(list);
+})()`);
+
+await check('the additive block leaves the track as it found it', `(async () => {
+  const store = window.__chipseq.store;
+  const snap = window.__waveSnapshot;
+  store.commit('restore instrument', ['tracks'], (doc) => {
+    const t = doc.tracks.find((x) => x.id === snap.id);
+    if (!t) return;
+    t.instrument = snap.instrument ? JSON.parse(JSON.stringify(snap.instrument)) : null;
+    t.instrumentId = snap.instrumentId;
+  });
+  await new Promise((r) => setTimeout(r, 300));
+  const t = store.getDoc().tracks.find((x) => x.id === snap.id);
+  return (JSON.stringify(t.instrument) === JSON.stringify(snap.instrument) && t.instrumentId === snap.instrumentId)
+    || 'instrument=' + JSON.stringify(t.instrument);
+})()`);
+
 // The reset button exists because a project's stored gains can drift away
 // from what the wave was calibrated at. It reads the built-in level, not the
 // document's, so a drifted project still lands on the right number.
@@ -1420,7 +1536,7 @@ await check('gain reset returns the instrument to its calibrated level', `(async
   // It appears only while there is something to reset, so after the click it
   // must be GONE - along with the hint that explains it.
   const after = document.querySelector('#instrument-body #in-gain-reset');
-  const hint = document.querySelector('#instrument-body .in-hint');
+  const hint = document.querySelector('#instrument-body #in-gain-hint');
   return (Math.abs(t.instrument.gain - want) < 1e-9 && !after && !hint)
     || 'gain=' + t.instrument.gain + ' want=' + want + ' label=' + shown
        + ' link=' + !!after + ' hint=' + !!hint;
@@ -1748,26 +1864,7 @@ await check('unsupported features are reported, never dropped', `(async () => {
 // Rendered audio is checked by measurement rather than byte-comparison: the
 // WaveShaper's behaviour depends on the Chromium build, so a byte golden
 // would fail on browser upgrades instead of on real regressions.
-const WAV_HELPERS = `
-  const readWav = async (blob) => {
-    const buf = new Uint8Array(await blob.arrayBuffer());
-    const dv = new DataView(buf.buffer);
-    const str = (o, n) => String.fromCharCode(...buf.slice(o, o + n));
-    const samples = new Int16Array(buf.buffer, 44, (buf.length - 44) / 2);
-    let peak = 0, sumSq = 0;
-    for (const s of samples) { const a = Math.abs(s / 32768); if (a > peak) peak = a; sumSq += a * a; }
-    return {
-      riff: str(0, 4), wave: str(8, 4), fmt: str(12, 4), dataTag: str(36, 4),
-      fmtSize: dv.getUint32(16, true), format: dv.getUint16(20, true),
-      channels: dv.getUint16(22, true), rate: dv.getUint32(24, true),
-      byteRate: dv.getUint32(28, true), blockAlign: dv.getUint16(32, true),
-      bits: dv.getUint16(34, true), dataSize: dv.getUint32(40, true),
-      riffSize: dv.getUint32(4, true),
-      bytes: buf.length, sampleCount: samples.length,
-      peak, rms: Math.sqrt(sumSq / samples.length),
-    };
-  };
-`;
+
 
 await check('rendered WAV is structurally valid', `(async () => {
   ${WAV_HELPERS}
