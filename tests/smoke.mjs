@@ -1408,15 +1408,19 @@ await check('gain reset returns the instrument to its calibrated level', `(async
   await new Promise((r) => setTimeout(r, 250));
   const btn = document.querySelector('#instrument-body #in-gain-reset');
   if (!btn) return 'no reset button';
-  if (btn.disabled) return 'reset disabled while gain is drifted';
   btn.click();
   await new Promise((r) => setTimeout(r, 250));
   const t = store.getDoc().tracks.find((x) => x.id === trackId);
   const want = defaultGainForWave(t.instrument.wave);
   const label = document.querySelector('#instrument-body #in-gain-label').textContent;
-  const nowDisabled = document.querySelector('#instrument-body #in-gain-reset').disabled;
-  return (Math.abs(t.instrument.gain - want) < 1e-9 && nowDisabled)
-    || 'gain=' + t.instrument.gain + ' want=' + want + ' label=' + label + ' disabled=' + nowDisabled;
+  // Always clickable and always visible: it was disabled at the calibrated
+  // level, and a disabled .btn-link looked exactly like a live one, so the
+  // control read as a line of dim text instead of a button.
+  const after = document.querySelector('#instrument-body #in-gain-reset');
+  const r = after.getBoundingClientRect();
+  const visible = r.width > 0 && r.height > 0 && !after.disabled;
+  return (Math.abs(t.instrument.gain - want) < 1e-9 && visible)
+    || 'gain=' + t.instrument.gain + ' want=' + want + ' label=' + label + ' visible=' + visible;
 })()`);
 
 // Levels read as percentages, and boost past unity is allowed but flagged -
