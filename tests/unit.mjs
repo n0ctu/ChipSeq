@@ -1684,6 +1684,18 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     assert(Math.abs(p.peak - p1.peak * 3) < 1e-6, 'three voices sum to three times one');
     eq(predictPeak(doc, [], () => null), { peak: 0, tick: 0, voices: 0 }, 'no events, no peak');
 
+    // The mixer counts. Without this the estimate described a render nobody
+    // could produce: every project with a fader below unity read high.
+    const faded = build({ enabled: false }, [[60, 0, 384]]);
+    faded.tracks[0].gain = 0.5;
+    const pFaded = predictPeak(faded, flattenSong(faded).events, (ev) => getInstrument(faded, ev.instrumentId), 1);
+    assert(Math.abs(pFaded.peak - p1.peak * 0.5) < 1e-9,
+      `a fader at 50% halves the predicted peak (${pFaded.peak} vs ${p1.peak})`);
+    const boosted = build({ enabled: false }, [[60, 0, 384]]);
+    boosted.tracks[0].gain = 1.5;
+    const pBoost = predictPeak(boosted, flattenSong(boosted).events, (ev) => getInstrument(boosted, ev.instrumentId), 1);
+    assert(Math.abs(pBoost.peak - p1.peak * 1.5) < 1e-9, 'and a boosted one raises it');
+
     // Velocity is carried but NOT applied, so the estimate must not move with
     // it either - an estimate that disagreed with the voice would warn about
     // clipping that cannot happen, or miss clipping that can.
