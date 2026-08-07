@@ -20,6 +20,11 @@ tagged.
 
 ### Fixed
 
+- **Make-up did not reach the preview.** The master node is built once, on
+  first play, and the routing rebuild reuses it - so a stored make-up moved the
+  number and the exported file while playback carried on at the level the graph
+  was built with. The engine now pushes the level onto that node, ramped so a
+  change mid-playback does not click.
 - **The peak estimate ignored the mixer.** `predictPeak` never applied
   `track.gain`, so it described a render nobody could produce - Bad Apple read
   +1.1 dB where the true bound is -3.3 dB. It drives the clip warning, so it was

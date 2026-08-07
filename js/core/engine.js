@@ -5,7 +5,7 @@ import { flattenSong } from './flatten.js';
 import { scheduleNote, getInstrument } from './instruments.js';
 import { ticksPerBeat, ticksPerBar, songEndTick, tickToSeconds, secondsToTick } from './doc.js';
 import { createEmitter } from './store.js';
-import { buildGraph, buildRouting } from './graph.js';
+import { buildGraph, buildRouting, applyMasterLevel, MASTER_GAIN } from './graph.js';
 
 const SCHEDULE_INTERVAL_MS = 25;
 const LOOKAHEAD_S = 0.12;
@@ -240,6 +240,13 @@ export function createEngine(store) {
     Object.assign(graph, buildRouting(audioCtx, store.getDoc(), graph.master));
   });
 
+  // The master level lives on a node built once, so a make-up change has to
+  // be pushed onto it - the routing rebuild reuses that node and would not.
+  store.subscribe(['song', 'doc'], () => {
+    if (!audioCtx || !graph) return;
+    applyMasterLevel(graph, store.getDoc(), audioCtx.currentTime);
+  });
+
   // Re-flatten mid-playback when the document changes (edit while playing).
   store.subscribe(['notes', 'tracks', 'song', 'harmonics', 'automation', 'doc'], () => {
     if (!playing) return;
@@ -326,6 +333,9 @@ export function createEngine(store) {
     previewEvents,
     // The live node for a track, so a mixer drag is audible before it commits.
     trackNode: (trackId) => (graph ? graph.trackNodes.get(trackId) : null),
+    // What the master is ACTUALLY set to right now, which is the only way to
+    // tell that a stored level reached the preview rather than only the file.
+    masterLevel: () => (graph && graph.master ? graph.master.gain.value : null),
     setAudition,
     getPeak,
     isAuditioning: () => !!auditionTimer,

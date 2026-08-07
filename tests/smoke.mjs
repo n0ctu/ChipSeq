@@ -1632,6 +1632,39 @@ await check('Analyse brings the rendered peak to the target', `(async () => {
     || JSON.stringify({ before: +before.toFixed(2), db, after: +after.toFixed(2), onTarget, louder, stored });
 })()`);
 
+// Make-up has to reach the PREVIEW, not only the exported file. The master
+// node is built once and the routing rebuild reuses it, so a stored level
+// that nothing pushes onto that node moves the number and the export while
+// playback carries on unchanged - which is exactly what happened.
+await check('make-up reaches the live master, not just the render', `(async () => {
+  const store = window.__chipseq.store;
+  const engine = window.__chipseq.engine;
+  const { MASTER_GAIN, dbToLin } = await import('/js/core/graph.js');
+
+  await engine.ensureCtx();
+  engine.play(0);
+  await new Promise((r) => setTimeout(r, 150));
+  engine.stop();
+  const before = engine.masterLevel();
+  if (before === null) return 'no graph after playing';
+
+  store.commit('makeup preview', ['song'], (d) => {
+    d.master = d.master || {};
+    d.master.makeup = { kind: 'makeup', v: 1, db: 6 };
+  });
+  await new Promise((r) => setTimeout(r, 400));
+  const after = engine.masterLevel();
+
+  store.commit('clear makeup', ['song'], (d) => { if (d.master) delete d.master.makeup; });
+  await new Promise((r) => setTimeout(r, 400));
+  const cleared = engine.masterLevel();
+
+  const raised = Math.abs(after - MASTER_GAIN * dbToLin(6)) < 0.02;
+  const restored = Math.abs(cleared - MASTER_GAIN) < 0.02;
+  return (raised && restored)
+    || JSON.stringify({ before, after, want: MASTER_GAIN * dbToLin(6), cleared, raised, restored });
+})()`);
+
 await check('the make-up slider overrides Analyse and clears at zero', `(async () => {
   const store = window.__chipseq.store;
   const { makeupConfig } = await import('/js/core/graph.js');
