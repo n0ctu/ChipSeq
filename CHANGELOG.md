@@ -9,7 +9,13 @@ tagged.
 
 ## Unreleased
 
-_Nothing yet._
+### Added
+
+- **Additive waves.** An instrument can be a list of partial amplitudes -
+  eight drawbars with Organ / Hollow / Bright / Reed starting points. Stored as
+  `wave: 'custom'` with `duty: null` and a `harmonics` array, which is what the
+  engine has always read, so there is no schema bump and an older build plays
+  such a file correctly rather than choking on an unknown oscillator type.
 
 ## [0.2.1] - 2026-08-07
 
