@@ -632,6 +632,32 @@ current song at any time.
   rests and are cut to the exact region length, so they loop seamlessly on
   the badge and in samplers.
 
+## Tables: commands and exporters
+
+Two things the app used to say twice now live in one array each.
+
+**`js/ui/commands.js`** holds every action that has both a shortcut and a
+button. They were previously defined once in `toolbar.js` as a click handler
+and once in `keymap.js` as a switch case, so a button and its key could drift
+apart and nothing could enumerate what the app can do. Now the toolbar binds
+to the table, the keymap dispatches through it, and **Ctrl+K** lists it -
+filtered as you type, and showing only commands whose guard passes, because
+offering "Undo" with nothing to undo is a menu entry that lies.
+
+Two commands claiming one chord used to be invisible - whichever bound last
+simply won. `duplicateChords()` is asserted empty by the unit suite.
+
+Deliberately not everything: grid editing (arrows, delete, note nudging, snap
+digits) stays in `keymap.js`. Those are positional and contextual, and
+meaningless as palette entries - a table you have to lie to is worse than two
+honest handlers.
+
+**`js/core/exporters.js`** holds the formats: id, extension, MIME type, which
+modes they apply to, whether overlapping notes block them, and `render(doc,
+opts)`. The export dialog derives its tabs, its disabled states and its
+download step from that array, so adding `.mid` later is one builder plus one
+entry rather than another branch in three places.
+
 ## Keyboard (excerpt)
 
 | Keys | Action |

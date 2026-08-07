@@ -7,6 +7,8 @@ import {
   ticksPerBar, songEndTick,
 } from '../core/doc.js';
 import { effectiveSnap, PITCH_MIN, PITCH_MAX } from './piano-roll/coords.js';
+import { chordOf, commandForChord, runCommand } from './commands.js';
+import { initPalette } from './palette.js';
 
 const SNAP_KEYS = {
   Digit1: PPQ * 4,
@@ -203,6 +205,24 @@ export function initKeymap({ store, uiStore, engine, roll, conflicts, actions })
     roll.scrollTickIntoView(next);
   }
 
+  // Everything that also has a button, or belongs in the palette, is
+  // dispatched from the shared table first. What remains below is grid
+  // editing - positional and contextual, and not palette material.
+  const commandCtx = () => ({
+    store, uiStore, engine, actions, roll, conflicts, jumpToConflict, goHome: actions.goHome,
+  });
+  // Built here because this is where the context it needs already lives.
+  const palette = initPalette({
+    get store() { return store; },
+    get uiStore() { return uiStore; },
+    get engine() { return engine; },
+    get actions() { return actions; },
+    get roll() { return roll; },
+    get conflicts() { return conflicts; },
+    jumpToConflict,
+    goHome: actions.goHome,
+  });
+
   window.addEventListener('keydown', (e) => {
     if (ui.screen !== 'editor') return;
     if (document.querySelector('dialog[open]')) return;
@@ -217,17 +237,24 @@ export function initKeymap({ store, uiStore, engine, roll, conflicts, actions })
     const ctrl = e.ctrlKey || e.metaKey;
     const doc = store.getDoc();
 
+    if (ctrl && e.code === 'KeyK') {
+      e.preventDefault();
+      palette.open();
+      return;
+    }
+
+    const cmd = commandForChord(chordOf(e));
+    if (cmd) {
+      e.preventDefault();
+      // A guard that fails means "not now" - the key is still ours, so it
+      // must not fall through and be read as a grid edit.
+      runCommand(cmd, commandCtx());
+      return;
+    }
+
     // --- ctrl combos ---
     if (ctrl) {
       switch (e.code) {
-        case 'KeyZ':
-          e.preventDefault();
-          e.shiftKey ? store.redo() : store.undo();
-          return;
-        case 'KeyY':
-          e.preventDefault();
-          store.redo();
-          return;
         case 'KeyA': {
           e.preventDefault();
           const track = activeTrack(doc);
@@ -249,14 +276,6 @@ export function initKeymap({ store, uiStore, engine, roll, conflicts, actions })
         case 'KeyD':
           e.preventDefault();
           duplicateRight();
-          return;
-        case 'KeyE':
-          e.preventDefault();
-          actions.openExport();
-          return;
-        case 'KeyS':
-          e.preventDefault();
-          actions.forceSave();
           return;
         case 'ArrowLeft':
           e.preventDefault();
@@ -315,10 +334,6 @@ export function initKeymap({ store, uiStore, engine, roll, conflicts, actions })
     }
 
     switch (e.code) {
-      case 'Space':
-        e.preventDefault();
-        e.shiftKey ? actions.togglePause() : actions.togglePlay();
-        return;
       case 'ArrowLeft':
         e.preventDefault();
         if (e.shiftKey) nudgeSelection(-cursorStep());
@@ -390,29 +405,11 @@ export function initKeymap({ store, uiStore, engine, roll, conflicts, actions })
       case 'Escape':
         uiStore.update('selection', (s) => s.selection.clear());
         return;
-      case 'KeyQ':
-        actions.quantize();
-        return;
-      case 'KeyL':
-        actions.toggleLoop();
-        return;
-      case 'KeyM':
-        actions.toggleMetronome();
-        return;
-      case 'KeyN':
-        jumpToConflict();
-        return;
       case 'KeyP': {
         const track = activeTrack(doc);
         engine.previewNote(ui.gridCursor.pitch, track ? track.instrumentId : null);
         return;
       }
-      case 'KeyT':
-        uiStore.update('view', (s) => {
-          s.panels.tracks = !s.panels.tracks;
-        });
-        actions.applyPanels();
-        return;
       case 'KeyA':
         uiStore.update('view', (s) => {
           s.panels.harmonics = !s.panels.harmonics;

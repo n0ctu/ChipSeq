@@ -1515,6 +1515,52 @@ await check('the spectrum block leaves the track as it found it', `(async () => 
     || 'instrument=' + JSON.stringify(t.instrument);
 })()`);
 
+// ---- the command palette ----
+await check('Ctrl+K opens the palette listing runnable commands', `(async () => {
+  window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyK', ctrlKey: true, bubbles: true }));
+  await new Promise((r) => setTimeout(r, 300));
+  const dlg = document.getElementById('dlg-palette');
+  if (!dlg || !dlg.open) return 'palette did not open';
+  const items = [...document.querySelectorAll('#palette-list .palette-item')];
+  const labels = items.map((li) => li.textContent.trim());
+  const hasPlay = labels.some((l) => /Play/.test(l));
+  const hasKbd = items.some((li) => li.querySelector('kbd'));
+  return (items.length >= 5 && hasPlay && hasKbd)
+    || 'items=' + items.length + ' play=' + hasPlay + ' kbd=' + hasKbd;
+})()`);
+
+await check('typing filters, and Enter runs the highlighted command', `(async () => {
+  const input = document.getElementById('palette-input');
+  input.value = 'metronome';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 200));
+  const items = [...document.querySelectorAll('#palette-list .palette-item')];
+  if (items.length !== 1) return 'filter left ' + items.length + ' items';
+
+  const before = window.__chipseq.engine.isMetronome ? window.__chipseq.engine.isMetronome() : null;
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await new Promise((r) => setTimeout(r, 300));
+  const dlg = document.getElementById('dlg-palette');
+  const closed = !dlg.open;
+  const after = window.__chipseq.engine.isMetronome ? window.__chipseq.engine.isMetronome() : null;
+  const toggled = before === null || after !== before;
+  // put it back
+  if (toggled && before !== null) window.__chipseq.engine.setMetronome(before);
+  return (closed && toggled) || 'closed=' + closed + ' before=' + before + ' after=' + after;
+})()`);
+
+await check('the palette hides commands that cannot run', `(async () => {
+  const { available } = await import('/js/ui/commands.js');
+  const store = window.__chipseq.store;
+  // clear the undo stack by reloading the doc is heavy; assert the guard
+  // directly against the real store instead
+  const ids = available({ store, conflicts: { count: () => 0 } }).map((c) => c.id);
+  const undoOffered = ids.includes('undo');
+  const conflictOffered = ids.includes('next-conflict');
+  return (undoOffered === store.canUndo() && conflictOffered === false)
+    || 'undo=' + undoOffered + '/' + store.canUndo() + ' conflict=' + conflictOffered;
+})()`);
+
 // ---- effects: buses and sends ----
 //
 // The plan's verification for this phase: identical topology in an
@@ -1613,13 +1659,22 @@ await check('the Effects card creates a bus and opens a send', `(async () => {
   const t = doc.tracks.find((x) => x.id === doc.activeTrackId);
   const declared = (doc.uses || []).includes('effects@1');
   const ok = t.sends && t.sends[0].level === 0.4 && declared;
+
+  // Deleting the bus must take the sends with it - an invisible send to a
+  // bus that no longer exists would come back if an id were ever recycled.
+  document.querySelector('#effects-body #fx-del-bus').click();
+  await new Promise((r) => setTimeout(r, 350));
+  const after = store.getDoc();
+  const gone = !(after.buses && after.buses.length)
+    && after.tracks.every((x) => !x.sends)
+    && !(after.uses || []).includes('effects@1');
   // put the project back the way it was
   store.commit('clear fx', ['tracks', 'doc'], (d) => {
     d.buses = JSON.parse(before);
     for (const tr of d.tracks) delete tr.sends;
   });
   await new Promise((r) => setTimeout(r, 250));
-  return ok || 'sends=' + JSON.stringify(t.sends) + ' declared=' + declared;
+  return (ok && gone) || 'sends=' + JSON.stringify(t.sends) + ' declared=' + declared + ' deleted=' + gone;
 })()`);
 
 // The reset button exists because a project's stored gains can drift away
