@@ -13,11 +13,22 @@ modules.
 ## Run it
 
 ```sh
-python3 -m http.server        # from this directory
+node dev-server.mjs           # from this directory
 # open http://localhost:8000
 ```
 
-Any static file server works (the app uses ES modules, so `file://` won't).
+Any static file server works (the app uses ES modules, so `file://` won't),
+but prefer this one while developing: it sends `Cache-Control: no-store`.
+
+That matters more than it sounds. The tool cards load lazily, so
+`import('./instrument.js')` runs when a card is first expanded - *after* the
+page has finished loading. A hard reload bypasses the cache for the
+navigation and everything fetched during it, but a later runtime import is an
+ordinary fetch obeying the ordinary cache. `python3 -m http.server` sends no
+`Cache-Control` at all, so the browser falls back to heuristic caching from
+`Last-Modified` and can hand you a stale tool card while the statically
+imported core around it is already up to date. The app then looks broken
+rather than stale, which is a genuinely nasty thing to debug.
 It's a fully static site - GitHub Pages serves it as-is.
 
 ## Releasing
