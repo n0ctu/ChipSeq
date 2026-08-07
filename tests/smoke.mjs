@@ -1668,6 +1668,47 @@ await check('an effect from a newer build is skipped, not fatal', `(async () => 
     || 'skipped=' + JSON.stringify(g.busNodes.skipped);
 })()`);
 
+// Deleting a bus has to remove its SOUND, not just its row: the chain lives
+// inside the bus object and the engine rebuilds routing on the same commit,
+// so this asserts the rendered audio goes back to dry.
+await check('deleting a bus removes its effect from the render', `(async () => {
+  ${WAV_HELPERS}
+  const { renderWav } = await import('/js/core/export-wav.js');
+  const { buildGraph } = await import('/js/core/graph.js');
+  const { createBus } = await import('/js/core/doc.js');
+  const { DEFAULT_EFFECTS } = await import('/js/core/effects.js');
+
+  const base = structuredClone(window.__chipseq.store.getDoc());
+  base.mode = 'poly';
+  base.buses = undefined;
+  base.tracks = [{
+    id: 'del-t', name: 'del', role: 'melody', instrumentId: 'badge', color: 0,
+    notes: [{ id: 'del-n', pitch: 60, startTick: 0, durationTicks: 48, velocity: 100, harmonics: null }],
+  }];
+  base.activeTrackId = base.melodyTrackId = 'del-t';
+
+  const dry = await readWav((await renderWav(structuredClone(base))).blob);
+
+  const withBus = structuredClone(base);
+  const bus = createBus({ name: 'Echo', chain: [DEFAULT_EFFECTS.delay] });
+  withBus.buses = [bus];
+  withBus.tracks[0].sends = [{ busId: bus.id, level: 1 }];
+  const wet = await readWav((await renderWav(withBus)).blob);
+
+  // now delete it the way the card does: bus gone, sends to it gone
+  const deleted = structuredClone(withBus);
+  deleted.buses = deleted.buses.filter((b) => b.id !== bus.id);
+  for (const t of deleted.tracks) delete t.sends;
+  const after = await readWav((await renderWav(deleted)).blob);
+  const g = buildGraph(new OfflineAudioContext(1, 1024, 44100), deleted);
+
+  const wasAudible = wet.rms > dry.rms * 1.05;
+  const backToDry = Math.abs(after.rms - dry.rms) < 1e-6;
+  const noBusNodes = g.busNodes.size === 0;
+  return (wasAudible && backToDry && noBusNodes)
+    || JSON.stringify({ dryRms: dry.rms, wetRms: wet.rms, afterRms: after.rms, wasAudible, backToDry, noBusNodes });
+})()`);
+
 await check('the Effects card creates a bus and opens a send', `(async () => {
   const store = window.__chipseq.store;
   const before = JSON.stringify(store.getDoc().buses || []);
