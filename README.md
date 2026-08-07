@@ -141,6 +141,12 @@ Reach for the **Mixer** to mix. The Instrument tool's Gain is part of the
 sound's design, and changing it makes the track Custom - which is why the
 control now says so underneath itself rather than only in here.
 
+A **reset** link next to it puts the gain back to the level its wave was
+calibrated at (square 35%, sine 50%, sawtooth 35%; anything else follows the
+square). It reads the built-in presets rather than the document's own, so a
+project whose stored gains have drifted still resets to the right number
+instead of back to whatever it drifted to.
+
 Editing any instrument parameter is **copy-on-write**: it writes an inline
 `track.instrument` and never modifies the shared preset, so a preset used by
 three tracks stays put when one of them is edited. The gain lane multiplies

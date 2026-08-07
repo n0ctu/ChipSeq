@@ -1077,6 +1077,24 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   }
 }
 
+// ---- the calibrated gain a wave resets to ----
+{
+  const { defaultGainForWave, DEFAULT_INSTRUMENTS } = await import('../js/core/doc.js');
+  const byId = (id) => DEFAULT_INSTRUMENTS.find((i) => i.id === id).gain;
+  assert(defaultGainForWave('square') === byId('badge'), 'square resets to the badge level');
+  assert(defaultGainForWave('sine') === byId('sine'), 'sine resets to the sine level');
+  assert(defaultGainForWave('sawtooth') === byId('saw'), 'sawtooth resets to the saw level');
+  // A wave with no built-in of its own still answers, rather than undefined -
+  // PWM and triangle instruments have a reset button too.
+  assert(defaultGainForWave('triangle') === byId('badge'), 'triangle falls back to the square level');
+  assert(defaultGainForWave('custom') === byId('badge'), 'a PWM/custom wave does too');
+  assert(defaultGainForWave(undefined) === byId('badge'), 'and so does a missing wave');
+  // Read from the built-ins, NOT the document: the whole point is that a
+  // project whose stored gains drifted still resets to the right number.
+  assert(defaultGainForWave('sine') === 0.5 && defaultGainForWave('square') === 0.35,
+    'the calibrated levels are the built-in ones');
+}
+
 // ---- track colour and order ----
 {
   const {

@@ -63,6 +63,16 @@ export const DEFAULT_INSTRUMENTS = [
   },
 ];
 
+// The calibrated level for a wave, read from the built-in presets rather than
+// from the document - a project whose stored presets have drifted (or were
+// flattened by a build that no longer exists) still gets the right answer.
+// A wave with no built-in of its own falls back to the square's level, which
+// is what the two brightest built-ins already use.
+export function defaultGainForWave(wave) {
+  const built = DEFAULT_INSTRUMENTS.find((i) => i.wave === wave);
+  return built ? built.gain : DEFAULT_INSTRUMENTS[0].gain;
+}
+
 export const DEFAULT_HARMONICS = {
   mode: 'arp',
   stepsPerBeat: 2,
