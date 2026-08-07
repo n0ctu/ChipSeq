@@ -252,6 +252,11 @@
   padding: 0 2px;
 }
 .btn-link:hover { color: var(--text); }
+/* Sits next to its label rather than stretching across the flex column, and
+   a disabled one has to LOOK disabled - .btn:disabled does not apply here,
+   so a greyed link was indistinguishable from a live one. */
+.btn-link { align-self: flex-start; width: fit-content; }
+.btn-link:disabled { opacity: 0.45; cursor: default; text-decoration: none; }
 .btn-pair { display: flex; gap: 6px; }
 .btn-pair .btn { flex: 1; }
 

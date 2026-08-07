@@ -138,8 +138,8 @@ export function mount(body, { store, uiStore, engine }) {
         <div class="harm-row"><input type="range" id="in-r" min="0" max="800" step="5" value="${Math.round(adsrView.r * 1000)}" /></div>
       </div>
       <div class="harm-field">Gain <span id="in-gain-label" class="${isHot(inst.gain) ? 'hot' : ''}">${formatPercent(inst.gain)}</span>
-        <button class="btn-link" id="in-gain-reset" ${Math.abs(inst.gain - gainDefault) < 1e-9 ? 'disabled' : ''}
-          title="Back to the calibrated level for a ${inst.wave} wave (${formatPercent(gainDefault)})">reset</button>
+        <button class="btn-link" id="in-gain-reset"
+          title="Back to the calibrated level for a ${inst.wave} wave (${formatPercent(gainDefault)})">reset to ${formatPercent(gainDefault)}</button>
         <div class="harm-row"><input type="range" id="in-gain" min="5" max="150" step="1" value="${Math.round(inst.gain * 100)}"
           title="The instrument's own level, part of how it sounds. To balance this track against the others, use the Mixer's Gain instead. 100% is unity - above that the master limiter starts working." /></div>
         <div class="in-hint">The instrument's own level - presets are calibrated so a
