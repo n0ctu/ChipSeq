@@ -59,6 +59,7 @@ export class FakeBadge {
     this.ws = null;
     this.name = null;
     this.paired = false;
+    this.showingCode = null; // the code this badge would be displaying (§3.1)
     this.offsets = [];
     this.offset = 0;
     this.pending = new Map(); // t0 -> timers, so a re-sent chunk can replace one
@@ -114,13 +115,19 @@ export class FakeBadge {
       case 'welcome':
         this.paired = !!msg.known;
         if (msg.name) this.name = msg.name;
-        this.onEvent({ t: 'welcome', known: !!msg.known, name: msg.name });
+        // §3.1: a badge with a screen DISPLAYS this. Here there is no screen,
+        // so it is simply held - which is what a test or a firmware author
+        // needs to see anyway.
+        this.showingCode = msg.code || null;
+        this.onEvent({ t: 'welcome', known: !!msg.known, name: msg.name, code: this.showingCode });
+        // §3.2: if this badge was given a code to type, it types it.
         if (!this.paired && this.code) this.send({ t: 'pair', code: this.code });
         this.startPinging();
         return;
       case 'paired':
         this.paired = true;
         this.name = msg.name || this.name;
+        this.showingCode = null; // stop showing it once adopted
         this.onEvent({ t: 'paired', name: this.name });
         return;
       case 'pair_failed':

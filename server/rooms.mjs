@@ -23,6 +23,24 @@ export function makeCode(rand = randomBytes) {
   return out;
 }
 
+// The code a badge DISPLAYS for you to type into the sequencer. Different
+// alphabet from the button code because the constraint is different: this one
+// is read off a screen and typed on a keyboard, so it drops the characters
+// people confuse (I/1/L, O/0) rather than being limited to six buttons.
+export const DISPLAY_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export const DISPLAY_LENGTH = 6;
+
+export function makeDisplayCode(rand = randomBytes) {
+  const bytes = rand(DISPLAY_LENGTH);
+  let out = '';
+  for (let i = 0; i < DISPLAY_LENGTH; i++) out += DISPLAY_ALPHABET[bytes[i] % DISPLAY_ALPHABET.length];
+  return out;
+}
+
+export function normalizeDisplayCode(code) {
+  return String(code || '').trim().toUpperCase();
+}
+
 export function isValidCodeShape(code) {
   return typeof code === 'string'
     && code.length === CODE_LENGTH
@@ -35,7 +53,8 @@ export class Hub {
     this.rand = rand;
     this.sessions = new Map(); // sessionId -> { id, created }
     this.badges = new Map(); // badgeId -> { id, name, fw, sessionId, trackId, lastSeen, conn }
-    this.codes = new Map(); // code -> { sessionId, expires }
+    this.codes = new Map(); // code -> { sessionId, expires }        (button flow)
+    this.offers = new Map(); // code -> { badgeId, expires }          (display flow)
     this.rate = new Map(); // ip -> { count, resets }
   }
 
@@ -124,6 +143,49 @@ export class Hub {
     return { ok: true, name, sessionId: entry.sessionId };
   }
 
+  // ---- the display flow ----
+  //
+  // Minted when an unadopted badge connects, and bound to THAT badge rather
+  // than to a session. That is the security difference: the button-flow code
+  // is a bearer token anyone can redeem, while this one is useless unless you
+  // are also the badge it names - and it dies with the connection.
+
+  offerCode(badgeId) {
+    this.revokeOffer(badgeId);
+    let code = makeDisplayCode(this.rand);
+    let guard = 0;
+    while (this.offers.has(code) && guard++ < 20) code = makeDisplayCode(this.rand);
+    this.offers.set(code, { badgeId, expires: this.now() + CODE_TTL_MS });
+    return code;
+  }
+
+  revokeOffer(badgeId) {
+    for (const [code, entry] of this.offers) if (entry.badgeId === badgeId) this.offers.delete(code);
+  }
+
+  // The controller's half: adopt whatever badge is showing this code.
+  adopt(code, sessionId, ip) {
+    if (this.rateLimited(ip)) return { error: 'rate' };
+    const entry = this.offers.get(normalizeDisplayCode(code));
+    if (!entry) return { error: 'unknown' };
+    this.offers.delete(normalizeDisplayCode(code));
+    if (this.now() > entry.expires) return { error: 'expired' };
+
+    const existing = this.badges.get(entry.badgeId);
+    const name = existing && existing.name ? existing.name : `Badge ${this.badgesOf(sessionId).length + 1}`;
+    this.badges.set(entry.badgeId, {
+      ...(existing || {}),
+      id: entry.badgeId,
+      name,
+      fw: (existing && existing.fw) || '',
+      sessionId,
+      trackId: existing ? existing.trackId ?? null : null,
+      lastSeen: this.now(),
+      conn: existing ? existing.conn : null,
+    });
+    return { ok: true, badgeId: entry.badgeId, name };
+  }
+
   // ---- badges ----
 
   attach(badgeId, fw, conn) {
@@ -188,6 +250,7 @@ export class Hub {
     const t = this.now();
     for (const [code, entry] of this.codes) if (t > entry.expires) this.codes.delete(code);
     for (const [ip, entry] of this.rate) if (t > entry.resets) this.rate.delete(ip);
+    for (const [code, entry] of this.offers) if (t > entry.expires) this.offers.delete(code);
   }
 
   stats() {

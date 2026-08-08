@@ -82,6 +82,51 @@ async function until(fn, what, timeout = 3000) {
   ok(isValidCodeShape(makeCode()), 'a generated code is always valid');
 }
 
+// ---- the display flow: badge shows a code, controller adopts it ----
+{
+  let clock = 2_000_000;
+  const hub = new Hub({ now: () => clock });
+  const s1 = hub.createSession();
+  const s2 = hub.createSession();
+
+  const code = hub.offerCode('badge-x');
+  ok(/^[A-HJ-NP-Z2-9]{6}$/.test(code), `a display code avoids confusable characters: ${code}`);
+
+  // Bound to the BADGE, not to a session - which is the security difference
+  // from the button flow, where the code is a bearer token.
+  const bad = hub.adopt('ZZZZZZ', s1, '1.2.3.4');
+  eq(bad.error, 'unknown', 'a wrong code adopts nothing');
+  const res = hub.adopt(code, s1, '1.2.3.4');
+  ok(res.ok && res.badgeId === 'badge-x', 'the right code adopts the badge that showed it');
+  eq(hub.badgesOf(s1).length, 1, 'into the adopting session');
+  eq(hub.badgesOf(s2).length, 0, 'and no other');
+
+  // Single use.
+  eq(hub.adopt(code, s2, '1.2.3.4').error, 'unknown', 'a display code cannot be reused');
+
+  // Case and whitespace: it is typed by a human off a screen.
+  const code2 = hub.offerCode('badge-y');
+  ok(hub.adopt(`  ${code2.toLowerCase()} `, s1, '1.2.3.4').ok, 'typed in lower case with spaces still works');
+
+  // Expiry.
+  const code3 = hub.offerCode('badge-z');
+  clock += CODE_TTL_MS + 1;
+  eq(hub.adopt(code3, s1, '1.2.3.4').error, 'expired', 'a stale display code is refused');
+
+  // A new offer replaces the old one for the same badge: reconnecting must not
+  // leave a redeemable code behind for a connection that is gone.
+  const first = hub.offerCode('badge-w');
+  const second = hub.offerCode('badge-w');
+  ok(first !== second, 'reconnecting mints a new code');
+  eq(hub.adopt(first, s1, '5.5.5.5').error, 'unknown', 'and the previous one stops working');
+  ok(hub.adopt(second, s1, '5.5.5.5').ok, 'while the current one works');
+
+  // Revoked on disconnect.
+  const live = hub.offerCode('badge-v');
+  hub.revokeOffer('badge-v');
+  eq(hub.adopt(live, s1, '5.5.5.5').error, 'unknown', 'a code dies with its connection');
+}
+
 // ---- end to end, over a real socket, with the reference badge ----
 {
   const { httpServer, hub } = createServer({});
@@ -146,6 +191,27 @@ async function until(fn, what, timeout = 3000) {
   const sched = badge.played[1];
   ok(Math.abs(sched.error) < 60, `a scheduled note lands near its time (off by ${sched.error.toFixed(1)} ms)`);
 
+  // The display flow, end to end: a fresh badge shows a code, the controller
+  // types it, and the badge is adopted on the same connection.
+  {
+    const shown = new FakeBadge({ url, id: 'display:flow:01', fw: 'test-2' });
+    const ev = [];
+    shown.onEvent = (e) => ev.push(e);
+    await shown.connect();
+    await until(() => ev.some((e) => e.t === 'welcome'), 'welcome for the display badge');
+    const w = ev.find((e) => e.t === 'welcome');
+    ok(w.code && /^[A-HJ-NP-Z2-9]{6}$/.test(w.code), `welcome carries a code to display: ${w.code}`);
+
+    controller.send({ t: 'adopt', code: w.code });
+    await until(() => ev.some((e) => e.t === 'paired'), 'the badge to be told it is adopted');
+    await until(
+      () => (controller.last('badges') || { badges: [] }).badges.some((b) => b.id === 'display:flow:01'),
+      'the controller roster to include it'
+    );
+    ok(true, 'a badge adopted by displayed code needs no button entry');
+    shown.close();
+  }
+
   // Renaming reaches the badge.
   controller.send({ t: 'rename', id: badgeIdOnServer, name: 'Bass badge' });
   await until(() => badge.name === 'Bass badge', 'the rename to reach the badge');
@@ -174,7 +240,10 @@ async function until(fn, what, timeout = 3000) {
   // keeps its badges.
   const returning = new (controller.constructor)();
   await returning.connect(controller.session);
-  eq(returning.last('welcome').badges.length, 1, 'resuming a session restores its badges');
+  // Two by now: the reconnected badge and the one adopted by displayed code.
+  const restored = returning.last('welcome').badges.map((b) => b.id);
+  ok(restored.includes('aa:bb:cc:dd:ee:ff') && restored.includes('display:flow:01'),
+    `resuming a session restores its badges (got ${JSON.stringify(restored)})`);
 
   badge.close(); again.close(); stranger.ws.close(); returning.ws.close(); controller.ws.close();
   await sleep(50);

@@ -56,13 +56,24 @@ export function mount(body, { store }) {
       <div class="lv-out-head">Connected
         <span class="lv-mode">clock ${s.offset >= 0 ? '+' : ''}${Math.round(s.offset)} ms</span></div>
 
+      <div class="bg-adopt">
+        <div class="harm-row">
+          <input type="text" id="bg-adopt-code" spellcheck="false" maxlength="8"
+            placeholder="code from the badge" />
+          <button class="btn" id="bg-adopt">Adopt</button>
+        </div>
+        <div class="in-hint">${s.adoptError
+          ? `That code ${s.adoptError === 'unknown' ? 'is not valid' : s.adoptError === 'expired' ? 'has expired' : 'was rejected'} - the badge shows a new one each time it connects.`
+          : 'Type the code shown on the badge.'}</div>
+      </div>
+
       ${pairing ? `
         <div class="bg-code">
           <div class="bg-code-glyphs">${showCode(s.code.code)}</div>
-          <div class="in-hint">Enter this on the badge · expires in
+          <div class="in-hint">For a badge with no display: enter this on it · expires in
             <b id="bg-countdown">${countdown(s.code.expires)}</b></div>
         </div>`
-        : '<button class="btn" id="bg-pair">Pair a badge</button>'}
+        : '<button class="btn-link" id="bg-pair">Badge has no display?</button>'}
 
       ${s.badges.length ? `<div class="bg-list">${s.badges.map((b) => `
         <div class="bg-badge${b.online ? '' : ' offline'}" data-id="${b.id}">
@@ -79,7 +90,7 @@ export function mount(body, { store }) {
             </select>
           </div>
         </div>`).join('')}</div>`
-        : '<div class="in-hint">No badges yet. Press <b>Pair a badge</b> and enter the code on it.</div>'}`;
+        : '<div class="in-hint">No badges yet. Type the code the badge is showing, above.</div>'}`;
   }
 
   // The countdown is the only thing that changes without an event, so it gets
@@ -113,11 +124,26 @@ export function mount(body, { store }) {
       ensureClient().requestCode();
       return;
     }
+    if (e.target.closest('#bg-adopt')) {
+      const input = body.querySelector('#bg-adopt-code');
+      const code = input.value.trim();
+      if (code) ensureClient().adopt(code);
+      input.value = '';
+      return;
+    }
     const forget = e.target.closest('[data-act="forget"]');
     if (forget) {
       const id = forget.closest('[data-id]').dataset.id;
       ensureClient().forget(id);
     }
+  });
+
+  body.addEventListener('keydown', (e) => {
+    if (e.target.id !== 'bg-adopt-code' || e.key !== 'Enter') return;
+    e.preventDefault();
+    const code = e.target.value.trim();
+    if (code) ensureClient().adopt(code);
+    e.target.value = '';
   });
 
   body.addEventListener('change', (e) => {

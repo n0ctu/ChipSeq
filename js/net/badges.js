@@ -46,7 +46,8 @@ const state = {
   connected: false,
   connecting: false,
   badges: [],
-  code: null, // { code, expires }
+  code: null, // { code, expires } - for the button flow
+  adoptError: null,
   offset: 0,
   error: null,
 };
@@ -176,10 +177,15 @@ export function createBadgeClient({ onChange = () => {} } = {}) {
         return;
       case 'badges':
         state.badges = msg.badges || [];
+        state.adoptError = null; // a roster change means an adopt worked
         changed();
         return;
       case 'code':
         state.code = { code: msg.code, expires: msg.expires };
+        changed();
+        return;
+      case 'adopt_failed':
+        state.adoptError = msg.reason || 'unknown';
         changed();
         return;
       case 'now':
@@ -234,6 +240,10 @@ export function createBadgeClient({ onChange = () => {} } = {}) {
     // playback is timestamped against this.
     serverNow: () => Date.now() + state.offset,
     requestCode: () => send({ t: 'code' }),
+    adopt: (code) => {
+      state.adoptError = null;
+      send({ t: 'adopt', code });
+    },
     rename: (id, name) => send({ t: 'rename', id, name }),
     map: (id, trackId) => send({ t: 'map', id, trackId: trackId || null }),
     forget: (id) => send({ t: 'forget', id }),

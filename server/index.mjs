@@ -40,6 +40,10 @@ const MIME = {
 export function createServer({ root, log = () => {} } = {}) {
   const hub = new Hub();
   const controllers = new Set(); // { conn, sessionId }
+  // Live sockets for badges that are connected but not yet adopted. The hub
+  // only knows badges it owns, so without this the display flow could mint a
+  // code for a badge and then have no way to tell it that it worked.
+  const pendingConns = new Map(); // badgeId -> conn
 
   const httpServer = http.createServer(async (req, res) => {
     if (req.url === '/health') {
@@ -93,6 +97,10 @@ export function createServer({ root, log = () => {} } = {}) {
 
       conn.onClose = () => {
         if (role === 'badge' && badgeId) {
+          // The offer dies with the connection: a code for a badge that is no
+          // longer there must not stay redeemable.
+          hub.revokeOffer(badgeId);
+          pendingConns.delete(badgeId);
           hub.detach(badgeId);
           const b = hub.badges.get(badgeId);
           if (b) pushBadges(b.sessionId);
@@ -151,10 +159,14 @@ export function createServer({ root, log = () => {} } = {}) {
             return;
           }
           const known = hub.attach(badgeId, msg.fw, conn);
+          if (!known) pendingConns.set(badgeId, conn);
+          // An unadopted badge is handed a code to DISPLAY. A badge with a
+          // screen shows it and you type it into the sequencer; one without
+          // ignores it and uses the button flow instead. Both work.
           conn.sendJson(
             known
               ? { t: 'welcome', v: PROTOCOL_VERSION, known: true, name: known.name }
-              : { t: 'welcome', v: PROTOCOL_VERSION, known: false }
+              : { t: 'welcome', v: PROTOCOL_VERSION, known: false, code: hub.offerCode(badgeId) }
           );
           if (known) pushBadges(known.sessionId);
           log('badge', { badgeId, known: !!known });
@@ -204,6 +216,24 @@ export function createServer({ root, log = () => {} } = {}) {
           case 'now':
             conn.sendJson({ t: 'now', s: Date.now() });
             return;
+          case 'adopt': {
+            const res = hub.adopt(msg.code, sessionId, ip);
+            if (res.error) {
+              conn.sendJson({ t: 'adopt_failed', reason: res.error });
+              log('adopt_failed', { reason: res.error });
+              return;
+            }
+            // Reunite the freshly adopted badge with its live socket.
+            const live = pendingConns.get(res.badgeId);
+            if (live) {
+              hub.attach(res.badgeId, '', live);
+              pendingConns.delete(res.badgeId);
+              live.sendJson({ t: 'paired', name: res.name });
+            }
+            pushBadges(sessionId);
+            log('adopted', { badgeId: res.badgeId, name: res.name });
+            return;
+          }
           case 'rename':
             if (hub.rename(sessionId, msg.id, msg.name)) {
               const b = hub.badges.get(msg.id);
