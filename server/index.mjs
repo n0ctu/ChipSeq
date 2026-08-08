@@ -94,6 +94,7 @@ export function createServer({ root, log = () => {} } = {}) {
       let role = null;
       let badgeId = null;
       let sessionId = null;
+      let badgePingSeen = false;
 
       conn.onClose = () => {
         if (role === 'badge' && badgeId) {
@@ -199,6 +200,10 @@ export function createServer({ root, log = () => {} } = {}) {
             // Answered immediately and without work, because everything this
             // measures is the network - any delay here is measured as clock error.
             conn.sendJson({ t: 'pong', c: msg.c, s: Date.now() });
+            if (!badgePingSeen) {
+              badgePingSeen = true;
+              log('badge_ping', { badgeId }); // once, so a silent badge is visible
+            }
             return;
           case 'bye':
             conn.close(1000, 'bye');

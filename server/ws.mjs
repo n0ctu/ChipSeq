@@ -91,6 +91,16 @@ export function decodeFrames(buf) {
   return { frames, rest: buf.subarray(off) };
 }
 
+// How often the server pings, and how long a client may go silent before it
+// is considered gone.
+//
+// Not optional: an idle WebSocket is dropped by all sorts of middleboxes, and
+// an embedded client that expects periodic traffic will close on its own. Real
+// badges were disconnecting after ~12 seconds of an otherwise healthy but
+// idle connection.
+export const PING_INTERVAL_MS = 10_000;
+export const IDLE_TIMEOUT_MS = 45_000;
+
 // One connection. Minimal surface on purpose: send/close plus three handlers.
 export class WsConnection {
   constructor(socket, { onMessage, onClose } = {}) {
@@ -100,12 +110,25 @@ export class WsConnection {
     this.open = true;
     this.id = randomBytes(8).toString('hex');
     this.remote = socket.remoteAddress || 'unknown';
+    this.lastSeen = Date.now();
+
+    // Keepalive: a ping the client answers keeps middleboxes from reaping the
+    // connection, and tells us it is still there.
+    this.keepAlive = setInterval(() => {
+      if (!this.open) return;
+      if (Date.now() - this.lastSeen > IDLE_TIMEOUT_MS) {
+        this.close(1001, 'idle');
+        return;
+      }
+      this.raw(encodeFrame(Buffer.alloc(0), OP.PING));
+    }, PING_INTERVAL_MS);
 
     let buffered = Buffer.alloc(0);
     // A message split across continuation frames is reassembled here.
     let partial = null;
 
     socket.on('data', (chunk) => {
+      this.lastSeen = Date.now(); // any traffic counts as alive
       buffered = Buffer.concat([buffered, chunk]);
       let out;
       try {
@@ -121,6 +144,7 @@ export class WsConnection {
     const done = () => {
       if (!this.open) return;
       this.open = false;
+      clearInterval(this.keepAlive);
       this.onClose();
     };
     socket.on('close', done);
@@ -177,6 +201,7 @@ export class WsConnection {
   close(code = 1000, reason = '') {
     if (!this.open) return;
     this.open = false;
+    clearInterval(this.keepAlive);
     const body = Buffer.alloc(2 + Buffer.byteLength(reason));
     body.writeUInt16BE(code, 0);
     body.write(reason, 2);
