@@ -6,6 +6,8 @@ import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findChrome } from './util.mjs';
+import { createServer as createBadgeServer } from '../server/index.mjs';
+import { FakeBadge } from '../tools/fake-badge.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const CHROME = findChrome();
@@ -25,6 +27,14 @@ const server = http.createServer(async (req, res) => {
   }
 });
 await new Promise((r) => server.listen(PORT, r));
+
+// A real badge server, on its own port, so the Badges card can be driven
+// end to end against the same code the hardware talks to - not a stub that
+// would agree with the card by construction.
+const badgeHub = createBadgeServer({});
+await new Promise((r) => badgeHub.httpServer.listen(0, r));
+const BADGE_PORT = badgeHub.httpServer.address().port;
+const BADGE_WS = `ws://127.0.0.1:${BADGE_PORT}/ws`;
 
 const chrome = spawn(CHROME, [
   '--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run',
@@ -1700,6 +1710,64 @@ await check('the make-up slider overrides Analyse and clears at zero', `(async (
     || 'set=' + set + ' shown=' + shown + ' manual=' + manual + ' heldAtZero=' + heldAtZero;
 })()`);
 
+// ---- badges: connect, adopt by displayed code, name, map ----
+//
+// Driven against a REAL badge server started by this harness, with the
+// reference fake badge on the other end. The card is the last untested link
+// in the chain, and the one a person actually touches.
+await check('the Badges card connects to a server', `(async () => {
+  const sec = document.getElementById('sec-badges');
+  if (!sec) return 'no badges card';
+  if (!sec.classList.contains('open')) sec.querySelector('.tool-card-head').click();
+  await new Promise((r) => setTimeout(r, 500));
+  const url = document.querySelector('#badges-body #bg-url');
+  if (!url) return 'no url field';
+  url.value = ${JSON.stringify(BADGE_WS)};
+  document.querySelector('#badges-body #bg-connect').click();
+  for (let i = 0; i < 60; i++) {
+    if (document.querySelector('#badges-body #bg-adopt')) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return 'never connected: ' + (document.querySelector('#badges-body .in-hint') || {}).textContent;
+})()`);
+
+// The fake badge connects and is handed a code to display, exactly as the
+// real firmware now does.
+const labBadge = new FakeBadge({ url: BADGE_WS, id: 'smoke:badge:01', fw: 'smoke-1' });
+await labBadge.connect();
+await sleep(500);
+
+await check('a badge is adopted by typing the code it shows', `(async () => {
+  const code = ${JSON.stringify(labBadge.showingCode || '')};
+  const input = document.querySelector('#badges-body #bg-adopt-code');
+  if (!input) return 'no adopt field';
+  input.value = code;
+  document.querySelector('#badges-body #bg-adopt').click();
+  for (let i = 0; i < 60; i++) {
+    const rows = document.querySelectorAll('#badges-body .bg-badge');
+    if (rows.length === 1) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  const hint = [...document.querySelectorAll('#badges-body .in-hint')].map((e) => e.textContent).join(' | ');
+  return 'not adopted: ' + hint;
+})()`);
+
+await check('the adopted badge shows as online and can be mapped to a track', `(async () => {
+  const row = document.querySelector('#badges-body .bg-badge');
+  if (!row) return 'no badge row';
+  const online = row.querySelector('.bg-dot.on') !== null;
+  const sel = row.querySelector('select[data-act="map"]');
+  if (!sel) return 'no track selector';
+  const trackId = window.__chipseq.store.getDoc().tracks[0].id;
+  const option = [...sel.options].find((o) => o.value === trackId);
+  if (!option) return 'the track is not offered';
+  sel.value = trackId;
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 400));
+  const after = document.querySelector('#badges-body select[data-act="map"]');
+  return (online && after.value === trackId) || 'online=' + online + ' mapped=' + after.value;
+})()`);
+
 // ---- effects: buses and sends ----
 //
 // The plan's verification for this phase: identical topology in an
@@ -2708,6 +2776,9 @@ if (consoleErrors.length) {
   pass++;
   console.log('OK   no console errors');
 }
+
+labBadge.close();
+badgeHub.httpServer.close();
 
 console.log(`\n${pass} passed, ${fail} failed`);
 chrome.kill();
