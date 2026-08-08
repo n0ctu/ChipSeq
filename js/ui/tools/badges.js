@@ -4,7 +4,7 @@
 // - the badge has a d-pad, so "↑ → ↓ ← A B" is the instruction and "URDLAB" is
 // only how it travels over the wire.
 
-import { createBadgeClient, badgeState, savedUrl, shouldAutoConnect } from '../../net/badges.js';
+import { createBadgeClient, badgeState, savedUrl, shouldAutoConnect, isGuessedUrl } from '../../net/badges.js';
 import { icon } from '../icons.js';
 
 // The wire alphabet, as the thing in your hands.
@@ -34,9 +34,12 @@ export function mount(body, { store }) {
       <div class="harm-row">
         <input type="text" id="bg-url" spellcheck="false" value="${s.url || savedUrl()}"
           placeholder="wss://box.tailnet.ts.net/ws"
-          title="The badge server. Served from the server itself, this is filled in already." />
+          title="The badge server's WebSocket address. Not the page you are on unless the server is also serving this app." />
         <button class="btn" id="bg-connect">${s.connected ? 'Disconnect' : 'Connect'}</button>
-      </div>`;
+      </div>
+      ${!s.connected && isGuessedUrl() ? `<div class="in-hint">Guessed from this page's address.
+        If the badge server runs elsewhere, correct the port - it is a
+        <b>ws://</b> address, not http.</div>` : ''}`;
 
     if (!s.connected) {
       body.innerHTML = `

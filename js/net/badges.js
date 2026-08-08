@@ -56,10 +56,13 @@ export function badgeState() {
   return state;
 }
 
+// A guess, and only a good one when the app is served BY the badge server.
+// Opened from a plain dev server it points at that instead, which is silently
+// wrong - so isGuessedUrl() lets the card say so rather than presenting it as
+// settled fact.
 export function defaultServerUrl() {
   try {
-    // Served from the badge server itself? Then the socket is right here, and
-    // the scheme has to follow the page or the browser will refuse it.
+    // The scheme has to follow the page: an https page cannot open ws://.
     const { protocol, host } = window.location;
     if (protocol === 'http:' || protocol === 'https:') {
       return `${protocol === 'https:' ? 'wss' : 'ws'}://${host}/ws`;
@@ -68,6 +71,12 @@ export function defaultServerUrl() {
     /* no window: tests */
   }
   return '';
+}
+
+// True when the address shown is the origin guess rather than one that has
+// actually worked. The port is the part that is usually wrong.
+export function isGuessedUrl() {
+  return !read(URL_KEY) && !!defaultServerUrl();
 }
 
 const read = (key, fallback = '') => {
