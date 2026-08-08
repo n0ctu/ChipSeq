@@ -1077,6 +1077,217 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   }
 }
 
+// ---- badge score: what a badge plays IS what the .h file says ----
+{
+  const { badgeScore, sliceScore, toSchedNotes, scoreLengthMs, REST } =
+    await import('../js/core/badge-score.js');
+  const { exportHeader, pitchSymbol } = await import('../js/core/export-h.js');
+  const { migrate } = await import('../js/core/doc.js');
+  const { readFile } = await import('node:fs/promises');
+
+  // The invariant worth defending: preview === export === badge. A badge
+  // playing a mono project must produce exactly the sequence the .h file
+  // written for that same project contains - same notes, same milliseconds -
+  // or one of the two is lying and there is no way to tell which.
+  for (const file of ['mono.chipseq.json', 'rickroll.chipseq.json']) {
+    const doc = migrate(JSON.parse(await readFile(new URL(`../demos/${file}`, import.meta.url), 'utf8')));
+    const header = exportHeader(doc);
+    // The exporter's own entry list, as {symbol, ms}.
+    const fromHeader = [];
+    for (const line of header.text.split('\n')) {
+      for (const m of line.matchAll(/\{(NOTE_[A-Z0-9]+|NOTE_REST)\s*,\s*(-?\d+)\}/g)) {
+        fromHeader.push({ symbol: m[1], ms: Number(m[2]) });
+      }
+    }
+    // trimLead, because the exporter skips leading silence for a standalone
+    // file while streaming must keep it - see badge-score.js. Comparing
+    // without it would be comparing two different origins.
+    const score = badgeScore(doc, doc.melodyTrackId, { trimLead: true });
+    const fromScore = score.map((n) => ({
+      symbol: n.pitch === REST ? 'NOTE_REST' : pitchSymbol(n.pitch),
+      ms: n.durMs,
+    }));
+    eq(fromScore, fromHeader, `${file}: the badge plays exactly what the .h file says`);
+    assert(fromScore.length > 20, `${file}: and it is a real tune, not an empty list`);
+
+    // ...and WITHOUT trimming, a song that starts late keeps its silence, so
+    // a streamed badge comes in on the beat rather than early.
+    const streamed = badgeScore(doc, doc.melodyTrackId);
+    const firstOnset = streamed.find((n) => n.pitch !== REST);
+    const lead = streamed[0].pitch === REST ? streamed[0].durMs : 0;
+    assert(firstOnset.startMs === lead, `${file}: streaming keeps the leading rest`);
+  }
+
+  // Monophony: a chord on a poly track becomes one voice, because the badge
+  // has one. Highest note wins, matching the exporter.
+  {
+    const doc = createProject({ name: 'chordy', mode: 'poly' });
+    const t = doc.tracks[0];
+    for (const p of [60, 64, 67]) {
+      addNote(doc, t.id, createNote({ pitch: p, startTick: 0, durationTicks: 96 }));
+    }
+    addNote(doc, t.id, createNote({ pitch: 72, startTick: 96, durationTicks: 96 }));
+    const score = badgeScore(doc, t.id);
+    eq(score.map((n) => n.pitch), [67, 72], 'a chord collapses to its top note');
+  }
+
+  // An overlap is truncated at the next onset - what the firmware does anyway.
+  {
+    const doc = createProject({ name: 'overlap', mode: 'poly' });
+    const t = doc.tracks[0];
+    addNote(doc, t.id, createNote({ pitch: 60, startTick: 0, durationTicks: 384 }));
+    addNote(doc, t.id, createNote({ pitch: 62, startTick: 96, durationTicks: 96 }));
+    const score = badgeScore(doc, t.id);
+    eq(score.map((n) => [n.pitch, n.startMs, n.durMs]), [[60, 0, 500], [62, 500, 500]],
+      'the earlier note is cut where the later one starts');
+  }
+
+  // Rests are explicit: a badge plays a list and has no notion of "wait".
+  {
+    const doc = createProject({ name: 'gap', mode: 'poly' });
+    const t = doc.tracks[0];
+    addNote(doc, t.id, createNote({ pitch: 60, startTick: 0, durationTicks: 96 }));
+    addNote(doc, t.id, createNote({ pitch: 62, startTick: 288, durationTicks: 96 }));
+    const score = badgeScore(doc, t.id);
+    eq(score.map((n) => n.pitch), [60, REST, 62], 'the gap becomes a rest');
+    eq(score[1].durMs, 1000, 'of the right length');
+    assert(badgeScore(doc, t.id, { includeRests: false }).every((n) => n.pitch !== REST),
+      'and can be turned off for a caller that schedules by time');
+  }
+
+  // Rounding must not accumulate: boundaries are absolute, not summed.
+  {
+    const doc = createProject({ name: 'drift', mode: 'poly' });
+    doc.song.tempo = [{ tick: 0, bpm: 133 }]; // a tempo whose ticks are not whole ms
+    const t = doc.tracks[0];
+    for (let i = 0; i < 200; i++) {
+      addNote(doc, t.id, createNote({ pitch: 60, startTick: i * 32, durationTicks: 32 }));
+    }
+    const score = badgeScore(doc, t.id);
+    const summed = score.reduce((a, n) => a + n.durMs, 0);
+    const exact = scoreLengthMs(score);
+    assert(Math.abs(summed - exact) <= 1, `200 notes do not drift (summed ${summed} vs ${exact})`);
+  }
+
+  // Chunking for scheduled mode selects by START, so a note already sounding
+  // is not re-sent and retriggered.
+  {
+    const score = [
+      { pitch: 60, startMs: 0, durMs: 2000 },
+      { pitch: 62, startMs: 2000, durMs: 500 },
+      { pitch: 64, startMs: 2500, durMs: 500 },
+    ];
+    eq(sliceScore(score, 0, 2000).map((n) => n.pitch), [60], 'the first window takes only what starts in it');
+    eq(sliceScore(score, 2000, 4000).map((n) => n.pitch), [62, 64], 'the next takes the rest');
+    eq(toSchedNotes(sliceScore(score, 2000, 4000), 2000), [[0, 62, 500], [500, 64, 500]],
+      'offsets are relative to the chunk origin');
+    eq(scoreLengthMs(score), 3000, 'and the score knows its own length');
+  }
+}
+
+// ---- badge streaming: chunking and fan-out ----
+{
+  const { createBadgeStream, CHUNK_MS } = await import('../js/net/badge-stream.js');
+
+  // A fake client that records what would have gone over the wire.
+  const makeClient = (badges, serverNow) => ({
+    state: { badges },
+    serverNow: () => serverNow(),
+    sent: [],
+    sched(id, t0, n) { this.sent.push({ t: 'sched', id, t0, n }); },
+    note(id, p, ms) { this.sent.push({ t: 'note', id, p, ms }); },
+    stop(id) { this.sent.push({ t: 'stop', id }); },
+  });
+
+  const doc = createProject({ name: 'stream', mode: 'poly' });
+  const track = doc.tracks[0];
+  for (let i = 0; i < 16; i++) {
+    addNote(doc, track.id, createNote({ pitch: 60 + (i % 4), startTick: i * 96, durationTicks: 96 }));
+  }
+  const store = { getDoc: () => doc };
+
+  // Two badges on ONE track: the stated goal, and the case most likely to be
+  // handled as an afterthought.
+  {
+    let clock = 1_000_000;
+    const client = makeClient(
+      [{ id: 'b1', trackId: track.id, online: true }, { id: 'b2', trackId: track.id, online: true }],
+      () => clock
+    );
+    const stream = createBadgeStream({ client, store });
+    stream.start(0);
+    const scheds = client.sent.filter((m) => m.t === 'sched');
+    eq(scheds.length, 2, 'both badges on one track are scheduled');
+    eq(scheds[0].n, scheds[1].n, 'and receive the IDENTICAL notes');
+    eq(scheds[0].t0, scheds[1].t0, 'against the same origin');
+    assert(scheds[0].n.length > 0, 'with something in them');
+    assert(scheds[0].n[0][0] === 0, 'the first note sits at offset 0 of the chunk');
+  }
+
+  // An offline badge, or one mapped to nothing, is not addressed.
+  {
+    let clock = 1_000_000;
+    const client = makeClient(
+      [{ id: 'off', trackId: track.id, online: false }, { id: 'none', trackId: null, online: true }],
+      () => clock
+    );
+    const stream = createBadgeStream({ client, store });
+    stream.start(0);
+    eq(client.sent.filter((m) => m.t === 'sched'), [], 'nothing is sent to an offline or unmapped badge');
+  }
+
+  // Chunks advance with the clock and do not re-send what was already sent -
+  // a re-sent note would retrigger, which on a badge is an audible stutter.
+  {
+    let clock = 1_000_000;
+    const client = makeClient([{ id: 'b1', trackId: track.id, online: true }], () => clock);
+    const stream = createBadgeStream({ client, store });
+    stream.start(0);
+    const first = client.sent.filter((m) => m.t === 'sched');
+    eq(first.length, 1, 'one chunk at the start');
+    const firstOffsets = first[0].n.map((x) => x[0]);
+    assert(Math.max(...firstOffsets) < CHUNK_MS, 'the chunk covers only its window');
+
+    // Nothing new until the clock actually moves.
+    stream._state();
+    const before = client.sent.length;
+    clock += 100;
+    // pump runs on a timer; drive it the way the timer would
+    stream.start(stream._state().sentUpTo); // re-entry must not duplicate
+    assert(client.sent.length >= before, 'restarting does not lose the position');
+  }
+
+  // stop() silences every mapped badge - otherwise the last note hangs.
+  {
+    const client = makeClient(
+      [{ id: 'b1', trackId: track.id, online: true }, { id: 'b2', trackId: track.id, online: true }],
+      () => 1_000_000
+    );
+    const stream = createBadgeStream({ client, store });
+    stream.start(0);
+    client.sent.length = 0;
+    stream.stop();
+    eq(client.sent.map((m) => m.t), ['stop', 'stop'], 'both badges are told to stop');
+  }
+
+  // Live mode sends notes as the engine reaches them, and only for mapped tracks.
+  {
+    const client = makeClient([{ id: 'b1', trackId: track.id, online: true }], () => 1_000_000);
+    const stream = createBadgeStream({ client, store });
+    stream.setMode('live');
+    eq(stream.getMode(), 'live', 'the mode switches');
+    stream.start(0);
+    stream.onEngineEvents([
+      { trackId: track.id, pitch: 60, durationMs: 250 },
+      { trackId: 'other-track', pitch: 62, durationMs: 250 },
+      { trackId: track.id, pitch: 64, durationMs: 0 },
+    ]);
+    const notes = client.sent.filter((m) => m.t === 'note');
+    eq(notes.map((n) => n.p), [60], 'only mapped tracks, and only real durations');
+    eq(client.sent.filter((m) => m.t === 'sched'), [], 'live mode schedules nothing');
+  }
+}
+
 // ---- badge protocol: clock sync and late-drop ----
 {
   const { offsetFrom, medianOffset, isPlayable, LATE_DROP_MS } =

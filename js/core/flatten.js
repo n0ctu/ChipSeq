@@ -135,6 +135,39 @@ export function flattenNote(doc, trackId, noteId) {
 // Mono mode: only the active track, badge instrument forced, overlaps truncated
 // (earlier note cut at the later note's start - matches firmware semantics).
 
+// One voice, from a stream that may have more.
+//
+// Extracted so mono export and badge playback cannot drift apart: a badge has
+// exactly one voice, so a poly track sent to one must be reduced by the same
+// rules the .h exporter already uses, or the same song would play differently
+// on the badge than the file says it should.
+//
+// Expects events sorted by (startTick, pitch), which is what flattenSong does.
+export function enforceMonophony(events) {
+  // Truncate anything still sounding when the next note starts - which is what
+  // the firmware does anyway, so the file should say so.
+  for (let i = 0; i < events.length - 1; i++) {
+    const cur = events[i];
+    const next = events[i + 1];
+    const end = cur.startTick + cur.durationTicks;
+    if (next.startTick < end) {
+      cur.durationTicks = Math.max(0, next.startTick - cur.startTick);
+    }
+  }
+  // Simultaneous starts: the higher pitch wins, the rest are dropped. Sorting
+  // put the highest last, so each one replaces its predecessor.
+  const filtered = [];
+  for (const ev of events) {
+    const prev = filtered[filtered.length - 1];
+    if (prev && prev.startTick === ev.startTick) {
+      filtered[filtered.length - 1] = ev;
+      continue;
+    }
+    if (ev.durationTicks > 0) filtered.push(ev);
+  }
+  return filtered;
+}
+
 export function flattenSong(doc) {
   const ctx = makeArpContext(doc);
   const warnings = [];
@@ -209,26 +242,7 @@ export function flattenSong(doc) {
         warnings.push({ type: 'overlap', noteId: id, trackId: track.id });
       }
     }
-    // Enforce monophony on the flattened events themselves.
-    for (let i = 0; i < events.length - 1; i++) {
-      const cur = events[i];
-      const next = events[i + 1];
-      const end = cur.startTick + cur.durationTicks;
-      if (next.startTick < end) {
-        cur.durationTicks = Math.max(0, next.startTick - cur.startTick);
-      }
-    }
-    // Simultaneous starts: keep the higher pitch (last after sort), drop the rest.
-    const filtered = [];
-    for (const ev of events) {
-      const prev = filtered[filtered.length - 1];
-      if (prev && prev.startTick === ev.startTick) {
-        filtered[filtered.length - 1] = ev; // higher pitch wins (sorted by pitch)
-        continue;
-      }
-      if (ev.durationTicks > 0) filtered.push(ev);
-    }
-    return { events: filtered, warnings };
+    return { events: enforceMonophony(events), warnings };
   }
 
   // Polyphony normalization runs LAST, on the finished stream: it needs to

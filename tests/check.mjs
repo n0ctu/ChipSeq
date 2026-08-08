@@ -16,6 +16,7 @@ const modules = [
   // would only surface as an empty card at runtime
   'ui/tools-panel.js', 'ui/tools/manifest.js', 'ui/palette.js', 'ui/commands.js',
   'core/exporters.js', 'core/effects.js', 'ui/tools/effects.js',
+  'core/badge-score.js', 'net/badges.js', 'net/badge-stream.js', 'ui/tools/badges.js',
   'ui/tools/harmonics.js', 'ui/tools/transpose.js', 'ui/tools/instrument.js',
   'ui/tools/envelope-editor.js', 'ui/tools/mixer.js', 'ui/tools/levels.js',
   'core/normalize.js',
