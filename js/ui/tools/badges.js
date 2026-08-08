@@ -26,7 +26,39 @@ export function mount(body, { store }) {
 
   const state = badgeState();
 
+  // The card rebuilds its DOM on every state change, and state changes for
+  // reasons that have nothing to do with what you are typing - a clock sample
+  // every few seconds, a badge coming online, a track being renamed. Without
+  // this, the field you are typing a code into is destroyed underneath you.
+  //
+  // Restoring focus and caret AFTER the rebuild is the fix that survives
+  // whatever triggers the next render, rather than chasing each trigger.
+  function withFocusPreserved(fn) {
+    const active = document.activeElement;
+    const id = active && body.contains(active) ? active.id : null;
+    const value = id ? active.value : null;
+    const start = id && active.selectionStart != null ? active.selectionStart : null;
+    const end = id && active.selectionEnd != null ? active.selectionEnd : null;
+    fn();
+    if (!id) return;
+    const next = body.querySelector('#' + id);
+    if (!next) return;
+    if (value != null && next.value !== undefined) next.value = value;
+    next.focus();
+    if (start != null && next.setSelectionRange) {
+      try {
+        next.setSelectionRange(start, end);
+      } catch {
+        /* not a text input */
+      }
+    }
+  }
+
   function render() {
+    withFocusPreserved(() => draw());
+  }
+
+  function draw() {
     const doc = store.getDoc();
     const s = state;
 

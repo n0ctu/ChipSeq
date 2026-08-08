@@ -56,6 +56,12 @@ export function badgeState() {
   return state;
 }
 
+// Where the deployed build points by default. A static host cannot itself be
+// the badge server, so guessing its origin there is guaranteed wrong - this is
+// the server the GitHub Pages build should reach instead. Anyone running their
+// own only has to change the field once; it is remembered.
+export const PUBLIC_BADGE_SERVER = 'wss://chipseq.taileaee9.ts.net/ws';
+
 // A guess, and only a good one when the app is served BY the badge server.
 // Opened from a plain dev server it points at that instead, which is silently
 // wrong - so isGuessedUrl() lets the card say so rather than presenting it as
@@ -64,6 +70,9 @@ export function defaultServerUrl() {
   try {
     // The scheme has to follow the page: an https page cannot open ws://.
     const { protocol, host } = window.location;
+    // Pages serves static files and nothing else, so its origin is never the
+    // badge server. Guessing it would be confidently wrong.
+    if (/(^|\.)github\.io$/.test(host)) return PUBLIC_BADGE_SERVER;
     if (protocol === 'http:' || protocol === 'https:') {
       return `${protocol === 'https:' ? 'wss' : 'ws'}://${host}/ws`;
     }
@@ -198,8 +207,10 @@ export function createBadgeClient({ onChange = () => {} } = {}) {
         changed();
         return;
       case 'now':
+        // Deliberately no changed(): a clock sample every few seconds is not
+        // a reason to rebuild the UI, and repainting on a timer is how a
+        // text field loses what you are typing into it.
         note(msg.s);
-        changed();
         return;
       case 'error':
         state.error = msg.msg || msg.code;

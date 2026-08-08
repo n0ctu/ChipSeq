@@ -97,9 +97,12 @@ export function createServer({ root, log = () => {} } = {}) {
 
       conn.onClose = () => {
         if (role === 'badge' && badgeId) {
-          // The offer dies with the connection: a code for a badge that is no
-          // longer there must not stay redeemable.
-          hub.revokeOffer(badgeId);
+          // The offer deliberately OUTLIVES the connection, for its full TTL.
+          // Killing it here was wrong: a badge with a flaky link disconnects
+          // seconds after being handed a code, and the user is then typing a
+          // code the server has already forgotten while the badge is still
+          // displaying it. It names one specific badge and expires on its
+          // own; that is enough.
           pendingConns.delete(badgeId);
           hub.detach(badgeId);
           const b = hub.badges.get(badgeId);

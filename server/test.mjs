@@ -113,18 +113,27 @@ async function until(fn, what, timeout = 3000) {
   clock += CODE_TTL_MS + 1;
   eq(hub.adopt(code3, s1, '1.2.3.4').error, 'expired', 'a stale display code is refused');
 
-  // A new offer replaces the old one for the same badge: reconnecting must not
-  // leave a redeemable code behind for a connection that is gone.
+  // Reconnecting keeps the SAME code, because the badge is still showing it.
+  // A badge with a flaky link would otherwise display a code the server had
+  // already replaced - which is exactly what happened with real hardware.
   const first = hub.offerCode('badge-w');
   const second = hub.offerCode('badge-w');
-  ok(first !== second, 'reconnecting mints a new code');
-  eq(hub.adopt(first, s1, '5.5.5.5').error, 'unknown', 'and the previous one stops working');
-  ok(hub.adopt(second, s1, '5.5.5.5').ok, 'while the current one works');
+  eq(second, first, 'reconnecting reuses the code the badge is displaying');
+  ok(hub.adopt(first, s1, '5.5.5.5').ok, 'so what is on screen still works');
 
-  // Revoked on disconnect.
-  const live = hub.offerCode('badge-v');
-  hub.revokeOffer('badge-v');
-  eq(hub.adopt(live, s1, '5.5.5.5').error, 'unknown', 'a code dies with its connection');
+  // Once it expires, a reconnect does mint a fresh one.
+  const old1 = hub.offerCode('badge-u');
+  clock += CODE_TTL_MS + 1;
+  const new1 = hub.offerCode('badge-u');
+  ok(new1 !== old1, 'an expired offer is replaced');
+  // "unknown" rather than "expired": minting the replacement removed the old
+  // entry, so there is nothing left to report an expiry date for. The
+  // distinction only survives while the entry is still in the map, which is
+  // the case that matters - a code sitting past its TTL, untouched.
+  eq(hub.adopt(old1, s1, '5.5.5.5').error, 'unknown', 'and the stale one no longer works');
+  const untouched = hub.offerCode('badge-t');
+  clock += CODE_TTL_MS + 1;
+  eq(hub.adopt(untouched, s1, '5.5.5.5').error, 'expired', 'one that simply timed out says so');
 }
 
 // ---- end to end, over a real socket, with the reference badge ----

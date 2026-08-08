@@ -151,6 +151,13 @@ export class Hub {
   // are also the badge it names - and it dies with the connection.
 
   offerCode(badgeId) {
+    // Reuse an unexpired offer rather than minting a fresh one. A badge that
+    // reconnects is still SHOWING the old code on its screen, and handing it
+    // a new one every time the link blips means the thing in front of the
+    // user is wrong more often than it is right.
+    for (const [code, entry] of this.offers) {
+      if (entry.badgeId === badgeId && this.now() <= entry.expires) return code;
+    }
     this.revokeOffer(badgeId);
     let code = makeDisplayCode(this.rand);
     let guard = 0;
@@ -259,6 +266,7 @@ export class Hub {
       badges: this.badges.size,
       online: [...this.badges.values()].filter((b) => b.conn && b.conn.open).length,
       codes: this.codes.size,
+      offers: this.offers.size,
     };
   }
 }

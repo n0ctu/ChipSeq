@@ -1737,6 +1737,32 @@ const labBadge = new FakeBadge({ url: BADGE_WS, id: 'smoke:badge:01', fw: 'smoke
 await labBadge.connect();
 await sleep(500);
 
+// The card repaints on every state change, and state changes on a timer. If
+// that repaint destroys the field you are typing into, the feature is unusable
+// no matter how correct the protocol is.
+await check('typing a code survives a repaint', `(async () => {
+  const input = document.querySelector('#badges-body #bg-adopt-code');
+  if (!input) return 'no adopt field';
+  input.focus();
+  input.value = 'ABC';
+  input.setSelectionRange(3, 3);
+  // force the repaint a clock sample or a roster change would cause
+  const { badgeState } = await import('/js/net/badges.js');
+  const s = badgeState();
+  s.badges = [...s.badges];
+  document.querySelector('#badges-body #bg-url').dispatchEvent(new Event('input', { bubbles: true }));
+  window.__chipseq.store.commit('force repaint', ['tracks'], () => {});
+  await new Promise((r) => setTimeout(r, 300));
+
+  const after = document.querySelector('#badges-body #bg-adopt-code');
+  const kept = after && after.value === 'ABC';
+  const focused = document.activeElement === after;
+  const caret = after && after.selectionStart === 3;
+  if (after) after.value = '';
+  return (kept && focused && caret)
+    || 'kept=' + kept + ' focused=' + focused + ' caret=' + caret;
+})()`);
+
 await check('a badge is adopted by typing the code it shows', `(async () => {
   const code = ${JSON.stringify(labBadge.showingCode || '')};
   const input = document.querySelector('#badges-body #bg-adopt-code');
