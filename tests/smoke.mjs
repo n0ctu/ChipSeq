@@ -1794,6 +1794,53 @@ await check('the adopted badge shows as online and can be mapped to a track', `(
   return (online && after.value === trackId) || 'online=' + online + ' mapped=' + after.value;
 })()`);
 
+// The whole point of the feature: pressing play must send notes to a mapped
+// badge. Everything else was tested in isolation and the integration was not,
+// which is precisely how it came to send nothing at all.
+//
+// The notes arrive at the fake badge in THIS process, so the assertion is here
+// rather than in the page - the browser cannot see what came out the far end.
+await evaluate(`(async () => {
+  const store = window.__chipseq.store;
+  const { getBadgeClient } = await import('/js/net/badges.js');
+  const badge = getBadgeClient().state.badges[0];
+  if (!badge || !badge.trackId) return 'not mapped';
+  store.commit('badge fixture', ['notes', 'tracks'], (d) => {
+    const t = d.tracks.find((x) => x.id === badge.trackId);
+    t.notes = [];
+    for (let i = 0; i < 8; i++) {
+      t.notes.push({ id: 'bn-' + i, pitch: 60 + [0, 4, 7, 12][i % 4], startTick: i * 96,
+        durationTicks: 96, velocity: 100, harmonics: null });
+    }
+  });
+  return 'ok';
+})()`);
+await sleep(400);
+
+labBadge.played.length = 0;
+await evaluate(`(async () => {
+  await window.__chipseq.engine.ensureCtx();
+  window.__chipseq.engine.play(0);
+})()`);
+await sleep(1500);
+await evaluate(`window.__chipseq.engine.stop()`);
+await sleep(300);
+
+{
+  const got = labBadge.played.length;
+  if (got > 0) {
+    pass++;
+    console.log('OK  ', `pressing play streams notes to a mapped badge (${got} received)`);
+  } else {
+    fail++;
+    console.log('FAIL', 'pressing play streams notes to a mapped badge -> nothing arrived');
+  }
+  // ...and stopping must silence it, or the last note hangs on the hardware.
+  const quiet = labBadge.pending.size === 0;
+  if (quiet) { pass++; console.log('OK  ', 'stopping clears the badge queue'); }
+  else { fail++; console.log('FAIL', 'stopping clears the badge queue -> ' + labBadge.pending.size + ' left'); }
+}
+
 // ---- effects: buses and sends ----
 //
 // The plan's verification for this phase: identical topology in an

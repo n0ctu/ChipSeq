@@ -143,6 +143,15 @@ export function createEngine(store) {
             pan: ev.pan ?? null,
           });
           liveNodes.add(node);
+          // Mirrored to anything streaming this performance elsewhere. Emitted
+          // from the SAME loop that feeds the speakers, so a badge and the
+          // browser cannot disagree about what the song is.
+          emitter.emit('scheduled', {
+            trackId: ev.trackId,
+            pitch: ev.pitch,
+            startTime: start,
+            durationMs: Math.round((stop - start) * 1000),
+          });
           node.onended = () => liveNodes.delete(node);
         }
         eventIndex++;

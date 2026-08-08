@@ -4,7 +4,7 @@
 // - the badge has a d-pad, so "↑ → ↓ ← A B" is the instruction and "URDLAB" is
 // only how it travels over the wire.
 
-import { createBadgeClient, badgeState, savedUrl, shouldAutoConnect, isGuessedUrl } from '../../net/badges.js';
+import { getBadgeClient, onBadgeChange, badgeState, savedUrl, shouldAutoConnect, isGuessedUrl } from '../../net/badges.js';
 import { icon } from '../icons.js';
 
 // The wire alphabet, as the thing in your hands.
@@ -22,6 +22,7 @@ export function countdown(expires, now = Date.now()) {
 
 export function mount(body, { store }) {
   let client = null;
+  let unsubscribe = null;
   let tick = null;
 
   const state = badgeState();
@@ -143,8 +144,13 @@ export function mount(body, { store }) {
     }, 500);
   }
 
+  // The SHARED client - the transport streams through the same one, so a badge
+  // adopted here is a badge the player can actually address.
   function ensureClient() {
-    if (!client) client = createBadgeClient({ onChange: render });
+    if (!client) {
+      client = getBadgeClient();
+      unsubscribe = onBadgeChange(render);
+    }
     return client;
   }
 

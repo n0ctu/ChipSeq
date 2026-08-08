@@ -1,13 +1,15 @@
 // Boot: create stores + engine, wire all UI components. The only place the
 // core and UI layers are composed.
 
-import { createProject, applyImport, mergeImport, uid, activeTrack, trackPitchCenter, bpmAt, unsupportedFeatures, PPQ } from './core/doc.js';
+import { createProject, applyImport, mergeImport, uid, activeTrack, trackPitchCenter, bpmAt, unsupportedFeatures, PPQ, tickToSeconds } from './core/doc.js';
 import { createStore } from './core/store.js';
 import {
   attachAutosave, saveProject, importProjectFile, listProjects, loadProject,
   lastOpenId, purgeSeededDemos,
 } from './core/persist.js';
 import { createEngine } from './core/engine.js';
+import { createBadgeStream } from './net/badge-stream.js';
+import { getBadgeClient } from './net/badges.js';
 import { parseMidi } from './core/midi-import.js';
 
 import { createUiStore } from './ui/ui-store.js';
@@ -202,6 +204,26 @@ const actions = initToolbar({
     store.emit('saved', { at: Date.now() });
   },
 });
+
+// ---- badge streaming ----
+//
+// The transport drives it: pressing play starts the stream, stopping stops it.
+// Without this the Badges card could adopt and map a badge and then send it
+// absolutely nothing, which is exactly how it behaved before.
+const badgeStream = createBadgeStream({ client: getBadgeClient(), store });
+
+engine.on('playstate', ({ playing, fromTick }) => {
+  if (playing) {
+    const doc = store.getDoc();
+    badgeStream.start(tickToSeconds(doc, fromTick || 0) * 1000);
+  } else {
+    badgeStream.stop();
+  }
+});
+
+// Live mode mirrors the engine's own scheduling decisions rather than making
+// its own, so the badges play the performance the speakers are playing.
+engine.on('scheduled', (ev) => badgeStream.onEngineEvents([ev]));
 
 initStatusBar({ store, uiStore, conflicts, roll, engine });
 // The sidebar builds its cards from js/ui/tools/manifest.js and imports a

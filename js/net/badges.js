@@ -114,6 +114,27 @@ export function shouldAutoConnect() {
 
 // ---- the client ----
 
+// One client per page.
+//
+// The Badges card and the transport both need it, and two connections would
+// mean two sessions, two rosters, and badges visible in the card that the
+// player cannot address. The card was creating its own, which is why nothing
+// played: the stream held a different client that had never connected.
+let shared = null;
+const listeners = new Set();
+
+export function getBadgeClient() {
+  if (!shared) {
+    shared = createBadgeClient({ onChange: (s) => listeners.forEach((fn) => fn(s)) });
+  }
+  return shared;
+}
+
+export function onBadgeChange(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
 export function createBadgeClient({ onChange = () => {} } = {}) {
   let ws = null;
   let attempt = 0;
