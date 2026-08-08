@@ -516,3 +516,17 @@ body.dragging::after {
 .lv-note { font-size: 10px; color: var(--text-dim); line-height: 1.4; }
 /* the estimate, demoted */
 .lv-readout b { font-size: 11px; }
+
+/* Badges card. The pairing code is the thing you press, so it is shown large
+   and as glyphs - "URDLAB" is only how it travels over the wire. */
+.bg-code { background: var(--bg-2); border: 1px solid var(--line); border-radius: 4px; padding: 8px; }
+.bg-code-glyphs {
+  font-family: var(--font-mono); font-size: 20px; letter-spacing: 0.12em;
+  color: var(--text); text-align: center; padding: 4px 0;
+}
+.bg-list { display: flex; flex-direction: column; gap: 6px; }
+.bg-badge { border: 1px solid var(--line); border-radius: 4px; padding: 6px; }
+.bg-badge.offline { opacity: 0.55; }
+.bg-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); flex: none; }
+.bg-dot.on { background: var(--accent); }
+.bg-name { flex: 1; }

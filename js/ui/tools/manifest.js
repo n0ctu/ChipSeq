@@ -29,6 +29,7 @@
 //   label - short context line, shown open or closed.
 
 import { APP_VERSION } from '../../core/version.js';
+import { badgeState } from '../../net/badges.js';
 import { activeTrack, getTrack, trackGain, trackPan, DEFAULT_INSTRUMENTS } from '../../core/doc.js';
 import { DEFAULT_NORMALIZE, normalizeConfig } from '../../core/normalize.js';
 
@@ -99,6 +100,26 @@ export const TOOLS = [
       };
     },
     load: () => import(`./mixer.js?v=${APP_VERSION}`),
+  },
+  {
+    id: 'badges',
+    name: 'Badges',
+    // Both modes: a badge plays one monophonic part, which is exactly what a
+    // mono project is and what one poly track can be reduced to.
+    when: () => true,
+    // Reads a module-level snapshot rather than the socket, so a COLLAPSED
+    // card costs nothing and connects to nothing.
+    status: () => {
+      const s = badgeState();
+      if (!s.connected) return { on: false, label: s.connecting ? 'connecting…' : 'offline' };
+      const mapped = s.badges.filter((b) => b.trackId).length;
+      if (!s.badges.length) return { on: true, label: 'no badges' };
+      return {
+        on: mapped > 0,
+        label: `${s.badges.length} badge${s.badges.length === 1 ? '' : 's'}, ${mapped} mapped`,
+      };
+    },
+    load: () => import(`./badges.js?v=${APP_VERSION}`),
   },
   {
     id: 'effects',
