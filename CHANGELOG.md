@@ -9,7 +9,16 @@ tagged.
 
 ## Unreleased
 
-_Nothing yet._
+### Added
+
+- **Badge live playback, groundwork.** `docs/badge-protocol.md` specifies how a
+  badge talks to a server so the sequencer can play a track on it live - the
+  contract matters more than usual because the firmware is written by someone
+  else and cannot be iterated on. `tools/fake-badge.mjs` is the executable
+  version of that spec, and `server/` is a dependency-free Node server (WebSocket
+  implementation included, since Node ships a client but not a server) that
+  serves the sequencer and the badge socket from one origin, ready to publish
+  with Tailscale Funnel.
 
 ## [0.3.1] - 2026-08-07
 
