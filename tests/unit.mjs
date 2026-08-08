@@ -1077,6 +1077,47 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   }
 }
 
+// ---- badge protocol: clock sync and late-drop ----
+{
+  const { offsetFrom, medianOffset, isPlayable, LATE_DROP_MS } =
+    await import('../tools/fake-badge.mjs');
+
+  // A symmetric exchange recovers the offset exactly.
+  assert(offsetFrom(1000, 1100, 6050) === 5000, 'equal legs give the true offset');
+
+  // An asymmetric one does not - which is the whole reason a single sample is
+  // never trusted. 100 ms of extra return path reads as 50 ms of clock error.
+  assert(offsetFrom(1000, 1200, 6050) === 4950, 'a slow return leg biases the estimate');
+
+  // The median of five rejects the outliers a relayed path produces.
+  const TRUE = 5000;
+  const samples = [];
+  let worstSingle = 0;
+  for (let i = 0; i < 20; i++) {
+    const c1 = 1000 + i * 2000;
+    const out = 20;
+    const back = i % 5 === 0 ? 120 : 25; // every fifth exchange is badly delayed
+    const s = c1 + TRUE + out;
+    const o = offsetFrom(c1, c1 + out + back, s);
+    samples.push(o);
+    worstSingle = Math.max(worstSingle, Math.abs(o - TRUE));
+  }
+  assert(worstSingle > 40, `a single sample can be badly wrong (was ${worstSingle})`);
+  const est = medianOffset(samples);
+  assert(Math.abs(est - TRUE) < 15, `the median converges anyway (off by ${Math.abs(est - TRUE)})`);
+
+  eq(medianOffset([]), 0, 'no samples means no correction, not NaN');
+  eq(medianOffset([7]), 7, 'one sample is itself');
+  eq(medianOffset([1, 2, 3, 4]), 2.5, 'an even count averages the middle two');
+  // Only the window counts, so an offset that has genuinely moved is followed.
+  eq(medianOffset([500, 500, 500, 1, 2, 3, 4, 5], 5), 3, 'old samples fall out of the window');
+
+  // Late is worse than absent in an ensemble: past the threshold, drop it.
+  assert(isPlayable(1000, 1000 + LATE_DROP_MS - 1), 'a slightly late note still plays');
+  assert(!isPlayable(1000, 1000 + LATE_DROP_MS + 1), 'a very late note is dropped');
+  assert(isPlayable(2000, 1000), 'a future note is fine');
+}
+
 // ---- the command and exporter tables ----
 {
   const { COMMANDS, commandForChord, commandById, chordOf, duplicateChords, available, runCommand } =
