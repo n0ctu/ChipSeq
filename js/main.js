@@ -212,11 +212,17 @@ const actions = initToolbar({
 // absolutely nothing, which is exactly how it behaved before.
 const badgeStream = createBadgeStream({ client: getBadgeClient(), store });
 
-engine.on('playstate', ({ playing, fromTick }) => {
+engine.on('playstate', ({ playing, fromTick, restarting, startInMs }) => {
   if (playing) {
     const doc = store.getDoc();
-    badgeStream.start(tickToSeconds(doc, fromTick || 0) * 1000);
-  } else {
+    // startInMs anchors the badges to the instant the SPEAKERS start, not to
+    // "now" - otherwise they run that much ahead, and it is about the length
+    // of the relay hop. `restarting` marks an edit-while-playing re-flatten,
+    // which must not flush the badges or re-anchor them.
+    badgeStream.start(tickToSeconds(doc, fromTick || 0) * 1000, {
+      startInMs, resume: restarting,
+    });
+  } else if (!restarting) {
     badgeStream.stop();
   }
 });

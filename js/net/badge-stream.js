@@ -15,10 +15,17 @@
 import { badgeScore, sliceScore, toSchedNotes, schedT0 } from '../core/badge-score.js';
 import { badgeCan } from './badges.js';
 
-// How far ahead scheduled chunks are pushed, and how often. The protocol asks
-// for 2-4 seconds of lead; refreshing twice per window means a dropped frame
-// has a second chance before anything goes silent.
-export const CHUNK_MS = 3000;
+// How far ahead scheduled chunks are pushed, and how often.
+//
+// The lead a badge actually gets is CHUNK_MS - REFRESH_MS, because each pump
+// sends the slice between the last horizon and the new one. At 3000/1500 that
+// was 1500 ms - under the 2-4 s docs/badge-protocol.md §5.2 promises, and thin
+// enough that a relay hiccup arrives after the notes were due. The badge team
+// measured 30 of 96 notes dropped over a Funnel.
+//
+// 4000/1500 puts every chunk 2500-4000 ms ahead, which is the documented
+// window, at one frame per badge per 1.5 s.
+export const CHUNK_MS = 4000;
 export const REFRESH_MS = 1500;
 
 // Auditioning a note sends it to EVERY connected badge, not just the ones
@@ -44,6 +51,7 @@ export function createBadgeStream({ client, store }) {
   let sentUpTo = 0; // ms into the song that has been scheduled
   let originServerMs = 0; // server time at song position 0
   let running = false;
+  let lateSkipped = 0; // notes we declined to send because they were past due
 
   const badgesByTrack = () => {
     const out = new Map();
@@ -74,6 +82,7 @@ export function createBadgeStream({ client, store }) {
     const horizon = nowInSong + CHUNK_MS;
     if (horizon <= sentUpTo) return;
 
+    const serverNow = client.serverNow();
     for (const [trackId, badges] of badgesByTrack()) {
       const score = scores.get(trackId);
       if (!score) continue;
@@ -82,7 +91,24 @@ export function createBadgeStream({ client, store }) {
       // t0 and the offsets are derived together so they cannot disagree: both
       // come from the same rounding of the same origin. See toSchedNotes.
       const t0 = schedT0(originServerMs, sentUpTo);
-      const notes = toSchedNotes(slice, originServerMs, t0);
+      const all = toSchedNotes(slice, originServerMs, t0);
+
+      // A note whose moment has already passed cannot arrive in time - the
+      // badge would receive it and drop it (protocol §5.2, late is worse than
+      // absent). Sending it anyway just moves the decision to the far end
+      // where we cannot see it, so it is dropped here and counted.
+      const notes = all.filter((n) => t0 + n[0] >= serverNow);
+      const late = all.length - notes.length;
+      if (late) {
+        lateSkipped += late;
+        // Console rather than the card: it means the scheduler was starved,
+        // which is a debugging matter, not something to act on at a venue.
+        console.warn(
+          `[badges] ${late} note(s) already past due were not sent `
+          + `(track ${trackId}); the scheduler is running behind.`
+        );
+      }
+      if (!notes.length) continue;
       // Every badge on this track gets the IDENTICAL frame - two badges
       // playing one part is a supported arrangement, not a special case.
       for (const b of badges) client.sched(b.id, t0, notes);
@@ -157,14 +183,28 @@ export function createBadgeStream({ client, store }) {
     getMode: () => mode,
 
     // songMs: where playback starts within the song.
-    start(songMs = 0) {
+    //
+    // startInMs: how far ahead the ENGINE starts its own audio. The badges are
+    // anchored to the same instant, not to "now" - they were 60 ms early
+    // against the speakers before, and those 60 ms are about the length of the
+    // relay hop, so the first note went from landing exactly on the badge's
+    // drop threshold to landing before it.
+    //
+    // resume: this is a mid-playback re-flatten (an edit while playing), not a
+    // new performance. Keep the origin and the horizon exactly where they are
+    // and only rebuild the scores: the badges play on without a gap and pick
+    // the edit up at the next chunk boundary. Re-anchoring here is what made
+    // every edit flush the queue and re-send with no lead at all.
+    start(songMs = 0, { startInMs = 0, resume = false } = {}) {
       buildScores();
+      if (resume && running) return;
       running = true;
       sentUpTo = songMs;
       // Where song position 0 sits on the server's clock. Everything
       // scheduled is expressed against this, so a badge and the browser are
       // talking about the same instant.
-      originServerMs = client.serverNow() - songMs;
+      originServerMs = client.serverNow() + startInMs - songMs;
+      lateSkipped = 0;
       if (mode === 'sched') {
         pump();
         clearInterval(timer);
@@ -181,6 +221,7 @@ export function createBadgeStream({ client, store }) {
 
     onEngineEvents,
     // Exposed for tests and the latency lab.
-    _state: () => ({ mode, running, sentUpTo, originServerMs, lastPreviewAt, tracks: [...scores.keys()] }),
+    _pump: pump,
+    _state: () => ({ mode, running, sentUpTo, originServerMs, lastPreviewAt, lateSkipped, tracks: [...scores.keys()] }),
   };
 }

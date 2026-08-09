@@ -1305,6 +1305,103 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     eq(client.sent.filter((m) => m.t === 'sched'), [], 'live mode schedules nothing');
   }
 
+  // ---- lead time: the badge must get a chunk BEFORE it is due ----
+  //
+  // The badge drops anything more than 50 ms late (protocol §5.2), so a chunk
+  // whose first note is due on arrival loses that note over any real network.
+  // The badge team measured 30 of 96 notes lost this way.
+  {
+    const { CHUNK_MS: CH, REFRESH_MS: RF } = await import('../js/net/badge-stream.js');
+
+    // §5.2 promises chunks arrive 2-4 seconds ahead. The lead a badge actually
+    // gets is CHUNK_MS - REFRESH_MS, so the constants have to deliver it.
+    assert(CH - RF >= 2000 && CH <= 4000,
+      `the configured lead is inside the documented 2-4 s window (${CH - RF}..${CH} ms)`);
+
+    // A chunk's earliest note must never be due before it can arrive.
+    {
+      let clock = 1_000_000;
+      const client = makeClient([{ id: 'b1', trackId: track.id, online: true }], () => clock);
+      const stream = createBadgeStream({ client, store });
+      stream.start(0, { startInMs: 60 });
+
+      const leads = [];
+      const record = () => {
+        for (const m of client.sent.filter((x) => x.t === 'sched')) {
+          leads.push(m.t0 + m.n[0][0] - clock);
+        }
+        client.sent.length = 0;
+      };
+      record();
+      for (let i = 0; i < 5; i++) { clock += RF; stream._pump(); record(); }
+
+      assert(leads[0] > 0, `the very first note is not already due on arrival (${leads[0]} ms)`);
+      const steady = leads.slice(1);
+      assert(steady.length >= 3, 'several chunks were measured');
+      assert(Math.min(...steady) >= CH - RF - 1,
+        `steady-state lead holds at CHUNK_MS - REFRESH_MS (min ${Math.min(...steady)} ms)`);
+      assert(Math.max(...steady) <= CH + 1, `and never exceeds the window (max ${Math.max(...steady)} ms)`);
+    }
+
+    // The badges anchor to the instant the SPEAKERS start, not to "now" -
+    // 60 ms is about the length of the relay hop, and it is the difference
+    // between the downbeat landing on the drop threshold and clearing it.
+    {
+      let clock = 1_000_000;
+      const client = makeClient([{ id: 'b1', trackId: track.id, online: true }], () => clock);
+      const stream = createBadgeStream({ client, store });
+      stream.start(0, { startInMs: 60 });
+      eq(stream._state().originServerMs, 1_000_060, 'song position 0 is anchored where the audio starts');
+      const first = client.sent.find((m) => m.t === 'sched');
+      eq(first.t0 + first.n[0][0] - clock, 60, 'so the first note is due after the audio begins, not before');
+    }
+
+    // A starved scheduler - a backgrounded tab, a long frame - leaves notes
+    // whose moment has passed. They cannot arrive in time, so they are dropped
+    // HERE and counted, rather than sent for the badge to discard unseen.
+    {
+      let clock = 1_000_000;
+      const client = makeClient([{ id: 'b1', trackId: track.id, online: true }], () => clock);
+      const stream = createBadgeStream({ client, store });
+      stream.start(0, { startInMs: 0 });
+      client.sent.length = 0;
+
+      const warn = console.warn;
+      let warned = 0;
+      console.warn = () => { warned++; };
+      clock += CH + 4000; // the pump did not run for seconds
+      stream._pump();
+      console.warn = warn;
+
+      const sched = client.sent.filter((m) => m.t === 'sched');
+      for (const m of sched) {
+        assert(m.n.every((n) => m.t0 + n[0] >= clock),
+          'nothing already past due is put on the wire');
+      }
+      assert(stream._state().lateSkipped > 0, 'and the ones that were is counted');
+      assert(warned > 0, 'and reported to the console');
+    }
+
+    // An edit while playing re-flattens and restarts the engine. That must NOT
+    // re-anchor the badges or flush their queue - doing so cost a third of the
+    // notes in a measured run, because every edit produced a zero-lead chunk.
+    {
+      let clock = 1_000_000;
+      const client = makeClient([{ id: 'b1', trackId: track.id, online: true }], () => clock);
+      const stream = createBadgeStream({ client, store });
+      stream.start(0, { startInMs: 60 });
+      const origin = stream._state().originServerMs;
+      const sentUpTo = stream._state().sentUpTo;
+      client.sent.length = 0;
+
+      clock += 500;
+      stream.start(500, { startInMs: 60, resume: true }); // the re-flatten path
+      eq(stream._state().originServerMs, origin, 'a re-flatten keeps the origin');
+      eq(stream._state().sentUpTo, sentUpTo, 'and the horizon');
+      eq(client.sent, [], 'and sends nothing extra - the badges play straight on');
+    }
+  }
+
   // ---- auditioning a note onto the badges ----
   {
     const { PREVIEW_MIN_GAP_MS, PREVIEW_LEAD_MS } = await import('../js/net/badge-stream.js');

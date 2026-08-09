@@ -8,6 +8,9 @@ import { createEmitter } from './store.js';
 import { buildGraph, buildRouting, applyMasterLevel, MASTER_GAIN } from './graph.js';
 
 const SCHEDULE_INTERVAL_MS = 25;
+// How far ahead a pass actually begins. Small enough to feel immediate,
+// and published on `playstate` so badges anchor to the same instant.
+const START_LEAD_S = 0.06;
 const LOOKAHEAD_S = 0.12;
 // Background tabs throttle timers (and remote sessions can stall the machine
 // entirely). Anything whose start time already passed is dropped instead of
@@ -196,7 +199,7 @@ export function createEngine(store) {
     }
     playing = true;
     passStartTick = startTick;
-    passStartTime = audioCtx.currentTime + 0.06;
+    passStartTime = audioCtx.currentTime + START_LEAD_S;
     refreshEvents(startTick);
     const tpb = ticksPerBeat(doc);
     nextBeatTick = Math.ceil(startTick / tpb) * tpb;
@@ -209,7 +212,13 @@ export function createEngine(store) {
         stop();
       }
     }, SCHEDULE_INTERVAL_MS);
-    emitter.emit('playstate', { playing: true, fromTick: startTick });
+    emitter.emit('playstate', {
+      playing: true, fromTick: startTick, restarting,
+      // How far ahead the audio actually starts, in ms. Anything
+      // following the transport should anchor to this rather than to
+      // "now", or it runs this much ahead of the speakers.
+      startInMs: Math.round(START_LEAD_S * 1000),
+    });
   }
 
   function stop() {
@@ -223,7 +232,7 @@ export function createEngine(store) {
       } catch {}
     }
     liveNodes.clear();
-    emitter.emit('playstate', { playing: false });
+    emitter.emit('playstate', { playing: false, restarting });
   }
 
   // Returning to a throttled tab: jump the event cursor to the real playhead
@@ -257,11 +266,22 @@ export function createEngine(store) {
   });
 
   // Re-flatten mid-playback when the document changes (edit while playing).
+  //
+  // This is a RESTART internally but not a new performance, and listeners need
+  // to tell the difference: the badge stream was flushing every badge's queue
+  // and re-anchoring with no lead on every edit, which cost a third of the
+  // notes in one measured run.
+  let restarting = false;
   store.subscribe(['notes', 'tracks', 'song', 'harmonics', 'automation', 'doc'], () => {
     if (!playing) return;
     const tickNow = getPlayheadTick();
-    stop();
-    play(tickNow);
+    restarting = true;
+    try {
+      stop();
+      play(tickNow);
+    } finally {
+      restarting = false;
+    }
   });
 
   function getPlayheadTick() {
