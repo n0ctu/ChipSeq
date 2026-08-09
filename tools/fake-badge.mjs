@@ -104,6 +104,9 @@ export class FakeBadge {
     //           un-adopted device. The server frees it.
     //   true  - "I am adopted", informational.
     claimsAdopted = null,
+    // What this badge calls itself. Sent in `hello`; the sequencer shows it
+    // instead of "Badge 1". Omitted when null.
+    announceName = null,
     flashBytes = DEFAULT_FLASH_BYTES, maxTunes = DEFAULT_MAX_TUNES,
   } = {}) {
     this.url = url;
@@ -114,6 +117,7 @@ export class FakeBadge {
     this.onEvent = onEvent || (() => {});
     this.caps = caps;
     this.claimsAdopted = claimsAdopted;
+    this.announceName = announceName;
 
     // The library, and the flash budget it lives in.
     this.flashBytes = flashBytes;
@@ -158,6 +162,7 @@ export class FakeBadge {
         // that sends `adopted: false` on every boot would drop its adoption
         // every time it reconnected.
         if (this.claimsAdopted !== null) hello.adopted = this.claimsAdopted;
+        if (this.announceName) hello.name = this.announceName;
         this.send(hello);
         resolve(this);
       };

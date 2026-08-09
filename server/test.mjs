@@ -41,25 +41,25 @@ async function until(fn, what, timeout = 3000) {
   ok(isValidCodeShape(code), `issued code is enterable on the badge: ${code}`);
 
   // Wrong code, then the right one.
-  eq(hub.redeem('LLLLLL', 'badge-a', 'fw', '1.1.1.1').error, 'unknown', 'a wrong code is rejected');
-  const r = hub.redeem(code, 'badge-a', 'fw1', '1.1.1.1');
+  eq(hub.redeem('LLLLLL', 'badge-a', '1.1.1.1', { fw: 'fw' }).error, 'unknown', 'a wrong code is rejected');
+  const r = hub.redeem(code, 'badge-a', '1.1.1.1', { fw: 'fw1' });
   ok(r.ok && r.sessionId === s1, 'the right code adopts the badge into that session');
   eq(hub.badgesOf(s2), [], 'and not into anyone else\'s');
   eq(hub.badgesOf(s1).length, 1, 'the owning session sees it');
 
   // Single use.
-  eq(hub.redeem(code, 'badge-b', 'fw', '1.1.1.2').error, 'unknown', 'a code cannot be used twice');
+  eq(hub.redeem(code, 'badge-b', '1.1.1.2', { fw: 'fw' }).error, 'unknown', 'a code cannot be used twice');
 
   // Expiry, by moving the clock rather than sleeping two minutes.
   const second = hub.issueCode(s1);
   clock += CODE_TTL_MS + 1;
-  eq(hub.redeem(second.code, 'badge-c', 'fw', '1.1.1.3').error, 'expired', 'a stale code is expired, not accepted');
+  eq(hub.redeem(second.code, 'badge-c', '1.1.1.3', { fw: 'fw' }).error, 'expired', 'a stale code is expired, not accepted');
 
   // Rate limiting is per address.
   const third = hub.issueCode(s1);
-  for (let i = 0; i < PAIR_MAX_ATTEMPTS; i++) hub.redeem('UUUUUU', 'badge-d', 'fw', '9.9.9.9');
-  eq(hub.redeem(third.code, 'badge-d', 'fw', '9.9.9.9').error, 'rate', 'a guessing address is cut off');
-  ok(hub.redeem(third.code, 'badge-e', 'fw', '8.8.8.8').ok, 'while an innocent address is unaffected');
+  for (let i = 0; i < PAIR_MAX_ATTEMPTS; i++) hub.redeem('UUUUUU', 'badge-d', '9.9.9.9', { fw: 'fw' });
+  eq(hub.redeem(third.code, 'badge-d', '9.9.9.9', { fw: 'fw' }).error, 'rate', 'a guessing address is cut off');
+  ok(hub.redeem(third.code, 'badge-e', '8.8.8.8', { fw: 'fw' }).ok, 'while an innocent address is unaffected');
 
   // Ownership: one session cannot touch another's badge.
   ok(hub.rename(s1, 'badge-a', 'Bass') === true, 'the owner can rename');
@@ -68,7 +68,7 @@ async function until(fn, what, timeout = 3000) {
   ok(hub.owned(s2, 'badge-a') === null, 'nor address it at all');
 
   // Two badges on one track is a supported arrangement, not an accident.
-  hub.redeem(hub.issueCode(s1).code, 'badge-f', 'fw', '1.1.1.9');
+  hub.redeem(hub.issueCode(s1).code, 'badge-f', '1.1.1.9', { fw: 'fw' });
   hub.map(s1, 'badge-a', 'track-1');
   hub.map(s1, 'badge-f', 'track-1');
   const a = hub.badges.get('badge-a'); const f = hub.badges.get('badge-f');
@@ -617,6 +617,63 @@ async function until(fn, what, timeout = 3000) {
     ok(hub.badges.has('rel:04'), 'and stays in the roster');
     back.close();
     ctl.ws.close();
+  }
+
+  // --- badges have names, and announce them ---
+  //
+  // "Badge 1", "Badge 2" is a placeholder for a device that did not say what
+  // it is called. Eight of those on a table is a guessing game.
+  {
+    const ctl = new Controller();
+    await ctl.connect();
+    const named = new FakeBadge({
+      url, id: 'name:01', fw: 'rel', announceName: 'Astronaut Blue',
+    });
+    const ne = [];
+    named.onEvent = (e) => ne.push(e);
+    await named.connect();
+    await adopt(ctl, named, ne);
+    eq(ctl.last('badges').badges[0].name, 'Astronaut Blue',
+      'a badge that announces a name is listed under it, not "Badge 1"');
+
+    // The name follows the device across a reconnect, including a change.
+    named.close();
+    await sleep(150);
+    const renamedOnDevice = new FakeBadge({
+      url, id: 'name:01', fw: 'rel', announceName: 'Astronaut Red',
+    });
+    await renamedOnDevice.connect();
+    await until(() => (ctl.last('badges') || { badges: [{}] }).badges[0].name === 'Astronaut Red',
+      'the roster to follow a rename on the device');
+    ok(true, 'renaming it on the badge updates the sequencer');
+
+    // ...but a name typed in the sequencer is sticky. Whoever acted
+    // deliberately last wins, and typing a name is more deliberate than a
+    // device reporting its label on every connect.
+    ctl.send({ t: 'rename', id: 'name:01', name: 'Bass' });
+    await until(() => (ctl.last('badges') || { badges: [{}] }).badges[0].name === 'Bass', 'the rename');
+    renamedOnDevice.close();
+    await sleep(150);
+    const back = new FakeBadge({ url, id: 'name:01', fw: 'rel', announceName: 'Astronaut Red' });
+    const be = [];
+    back.onEvent = (e) => be.push(e);
+    await back.connect();
+    await until(() => be.some((e) => e.t === 'welcome'), 'reconnect');
+    await sleep(200);
+    eq(ctl.last('badges').badges[0].name, 'Bass',
+      'a badge cannot overwrite a name someone typed in the sequencer');
+    back.close();
+    ctl.ws.close();
+  }
+
+  // A name is human text, and the badge is on the far side of the internet.
+  {
+    const { sanitizeName, MAX_NAME } = await import('./rooms.mjs');
+    eq(sanitizeName('  Astronaut Blue  '), 'Astronaut Blue', 'names are trimmed');
+    eq(sanitizeName('Bad\nName\tHere'), 'BadNameHere', 'control characters are stripped');
+    eq(sanitizeName('x'.repeat(200)).length, MAX_NAME, 'and the length is capped');
+    eq(sanitizeName(null), '', 'a non-string is no name at all');
+    eq(sanitizeName('   '), '', 'and neither is whitespace');
   }
 
   // --- releasing when not adopted is harmless ---

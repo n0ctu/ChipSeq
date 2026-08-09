@@ -47,6 +47,16 @@ export function isValidCodeShape(code) {
     && [...code].every((c) => CODE_ALPHABET.includes(c));
 }
 
+// Names are for humans: trimmed, length-capped, and control characters
+// stripped so a badge cannot smuggle newlines into the sequencer's list.
+// 40 characters is what the rename path already allowed.
+export const MAX_NAME = 40;
+
+export function sanitizeName(name) {
+  if (typeof name !== 'string') return '';
+  return name.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, MAX_NAME);
+}
+
 export class Hub {
   constructor({ now = () => Date.now(), rand = randomBytes } = {}) {
     this.now = now;
@@ -127,7 +137,7 @@ export class Hub {
   // Codes are single-use: consumed on success AND on a failed attempt against
   // a real code, because a code that survives a wrong guess is a code being
   // brute-forced.
-  redeem(code, badgeId, fw, ip) {
+  redeem(code, badgeId, ip, { fw = '', name = null } = {}) {
     if (this.rateLimited(ip)) return { error: 'rate' };
     if (!isValidCodeShape(code)) return { error: 'unknown' };
     const entry = this.codes.get(code);
@@ -136,18 +146,23 @@ export class Hub {
     if (this.now() > entry.expires) return { error: 'expired' };
 
     const existing = this.badges.get(badgeId);
-    const name = existing ? existing.name : `Badge ${this.badgesOf(entry.sessionId).length + 1}`;
+    // The badge's own name is the default. "Badge 3" is a placeholder for a
+    // device that did not say what it is called.
+    const announced = sanitizeName(name);
+    const chosen = (existing && existing.name)
+      || announced
+      || `Badge ${this.badgesOf(entry.sessionId).length + 1}`;
     this.badges.set(badgeId, {
       ...(existing || {}),
       id: badgeId,
-      name,
+      name: chosen,
       fw: fw || (existing && existing.fw) || '',
       sessionId: entry.sessionId,
       trackId: existing ? existing.trackId ?? null : null,
       lastSeen: this.now(),
       conn: existing ? existing.conn : null,
     });
-    return { ok: true, name, sessionId: entry.sessionId };
+    return { ok: true, name: chosen, sessionId: entry.sessionId };
   }
 
   // ---- the display flow ----
@@ -173,12 +188,20 @@ export class Hub {
     return code;
   }
 
+  // Which badge is showing this code, without consuming the offer. The
+  // controller adopting a badge never saw its `hello`, so this is how the
+  // name it announced is found again.
+  offeredBadge(code) {
+    const entry = this.offers.get(normalizeDisplayCode(code));
+    return entry ? entry.badgeId : null;
+  }
+
   revokeOffer(badgeId) {
     for (const [code, entry] of this.offers) if (entry.badgeId === badgeId) this.offers.delete(code);
   }
 
   // The controller's half: adopt whatever badge is showing this code.
-  adopt(code, sessionId, ip) {
+  adopt(code, sessionId, ip, { name = null } = {}) {
     if (this.rateLimited(ip)) return { error: 'rate' };
     const entry = this.offers.get(normalizeDisplayCode(code));
     if (!entry) return { error: 'unknown' };
@@ -186,28 +209,37 @@ export class Hub {
     if (this.now() > entry.expires) return { error: 'expired' };
 
     const existing = this.badges.get(entry.badgeId);
-    const name = existing && existing.name ? existing.name : `Badge ${this.badgesOf(sessionId).length + 1}`;
+    const announced = sanitizeName(name);
+    const chosen = (existing && existing.name)
+      || announced
+      || `Badge ${this.badgesOf(sessionId).length + 1}`;
     this.badges.set(entry.badgeId, {
       ...(existing || {}),
       id: entry.badgeId,
-      name,
+      name: chosen,
       fw: (existing && existing.fw) || '',
       sessionId,
       trackId: existing ? existing.trackId ?? null : null,
       lastSeen: this.now(),
       conn: existing ? existing.conn : null,
     });
-    return { ok: true, badgeId: entry.badgeId, name };
+    return { ok: true, badgeId: entry.badgeId, name: chosen };
   }
 
   // ---- badges ----
 
-  attach(badgeId, fw, conn, caps = null) {
+  attach(badgeId, conn, { fw = '', caps = null, name = null } = {}) {
     const known = this.badges.get(badgeId);
     if (known) {
       known.conn = conn;
       known.fw = fw || known.fw;
       if (caps) known.caps = caps;
+      // A badge that announces a name keeps it up to date across reconnects -
+      // but never overwrites one a person typed in the sequencer. Whoever last
+      // acted deliberately wins, and renaming a badge in the app is a more
+      // deliberate act than a device reporting its factory label.
+      const announced = sanitizeName(name);
+      if (announced && !known.userNamed) known.name = announced;
       known.lastSeen = this.now();
       return known;
     }
@@ -238,7 +270,12 @@ export class Hub {
   rename(sessionId, badgeId, name) {
     const b = this.badges.get(badgeId);
     if (!b || b.sessionId !== sessionId) return false;
-    b.name = String(name || '').slice(0, 40) || b.name;
+    const next = sanitizeName(name);
+    if (!next) return false;
+    b.name = next;
+    // Sticky: from here on the badge announcing a different name is ignored,
+    // so a reconnect cannot quietly undo what someone typed.
+    b.userNamed = true;
     return true;
   }
 

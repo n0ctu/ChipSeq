@@ -129,6 +129,7 @@ export function createServer({ root, log = () => {} } = {}) {
       let sessionId = null;
       let badgePingSeen = false;
       let badgeCaps = null;
+      let badgeName = null; // what the badge calls itself, from `hello`
 
       conn.onClose = () => {
         if (role === 'badge' && badgeId) {
@@ -232,8 +233,17 @@ export function createServer({ root, log = () => {} } = {}) {
             }
           }
 
-          const known = hub.attach(badgeId, msg.fw, conn, badgeCaps);
-          if (!known) pendingConns.set(badgeId, { conn, caps: badgeCaps, fw: msg.fw });
+          // Badges have names. "Badge 1", "Badge 2" is what the server falls
+          // back to when a device does not say what it is called.
+          badgeName = typeof msg.name === 'string' ? msg.name : null;
+
+          const known = hub.attach(badgeId, conn, { fw: msg.fw, caps: badgeCaps, name: badgeName });
+          if (!known) {
+            pendingConns.set(badgeId, { conn, caps: badgeCaps, fw: msg.fw, name: badgeName });
+          } else {
+            // A returning badge may have been renamed on the device.
+            pushBadges(known.sessionId);
+          }
           // An unadopted badge is handed a code to DISPLAY. A badge with a
           // screen shows it and you type it into the sequencer; one without
           // ignores it and uses the button flow instead. Both work.
@@ -254,13 +264,13 @@ export function createServer({ root, log = () => {} } = {}) {
       function handleBadge(msg) {
         switch (msg.t) {
           case 'pair': {
-            const res = hub.redeem(msg.code, badgeId, msg.fw, ip);
+            const res = hub.redeem(msg.code, badgeId, ip, { fw: msg.fw, name: badgeName });
             if (res.error) {
               conn.sendJson({ t: 'pair_failed', reason: res.error });
               log('pair_failed', { badgeId, reason: res.error });
               return;
             }
-            hub.attach(badgeId, msg.fw, conn, badgeCaps);
+            hub.attach(badgeId, conn, { fw: msg.fw, caps: badgeCaps, name: badgeName });
             pendingConns.delete(badgeId);
             conn.sendJson({ t: 'paired', name: res.name });
             pushBadges(res.sessionId);
@@ -325,7 +335,11 @@ export function createServer({ root, log = () => {} } = {}) {
             conn.sendJson({ t: 'now', s: Date.now() });
             return;
           case 'adopt': {
-            const res = hub.adopt(msg.code, sessionId, ip);
+            // The badge announced its name on ITS connection; this is the
+            // controller's, so the name has to come from where that hello
+            // left it.
+            const pending = pendingConns.get(hub.offeredBadge(msg.code));
+            const res = hub.adopt(msg.code, sessionId, ip, { name: pending ? pending.name : null });
             if (res.error) {
               conn.sendJson({ t: 'adopt_failed', reason: res.error });
               log('adopt_failed', { reason: res.error });
@@ -337,7 +351,7 @@ export function createServer({ root, log = () => {} } = {}) {
             // left it.
             const live = pendingConns.get(res.badgeId);
             if (live) {
-              hub.attach(res.badgeId, live.fw, live.conn, live.caps);
+              hub.attach(res.badgeId, live.conn, { fw: live.fw, caps: live.caps, name: live.name });
               pendingConns.delete(res.badgeId);
               live.conn.sendJson({ t: 'paired', name: res.name });
             }

@@ -6,3 +6,11 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Badge firmware handover.
+#
+# Written for the external badge team and distributed to them directly, not
+# published: the repository is served verbatim as the GitHub Pages site, so
+# anything tracked here is public. The files stay on disk - they are still the
+# contract the server and tools/fake-badge.mjs are built against.
+docs/

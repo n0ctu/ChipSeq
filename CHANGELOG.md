@@ -7,6 +7,28 @@ must agree - the release workflow fails if they do not.
 Dates are release dates. Unreleased work sits under **Unreleased** until it is
 tagged.
 
+## [0.5.1] - 2026-08-10
+
+### Added
+
+- **Badges announce their own names.** `hello` now carries an optional `name`,
+  and the sequencer lists the badge under it instead of `Badge 1`, `Badge 2` —
+  which is a guessing game once eight of them are on a table. The name follows
+  the device: change it on the badge, reconnect, and the list follows. A name
+  typed into the sequencer wins and stays, because typing one is a more
+  deliberate act than a device reporting its label on every connect.
+
+### Changed
+
+- **The badge handover documents are no longer tracked.** The repository is
+  served verbatim as the Pages site, so anything in it is public, and those
+  documents are for the firmware team rather than for the world. They are
+  distributed to that team directly and `docs/` is now ignored. Code comments
+  still cite them by section — they remain the contract this server and
+  `tools/fake-badge.mjs` are built against, and the fake badge is the
+  executable version of the same thing. Note this stops future publication
+  only: earlier tags and the git history still contain them.
+
 ## [0.5.0] - 2026-08-09
 
 ### Added

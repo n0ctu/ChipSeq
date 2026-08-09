@@ -6,13 +6,13 @@ ships a client but not a server and this repository does not take packages.
 
 ```sh
 node server/index.mjs --port 8080          # serves the app AND the socket
-node server/test.mjs                       # 34 assertions, no hardware needed
+node server/test.mjs                       # no hardware needed
 node tools/fake-badge.mjs --url ws://localhost:8080/ws --count 4
 ```
 
-The badge side of the protocol is **`docs/badge-protocol.md`** — that is the
-contract with the firmware. This file documents the *controller* side (the
-sequencer) and deployment.
+The badge side of the protocol is **`docs/badge-protocol.md`** — the contract
+with the firmware, which is not tracked here (see below). This file documents
+the *controller* side (the sequencer) and deployment.
 
 ---
 
@@ -77,6 +77,21 @@ User=chipseq
 [Install]
 WantedBy=multi-user.target
 ```
+
+---
+
+## The badge protocol documents
+
+`docs/badge-protocol.md`, `badge-tune-format.md`, `badge-mesh.md`,
+`badge-app.md`, `badge-handover.md` and `badge-unadopt.md` are the handover for
+the firmware team and are **not in this repository** — the repository is served
+verbatim as the GitHub Pages site, so anything tracked here is public. They are
+distributed to that team directly.
+
+Code comments still cite them by section, because they remain the contract this
+server and `tools/fake-badge.mjs` are built against. `tools/fake-badge.mjs` is
+the executable version of the same thing, and it *is* public — when the prose
+is unavailable, that file is the specification.
 
 ---
 
