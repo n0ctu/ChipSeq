@@ -7,6 +7,23 @@ must agree - the release workflow fails if they do not.
 Dates are release dates. Unreleased work sits under **Unreleased** until it is
 tagged.
 
+## [0.4.1] - 2026-08-09
+
+### Fixed
+
+- **`sched` offsets went out as fractional milliseconds.** Song positions come
+  from `tickToSeconds() * 1000` and the clock offset is a median, so both
+  origins are routinely fractional and the subtraction carried that onto the
+  wire - the badge team saw offsets like `108.78260869566293` where the
+  protocol implies integers. `toSchedNotes` now rounds each note's ABSOLUTE
+  server time once and subtracts `t0` from it, the same rule `badgeScore`
+  already used for note boundaries, so values are integers and `t0 + offset`
+  is exactly the intended instant. Previously `t0` was rounded while the
+  offsets were not, leaving the two disagreeing by up to a millisecond.
+- `docs/badge-protocol.md` §5.2 now **states** that `t0`, `offsetMs` and
+  `durationMs` are integers, and that `offsetMs` may be negative. Both were
+  only implied by the examples.
+
 ## [0.4.0] - 2026-08-09
 
 ### Added

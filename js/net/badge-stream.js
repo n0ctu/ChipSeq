@@ -12,7 +12,7 @@
 //
 // I/O only. What the music IS comes from js/core/badge-score.js.
 
-import { badgeScore, sliceScore, toSchedNotes } from '../core/badge-score.js';
+import { badgeScore, sliceScore, toSchedNotes, schedT0 } from '../core/badge-score.js';
 
 // How far ahead scheduled chunks are pushed, and how often. The protocol asks
 // for 2-4 seconds of lead; refreshing twice per window means a dropped frame
@@ -62,11 +62,13 @@ export function createBadgeStream({ client, store }) {
       if (!score) continue;
       const slice = sliceScore(score, sentUpTo, horizon);
       if (!slice.length) continue;
-      const t0 = originServerMs + sentUpTo;
-      const notes = toSchedNotes(slice, sentUpTo);
+      // t0 and the offsets are derived together so they cannot disagree: both
+      // come from the same rounding of the same origin. See toSchedNotes.
+      const t0 = schedT0(originServerMs, sentUpTo);
+      const notes = toSchedNotes(slice, originServerMs, t0);
       // Every badge on this track gets the IDENTICAL frame - two badges
       // playing one part is a supported arrangement, not a special case.
-      for (const b of badges) client.sched(b.id, Math.round(t0), notes);
+      for (const b of badges) client.sched(b.id, t0, notes);
     }
     sentUpTo = horizon;
   }

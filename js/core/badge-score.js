@@ -73,8 +73,33 @@ export function sliceScore(score, fromMs, toMs) {
 }
 
 // A `sched` frame's payload: [[offsetMs, pitch, durMs], ...] relative to t0.
-export function toSchedNotes(slice, originMs) {
-  return slice.map((n) => [n.startMs - originMs, n.pitch, n.durMs]);
+//
+// Every value is an INTEGER millisecond, which the protocol requires and the
+// firmware parses into fixed-width fields. Guaranteed here rather than at the
+// call site because this function's whole job is to produce a protocol
+// payload - a caller holding a fractional origin should not be able to put
+// fractions on the wire. It could before: song positions come from
+// tickToSeconds() * 1000 and the clock offset is a median, so real chunks went
+// out with offsets like 108.78260869566293.
+//
+// songOriginServerMs is the server time at song position 0, and may be
+// fractional. Each note's ABSOLUTE server time is rounded once and t0
+// subtracted from it - the same rule badgeScore uses for note boundaries - so
+// `t0 + offset` is exactly the intended instant and error cannot accumulate
+// across a chunk. Rounding the offset alone would instead leave t0 and the
+// offsets disagreeing by up to a millisecond.
+export function toSchedNotes(slice, songOriginServerMs, t0) {
+  return slice.map((n) => [
+    Math.round(songOriginServerMs + n.startMs) - t0,
+    n.pitch,
+    n.durMs,
+  ]);
+}
+
+// The t0 for a chunk starting at `fromMs` into the song. Rounded here so the
+// caller cannot round it differently from the offsets above.
+export function schedT0(songOriginServerMs, fromMs) {
+  return Math.round(songOriginServerMs + fromMs);
 }
 
 // Total length, so a player knows when a track is done.

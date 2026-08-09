@@ -1079,7 +1079,7 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
 
 // ---- badge score: what a badge plays IS what the .h file says ----
 {
-  const { badgeScore, sliceScore, toSchedNotes, scoreLengthMs, REST } =
+  const { badgeScore, sliceScore, toSchedNotes, schedT0, scoreLengthMs, REST } =
     await import('../js/core/badge-score.js');
   const { exportHeader, pitchSymbol } = await import('../js/core/export-h.js');
   const { migrate } = await import('../js/core/doc.js');
@@ -1179,8 +1179,26 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     ];
     eq(sliceScore(score, 0, 2000).map((n) => n.pitch), [60], 'the first window takes only what starts in it');
     eq(sliceScore(score, 2000, 4000).map((n) => n.pitch), [62, 64], 'the next takes the rest');
-    eq(toSchedNotes(sliceScore(score, 2000, 4000), 2000), [[0, 62, 500], [500, 64, 500]],
+    eq(toSchedNotes(sliceScore(score, 2000, 4000), 0, 2000), [[0, 62, 500], [500, 64, 500]],
       'offsets are relative to the chunk origin');
+
+    // The wire carries INTEGER milliseconds. Song positions come from
+    // tickToSeconds() * 1000 and the clock offset is a median, so both origins
+    // are routinely fractional - and real chunks went out with offsets like
+    // 108.78260869566293 until this was enforced here.
+    {
+      const origin = 1765432109876.4321; // fractional clock offset
+      const from = 108.78260869566293; // fractional song position
+      const t0 = schedT0(origin, from);
+      const notes = toSchedNotes(score, origin, t0);
+      assert(Number.isInteger(t0), 't0 is an integer millisecond');
+      assert(notes.every((n) => n.every(Number.isInteger)),
+        `every sched value is an integer (got ${JSON.stringify(notes)})`);
+      // ...and rounding must not make t0 and the offsets disagree: their sum
+      // has to be the instant the note was actually meant to sound.
+      const drift = notes.map((n, i) => (t0 + n[0]) - Math.round(origin + score[i].startMs));
+      eq(drift, [0, 0, 0], 't0 + offset is exactly the intended absolute time');
+    }
     eq(scoreLengthMs(score), 3000, 'and the score knows its own length');
   }
 }
