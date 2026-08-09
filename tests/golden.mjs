@@ -22,6 +22,7 @@ import { migrate, createProject, normalizeDoc } from '../js/core/doc.js';
 import { flattenSong } from '../js/core/flatten.js';
 import { exportHeader } from '../js/core/export-h.js';
 import { exportFmf } from '../js/core/export-fmf.js';
+import { buildTune, parseTune, HEADER_BYTES, TRACK_BYTES, NOTE_BYTES } from '../js/core/badge-tune.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GOLDEN_DIR = join(ROOT, 'tests', 'fixtures', 'golden');
@@ -102,6 +103,42 @@ function canonical(value) {
   }, 1) + '\n';
 }
 
+// ---- .cbt, rendered as text ----
+//
+// The tune a badge stores is binary, and the golden machinery compares text.
+// A hex dump would catch a change but not explain it, so the decoded header
+// and track table come first and the bytes follow. A diff then says "the
+// note pool moved" rather than "byte 64 differs".
+//
+// Firmware reads this file by casting structs at it, so the layout is as much
+// the contract as the notes are - which is why the offsets are asserted here
+// rather than only in the unit tests.
+function cbtDump(bytes) {
+  const t = parseTune(bytes);
+  const lines = [
+    `# chipseq .cbt v${t.fmtVersion}`,
+    `bytes:          ${bytes.length}`,
+    `id:             ${t.id}`,
+    `name:           ${JSON.stringify(t.name)}`,
+    `flags:          0x${t.flags.toString(16).padStart(2, '0')} (loop=${t.loop})`,
+    `totalMs:        ${t.totalMs}`,
+    `loop:           ${t.loopStartMs}..${t.loopEndMs}`,
+    `bpmHint:        ${t.bpmHint}`,
+    `notePoolOffset: ${HEADER_BYTES + t.tracks.length * TRACK_BYTES}`,
+    '',
+  ];
+  t.tracks.forEach((track, i) => {
+    lines.push(`track ${i}: ${JSON.stringify(track.name)} notes=${track.notes.length} lengthMs=${track.lengthMs}`);
+  });
+  lines.push('');
+  for (let i = 0; i < bytes.length; i += 16) {
+    const row = [...bytes.subarray(i, i + 16)].map((b) => b.toString(16).padStart(2, '0'));
+    lines.push(`${i.toString(16).padStart(6, '0')}  ${row.join(' ')}`);
+  }
+  lines.push('');
+  return lines.join('\n');
+}
+
 // ---- the shipped demos ----
 
 const demoFiles = JSON.parse(readFileSync(join(ROOT, 'demos', 'index.json'), 'utf8'));
@@ -124,6 +161,22 @@ for (const file of demoFiles) {
     compare(`${base}.h`, exportHeader(doc).text);
     compare(`${base}.fmf`, exportFmf(doc).text);
   }
+
+  // The tune a badge stores, for every demo regardless of mode: mono is the
+  // one-track case of the same format, not a different one.
+  const tune = buildTune(doc, { name: base });
+  compare(`${base}.cbt.txt`, cbtDump(tune.bytes));
+
+  // Structural invariants the firmware casts structs against. Cheap to check
+  // here, and a change to any of them is a change the badge team must be told
+  // about rather than one that ships quietly.
+  const view = new DataView(tune.bytes.buffer);
+  const poolOffset = view.getUint32(24, true);
+  assert(poolOffset % 4 === 0, `${base}: .cbt note pool is 4-byte aligned`);
+  assert(poolOffset === HEADER_BYTES + doc.tracks.length * TRACK_BYTES,
+    `${base}: .cbt pool follows the track table`);
+  assert((tune.bytes.length - poolOffset) % NOTE_BYTES === 0,
+    `${base}: .cbt pool is a whole number of notes`);
 }
 
 // ---- determinism ----

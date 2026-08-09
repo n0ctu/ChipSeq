@@ -85,9 +85,16 @@ export class Hub {
       id: b.id,
       name: b.name,
       fw: b.fw,
+      // What this badge can actually do. The sequencer hides what is missing
+      // rather than sending frames the firmware will ignore - a button that
+      // silently does nothing is worse than an absent one.
+      caps: b.caps || ['note'],
       trackId: b.trackId ?? null,
       online: !!(b.conn && b.conn.open),
       lastSeen: b.lastSeen,
+      // Last reported library, or null if the badge has not said. Held rather
+      // than queried so a collapsed card can show it without a round trip.
+      lib: b.lib || null,
     };
   }
 
@@ -195,15 +202,30 @@ export class Hub {
 
   // ---- badges ----
 
-  attach(badgeId, fw, conn) {
+  attach(badgeId, fw, conn, caps = null) {
     const known = this.badges.get(badgeId);
     if (known) {
       known.conn = conn;
       known.fw = fw || known.fw;
+      if (caps) known.caps = caps;
       known.lastSeen = this.now();
       return known;
     }
     return null; // unknown badge: must pair before it exists here
+  }
+
+  // A badge's own report of what it holds. Replaced wholesale rather than
+  // merged: the badge is the authority on its own flash, and a merge would
+  // let a deleted tune linger in the sequencer's view forever.
+  setLibrary(badgeId, lib) {
+    const b = this.badges.get(badgeId);
+    if (!b) return false;
+    b.lib = {
+      tunes: Array.isArray(lib.tunes) ? lib.tunes.slice(0, 64) : [],
+      freeBytes: Number(lib.freeBytes) || 0,
+      maxTunes: Number(lib.maxTunes) || 0,
+    };
+    return true;
   }
 
   detach(badgeId) {

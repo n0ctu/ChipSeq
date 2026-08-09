@@ -40,6 +40,52 @@ export function isPlayable(startServerMs, nowServerMs) {
   return startServerMs - nowServerMs > -LATE_DROP_MS;
 }
 
+// ---- the tune library ----
+
+// CRC-32 (IEEE), deliberately implemented here rather than imported from
+// js/core/badge-tune.js. This file is a specification artifact a firmware
+// author reads on its own, and it would be worth less if verifying an upload
+// meant following an import into the sequencer. A unit test asserts the two
+// implementations agree, which is the real guarantee - the same arrangement
+// the clock maths already uses with js/net/badges.js.
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[i] = c >>> 0;
+  }
+  return t;
+})();
+
+export function crc32(bytes, from = 0, to = bytes.length) {
+  let c = 0xffffffff;
+  for (let i = from; i < to; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+// How much flash this simulated badge pretends to have. Small enough that the
+// out-of-space path is reachable in a test rather than theoretical.
+export const DEFAULT_FLASH_BYTES = 262144;
+export const DEFAULT_MAX_TUNES = 16;
+
+// Reading just enough of the .cbt header to answer `lib` honestly. The badge
+// does not need to understand the note pool to store and list a tune, which is
+// why a firmware author can ship the library before the player.
+export function readTuneHeader(bytes) {
+  if (bytes.length < 64) throw new Error('short');
+  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (v.getUint32(0, true) !== 0x31544243) throw new Error('magic');
+  if (bytes[4] !== 1) throw new Error('version');
+  const name = new TextDecoder().decode(bytes.subarray(32, 64)).replace(/\0+$/, '');
+  return {
+    crc: v.getUint32(8, true),
+    totalMs: v.getUint32(12, true),
+    tracks: bytes[6],
+    name,
+  };
+}
+
 // ---- the badge ----
 
 const BACKOFF_MS = [1000, 2000, 4000, 8000, 16000, 30000];
@@ -48,13 +94,24 @@ export class FakeBadge {
   // clockSkew fakes a device whose millis() does not agree with the server,
   // which is the whole reason §4 of the spec exists. Without it the sync code
   // would look correct while doing nothing.
-  constructor({ url, id, fw = 'fake-1.0.0', code = null, clockSkew = 0, onEvent = null } = {}) {
+  constructor({
+    url, id, fw = 'fake-2.0.0', code = null, clockSkew = 0, onEvent = null,
+    caps = ['note', 'sched', 'store'],
+    flashBytes = DEFAULT_FLASH_BYTES, maxTunes = DEFAULT_MAX_TUNES,
+  } = {}) {
     this.url = url;
     this.id = id || 'fake-' + Math.random().toString(36).slice(2, 8);
     this.fw = fw;
     this.code = code;
     this.clockSkew = clockSkew;
     this.onEvent = onEvent || (() => {});
+    this.caps = caps;
+
+    // The library, and the flash budget it lives in.
+    this.flashBytes = flashBytes;
+    this.maxTunes = maxTunes;
+    this.tunes = new Map(); // tuneId hex -> { id, name, bytes, tracks, ms, data }
+    this.incoming = null; // an upload in progress
 
     this.ws = null;
     this.name = null;
@@ -88,7 +145,7 @@ export class FakeBadge {
       ws.onopen = () => {
         ws.onerror = (e) => this.onEvent({ t: 'socket_error', e });
         this.attempt = 0;
-        this.send({ t: 'hello', v: 1, id: this.id, fw: this.fw });
+        this.send({ t: 'hello', v: 2, id: this.id, fw: this.fw, caps: this.caps });
         resolve(this);
       };
       ws.onmessage = (ev) => this.handle(JSON.parse(ev.data));
@@ -154,6 +211,25 @@ export class FakeBadge {
         this.name = msg.name;
         this.onEvent({ t: 'name', name: msg.name });
         return;
+      case 'put':
+        this.putBegin(msg);
+        return;
+      case 'put_data':
+        this.putData(msg);
+        return;
+      case 'put_end':
+        this.putEnd(msg);
+        return;
+      case 'lib?':
+        this.sendLibrary();
+        return;
+      case 'drop':
+        // An unknown id is not an error: report the library as it now stands
+        // and let the sequencer reconcile.
+        this.tunes.delete(msg.id);
+        this.sendLibrary();
+        this.onEvent({ t: 'drop', id: msg.id });
+        return;
       case 'error':
         this.onEvent({ t: 'error', code: msg.code, msg: msg.msg });
         return;
@@ -162,6 +238,77 @@ export class FakeBadge {
         // one breaks the moment the server learns a new message.
         this.onEvent({ t: 'ignored', type: msg.t });
     }
+  }
+
+  // ---- the library ----
+
+  freeBytes() {
+    let used = 0;
+    for (const t of this.tunes.values()) used += t.bytes;
+    return Math.max(0, this.flashBytes - used);
+  }
+
+  sendLibrary() {
+    this.send({
+      t: 'lib',
+      tunes: [...this.tunes.values()].map(({ id, name, bytes, tracks, ms }) => ({ id, name, bytes, tracks, ms })),
+      freeBytes: this.freeBytes(),
+      maxTunes: this.maxTunes,
+    });
+  }
+
+  putFail(id, reason) {
+    this.incoming = null;
+    this.send({ t: 'put_done', id, ok: false, reason });
+    this.onEvent({ t: 'put_failed', id, reason });
+  }
+
+  // Decide about space NOW, not after 39 kB of traffic has crossed a relay.
+  putBegin(msg) {
+    const replacing = this.tunes.has(msg.id) ? this.tunes.get(msg.id).bytes : 0;
+    if (msg.bytes > this.freeBytes() + replacing) return this.putFail(msg.id, 'space');
+    if (!this.tunes.has(msg.id) && this.tunes.size >= this.maxTunes) return this.putFail(msg.id, 'space');
+    this.incoming = { id: msg.id, name: msg.name, bytes: msg.bytes, chunks: new Map(), got: 0 };
+    this.onEvent({ t: 'put_begin', id: msg.id, bytes: msg.bytes });
+  }
+
+  putData(msg) {
+    if (!this.incoming || this.incoming.id !== msg.id) return this.putFail(msg.id, 'abort');
+    // A repeated seq is idempotent, not an error: the sequencer resends a
+    // chunk it has not seen acked, and over a relay that happens for real.
+    if (!this.incoming.chunks.has(msg.seq)) {
+      this.incoming.chunks.set(msg.seq, Buffer.from(msg.d, 'base64'));
+    }
+    this.send({ t: 'put_ack', id: msg.id, seq: msg.seq });
+  }
+
+  putEnd(msg) {
+    const up = this.incoming;
+    if (!up || up.id !== msg.id) return this.putFail(msg.id, 'abort');
+    const seqs = [...up.chunks.keys()].sort((a, b) => a - b);
+    const data = new Uint8Array(Buffer.concat(seqs.map((s) => up.chunks.get(s))));
+    if (data.length !== up.bytes) return this.putFail(msg.id, 'format');
+
+    // Reject the WHOLE file on a bad CRC. A half-written tune in a library is
+    // worse than no tune: it gets selected, played, and sounds broken with
+    // nothing to say why.
+    let head;
+    try {
+      head = readTuneHeader(data);
+    } catch {
+      return this.putFail(msg.id, 'format');
+    }
+    if (crc32(data, 12) !== head.crc) return this.putFail(msg.id, 'crc');
+
+    const id = head.crc.toString(16).padStart(8, '0');
+    this.tunes.set(id, {
+      id, name: up.name || head.name, bytes: data.length,
+      tracks: head.tracks, ms: head.totalMs, data,
+    });
+    this.incoming = null;
+    this.send({ t: 'put_done', id, ok: true, crc: id, bytes: data.length });
+    this.sendLibrary();
+    this.onEvent({ t: 'stored', id, bytes: data.length, tracks: head.tracks });
   }
 
   startPinging() {

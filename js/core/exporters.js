@@ -12,6 +12,7 @@ import { exportHeader } from './export-h.js';
 import { exportFmf } from './export-fmf.js';
 import { renderWav } from './export-wav.js';
 import { exportProjectFile } from './persist.js';
+import { buildTune } from './badge-tune.js';
 
 export const EXPORTERS = [
   {
@@ -36,6 +37,29 @@ export const EXPORTERS = [
     text: true,
     blockedByConflicts: true,
     render: (doc, opts = {}) => exportFmf(doc, { region: opts.region }),
+  },
+  {
+    id: 'cbt',
+    label: '.cbt',
+    ext: '.cbt',
+    mime: 'application/octet-stream',
+    // Every track, not just the melody: a .cbt holds the whole song and the
+    // badge picks its part. A mono project is simply the one-track case.
+    modes: ['mono', 'poly'],
+    text: false,
+    // Overlaps have an answer here - the same monophony rule the .h exporter
+    // uses, applied per track - so unlike .h this does not need blocking.
+    blockedByConflicts: false,
+    // A region export would need a rebased origin the badge cannot express:
+    // the file starts at song time zero by definition.
+    wholeSongOnly: true,
+    // Deliberately NOT opts.symbol: that is a C identifier for the .h file
+    // (`TETRIS_THEME`), while this name is rendered on the badge's screen and
+    // wants to read like a title.
+    render: (doc) => {
+      const built = buildTune(doc, { name: doc.name });
+      return { blob: new Blob([built.bytes], { type: 'application/octet-stream' }), warnings: built.warnings };
+    },
   },
   {
     id: 'wav',

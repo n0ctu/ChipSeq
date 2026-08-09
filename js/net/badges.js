@@ -122,10 +122,17 @@ export function shouldAutoConnect() {
 // played: the stream held a different client that had never connected.
 let shared = null;
 const listeners = new Set();
+// Frames a BADGE authored, for whoever is running an upload. Separate from
+// `listeners` because these are not state changes - an ack is addressed to one
+// in-flight transfer, not news for the whole UI.
+const frameListeners = new Set();
 
 export function getBadgeClient() {
   if (!shared) {
-    shared = createBadgeClient({ onChange: (s) => listeners.forEach((fn) => fn(s)) });
+    shared = createBadgeClient({
+      onChange: (s) => listeners.forEach((fn) => fn(s)),
+      onFrame: (msg) => frameListeners.forEach((fn) => fn(msg)),
+    });
   }
   return shared;
 }
@@ -135,7 +142,12 @@ export function onBadgeChange(fn) {
   return () => listeners.delete(fn);
 }
 
-export function createBadgeClient({ onChange = () => {} } = {}) {
+export function onBadgeFrame(fn) {
+  frameListeners.add(fn);
+  return () => frameListeners.delete(fn);
+}
+
+export function createBadgeClient({ onChange = () => {}, onFrame = () => {} } = {}) {
   let ws = null;
   let attempt = 0;
   let closedByUs = false;
@@ -237,6 +249,18 @@ export function createBadgeClient({ onChange = () => {} } = {}) {
         state.error = msg.msg || msg.code;
         changed();
         return;
+      // ---- frames the badge authored (v2) ----
+      //
+      // `lib` is both: it changes what the UI shows AND it may be the answer
+      // an upload is waiting on, so it goes to both paths.
+      case 'lib':
+        onFrame(msg);
+        changed();
+        return;
+      case 'put_ack':
+      case 'put_done':
+        onFrame(msg);
+        return;
       default:
         // Unknown types are ignored: a newer server must not break an older tab.
     }
@@ -291,5 +315,19 @@ export function createBadgeClient({ onChange = () => {} } = {}) {
     note: (id, p, ms) => send({ t: 'note', id, p, ms }),
     sched: (id, t0, n) => send({ t: 'sched', id, t0, n }),
     stop: (id) => send({ t: 'stop', id }),
+    // Library and upload. `send` is exposed because createUpload drives its
+    // own frames - it owns the window and the resend clock, and routing every
+    // chunk through a named method here would just be a longer way to say the
+    // same thing.
+    send,
+    askLibrary: (badge) => send({ t: 'lib?', badge }),
+    dropTune: (badge, id) => send({ t: 'drop', badge, id }),
   };
+}
+
+// What a badge said it can do. Absent means the v2 minimum: live notes only.
+// Used to hide controls rather than to send frames and hope - a button that
+// silently does nothing is worse than one that is not there.
+export function badgeCan(badge, capability) {
+  return !!badge && (badge.caps || ['note']).includes(capability);
 }

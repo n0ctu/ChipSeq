@@ -4,8 +4,26 @@
 // - the badge has a d-pad, so "↑ → ↓ ← A B" is the instruction and "URDLAB" is
 // only how it travels over the wire.
 
-import { getBadgeClient, onBadgeChange, badgeState, savedUrl, shouldAutoConnect, isGuessedUrl } from '../../net/badges.js';
+import {
+  getBadgeClient, onBadgeChange, onBadgeFrame, badgeState, savedUrl,
+  shouldAutoConnect, isGuessedUrl, badgeCan,
+} from '../../net/badges.js';
+import { createUpload } from '../../net/badge-upload.js';
+import { buildTune } from '../../core/badge-tune.js';
 import { icon } from '../icons.js';
+
+// Bytes, for a card that has to say whether a 39 kB tune fits in what is left.
+export function formatBytes(n) {
+  if (!Number.isFinite(n)) return '?';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} kB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function formatMs(ms) {
+  const s = Math.round((ms || 0) / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
 
 // The wire alphabet, as the thing in your hands.
 const GLYPH = { U: '↑', R: '→', D: '↓', L: '←', A: 'A', B: 'B' };
@@ -20,12 +38,17 @@ export function countdown(expires, now = Date.now()) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-export function mount(body, { store }) {
+export function mount(body, { store, badgeStream = null }) {
   let client = null;
   let unsubscribe = null;
+  let unsubscribeFrames = null;
   let tick = null;
 
   const state = badgeState();
+  // Uploads in flight, by badge id. Held here rather than in module state so
+  // closing the card cancels them - a transfer whose progress bar is gone is a
+  // transfer nobody can stop.
+  const uploads = new Map();
 
   // The card rebuilds its DOM on every state change, and state changes for
   // reasons that have nothing to do with what you are typing - a clock sample
@@ -55,8 +78,26 @@ export function mount(body, { store }) {
     }
   }
 
+  // Badges whose library we have already asked for on this connection. A
+  // badge reports unprompted after any change, so one ask is enough - and
+  // asking on every render would put a frame on the wire for every keystroke.
+  const asked = new Set();
+
+  function refreshLibraries() {
+    // A dropped connection invalidates every ask: the badge may have been
+    // re-flashed, or a different one may reconnect under the same name.
+    if (!state.connected) { asked.clear(); return; }
+    if (!client) return;
+    for (const b of state.badges) {
+      if (!b.online || !badgeCan(b, 'store') || asked.has(b.id)) continue;
+      asked.add(b.id);
+      client.askLibrary(b.id);
+    }
+  }
+
   function render() {
     withFocusPreserved(() => draw());
+    refreshLibraries();
   }
 
   function draw() {
@@ -125,8 +166,82 @@ export function mount(body, { store }) {
               ${tracks.map((t) => `<option value="${t.id}"${b.trackId === t.id ? ' selected' : ''}>${t.name}</option>`).join('')}
             </select>
           </div>
+          ${library(b, tracks)}
         </div>`).join('')}</div>`
-        : '<div class="in-hint">No badges yet. Type the code the badge is showing, above.</div>'}`;
+        : '<div class="in-hint">No badges yet. Type the code the badge is showing, above.</div>'}
+
+      ${modeSwitch()}`;
+  }
+
+  // Live vs scheduled. Measured over a real Funnel, live costs 50 ms of onset
+  // error against scheduled's 0.3 ms - so scheduled is the default and this
+  // exists because on a LAN the gap narrows, and because a badge that has not
+  // implemented `sched` needs a way to be driven at all.
+  function modeSwitch() {
+    if (!badgeStream) return '';
+    const mode = badgeStream.getMode();
+    const anySched = state.badges.some((b) => badgeCan(b, 'sched'));
+    return `
+      <div class="bg-mode">
+        <div class="fx-param">
+          <label>Live playback</label>
+          <select data-act="mode">
+            <option value="sched"${mode === 'sched' ? ' selected' : ''}>Scheduled (accurate)</option>
+            <option value="live"${mode === 'live' ? ' selected' : ''}>Live (simple)</option>
+          </select>
+        </div>
+        <div class="in-hint">${mode === 'sched'
+          ? (anySched
+            ? 'Notes are sent ahead with timestamps and played from the badge’s own clock. ~0.3 ms onset error over the internet.'
+            : 'No connected badge advertises <b>sched</b> — switch to Live, or they will stay silent.')
+          : 'Each note is sent as it plays. Simple, but every network hiccup is audible — ~50 ms over the internet.'}</div>
+      </div>`;
+  }
+
+  // What a badge is holding, and how to put something there. Hidden entirely
+  // for a badge that never advertised `store`: a control that silently does
+  // nothing is worse than an absent one.
+  function library(b, tracks) {
+    if (!badgeCan(b, 'store')) return '';
+    const up = uploads.get(b.id);
+    if (up) {
+      const pct = up.chunks ? Math.round((up.acked / up.chunks) * 100) : 0;
+      return `
+        <div class="bg-lib">
+          <div class="lv-out-head">Sending ${up.name || ''}
+            <span class="lv-mode">${pct}%</span></div>
+          <div class="bg-bar"><i style="width:${pct}%"></i></div>
+          <button class="btn-link" data-act="cancel-put">Cancel</button>
+        </div>`;
+    }
+
+    const lib = b.lib;
+    // A one-track song has no "whole song" to choose - offering it would be
+    // the same option twice.
+    const wholeSong = tracks.length > 1;
+    return `
+      <div class="bg-lib">
+        <div class="lv-out-head">On the badge${lib
+          ? ` <span class="lv-mode">${formatBytes(lib.freeBytes)} free</span>` : ''}</div>
+        ${lib
+          ? (lib.tunes.length
+            ? `<div class="bg-tunes">${lib.tunes.map((t) => `
+                <div class="bg-tune" data-tune="${t.id}">
+                  <b>${t.name || t.id}</b>
+                  <span class="lv-mode">${t.tracks} trk · ${formatMs(t.ms)} · ${formatBytes(t.bytes)}</span>
+                  <button class="btn-icon" data-act="drop-tune" title="Delete from the badge">${icon('trash')}</button>
+                </div>`).join('')}</div>`
+            : '<div class="in-hint">Nothing stored yet.</div>')
+          : '<div class="in-hint">Library not read yet.</div>'}
+        <div class="harm-row">
+          <select data-act="put-scope">
+            ${wholeSong ? '<option value="">Whole song — badge picks a part</option>' : ''}
+            ${tracks.map((t) => `<option value="${t.id}"${!wholeSong || b.trackId === t.id ? ' selected' : ''}>Only “${t.name}”</option>`).join('')}
+          </select>
+          <button class="btn" data-act="put">Send</button>
+        </div>
+        <div class="in-hint">Stored tunes play with no server and no network.</div>
+      </div>`;
   }
 
   // The countdown is the only thing that changes without an event, so it gets
@@ -150,8 +265,77 @@ export function mount(body, { store }) {
     if (!client) {
       client = getBadgeClient();
       unsubscribe = onBadgeChange(render);
+      // Upload acks are addressed to one transfer, not to the UI at large, so
+      // they are routed to the transfer that owns them and only the progress
+      // number reaches the card.
+      unsubscribeFrames = onBadgeFrame((msg) => {
+        for (const up of uploads.values()) up.transfer.handle(msg);
+      });
     }
     return client;
+  }
+
+  // Send the current song - or one track of it - to a badge.
+  //
+  // Refuses up front when it cannot fit. The badge would refuse too, but only
+  // after the announcement round trip, and "it does not fit" is a better thing
+  // to learn before a progress bar appears than during one.
+  function sendTune(badgeId, trackId) {
+    const b = state.badges.find((x) => x.id === badgeId);
+    if (!b || uploads.has(badgeId)) return;
+    const doc = store.getDoc();
+    let built;
+    try {
+      built = buildTune(doc, { trackIds: trackId ? [trackId] : null, name: doc.name });
+    } catch (err) {
+      state.error = err.message;
+      render();
+      return;
+    }
+    const existing = b.lib && b.lib.tunes.find((t) => t.id === built.id);
+    const free = b.lib ? b.lib.freeBytes + (existing ? existing.bytes : 0) : Infinity;
+    if (built.bytes.length > free) {
+      state.error = `“${doc.name}” needs ${formatBytes(built.bytes.length)} but only ${formatBytes(free)} is free on ${b.name}.`;
+      render();
+      return;
+    }
+
+    const entry = {
+      name: doc.name, acked: 0, chunks: 0,
+      transfer: createUpload({
+        send: (msg) => ensureClient().send(msg),
+        badgeId,
+        tune: { bytes: built.bytes, id: built.id, name: doc.name, tracks: built.tracks.length },
+        onProgress: (p) => {
+          entry.acked = p.acked;
+          entry.chunks = p.chunks;
+          render();
+        },
+      }),
+    };
+    uploads.set(badgeId, entry);
+    state.error = null;
+    entry.transfer.start().then(
+      () => {
+        uploads.delete(badgeId);
+        // The badge sends a fresh `lib` on its own after a commit; ask anyway,
+        // so a firmware that forgets still leaves the card correct.
+        ensureClient().askLibrary(badgeId);
+        render();
+      },
+      (err) => {
+        uploads.delete(badgeId);
+        state.error = err.reason === 'space'
+          ? `${b.name} is full.`
+          : err.reason === 'crc'
+            ? `${b.name} received a damaged copy — try again.`
+            : err.reason === 'offline'
+              ? `${b.name} is not connected.`
+              : `Upload to ${b.name} failed (${err.reason || 'unknown'}).`;
+        render();
+      }
+    );
+    render();
   }
 
   body.addEventListener('click', (e) => {
@@ -176,6 +360,26 @@ export function mount(body, { store }) {
     if (forget) {
       const id = forget.closest('[data-id]').dataset.id;
       ensureClient().forget(id);
+      return;
+    }
+    const put = e.target.closest('[data-act="put"]');
+    if (put) {
+      const card = put.closest('[data-id]');
+      sendTune(card.dataset.id, card.querySelector('[data-act="put-scope"]').value || null);
+      return;
+    }
+    const cancel = e.target.closest('[data-act="cancel-put"]');
+    if (cancel) {
+      const id = cancel.closest('[data-id]').dataset.id;
+      const up = uploads.get(id);
+      if (up) up.transfer.cancel();
+      return;
+    }
+    const drop = e.target.closest('[data-act="drop-tune"]');
+    if (drop) {
+      const id = drop.closest('[data-id]').dataset.id;
+      const tuneId = drop.closest('[data-tune]').dataset.tune;
+      ensureClient().dropTune(id, tuneId);
     }
   });
 
@@ -188,6 +392,12 @@ export function mount(body, { store }) {
   });
 
   body.addEventListener('change', (e) => {
+    const mode = e.target.closest('[data-act="mode"]');
+    if (mode) {
+      if (badgeStream) badgeStream.setMode(mode.value);
+      render();
+      return;
+    }
     const sel = e.target.closest('[data-act="map"]');
     if (!sel) return;
     const id = sel.closest('[data-id]').dataset.id;

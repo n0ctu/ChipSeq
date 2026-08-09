@@ -1841,6 +1841,76 @@ await sleep(300);
   else { fail++; console.log('FAIL', 'stopping clears the badge queue -> ' + labBadge.pending.size + ' left'); }
 }
 
+// ---- uploading a tune, through the card a person actually clicks ----
+//
+// The upload machinery is unit-tested and the relay is server-tested, but the
+// path from "press Send" to "bytes in the badge" crosses the card, the client,
+// the server and the badge. That join is exactly where the live-playback bug
+// lived, so it gets an end-to-end test rather than an assumption.
+await check('the card offers a library for a badge that can store', `(async () => {
+  for (let i = 0; i < 40; i++) {
+    if (document.querySelector('#badges-body .bg-lib [data-act="put"]')) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  const row = document.querySelector('#badges-body .bg-badge');
+  return 'no Send control: ' + (row ? row.textContent.replace(/\\s+/g, ' ').slice(0, 120) : 'no row');
+})()`);
+
+await check('pressing Send uploads the song to the badge', `(async () => {
+  const scope = document.querySelector('#badges-body [data-act="put-scope"]');
+  const btn = document.querySelector('#badges-body [data-act="put"]');
+  if (!btn) return 'no Send button';
+  if (scope) scope.value = ''; // whole song
+  btn.click();
+  // The library list appearing is the card's own confirmation that the badge
+  // committed it and reported back.
+  for (let i = 0; i < 100; i++) {
+    const tune = document.querySelector('#badges-body .bg-tune');
+    if (tune) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  const hint = [...document.querySelectorAll('#badges-body .in-hint')].map((e) => e.textContent).join(' | ');
+  return 'no tune listed: ' + hint;
+})()`);
+
+{
+  // Asserted in THIS process, against the badge, because the browser cannot
+  // see what actually landed on the far end.
+  const stored = [...labBadge.tunes.values()][0];
+  if (stored && stored.bytes > 0) {
+    pass++;
+    console.log('OK  ', `the badge is holding the uploaded tune (${stored.bytes} B, ${stored.tracks} tracks)`);
+  } else {
+    fail++;
+    console.log('FAIL', 'the badge is holding the uploaded tune -> nothing stored');
+  }
+
+  // And it must be the same bytes the sequencer built, not merely some bytes.
+  const built = await evaluate(`(async () => {
+    const { buildTune } = await import('/js/core/badge-tune.js');
+    return buildTune(window.__chipseq.store.getDoc(),
+      { name: window.__chipseq.store.getDoc().name }).id;
+  })()`);
+  if (stored && stored.id === built) {
+    pass++;
+    console.log('OK  ', `and its CRC matches what the sequencer built (${built})`);
+  } else {
+    fail++;
+    console.log('FAIL', `and its CRC matches what the sequencer built -> ${stored && stored.id} vs ${built}`);
+  }
+}
+
+await check('deleting a stored tune clears it from the card', `(async () => {
+  const del = document.querySelector('#badges-body .bg-tune [data-act="drop-tune"]');
+  if (!del) return 'no delete button';
+  del.click();
+  for (let i = 0; i < 60; i++) {
+    if (!document.querySelector('#badges-body .bg-tune')) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return 'the tune is still listed';
+})()`);
+
 // ---- effects: buses and sends ----
 //
 // The plan's verification for this phase: identical topology in an

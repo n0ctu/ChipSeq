@@ -7,7 +7,7 @@ must agree - the release workflow fails if they do not.
 Dates are release dates. Unreleased work sits under **Unreleased** until it is
 tagged.
 
-## Unreleased
+## [0.4.0] - 2026-08-09
 
 ### Added
 
@@ -19,6 +19,48 @@ tagged.
   implementation included, since Node ships a client but not a server) that
   serves the sequencer and the badge socket from one origin, ready to publish
   with Tailscale Funnel.
+
+- **Badge autonomy: stored tunes, standalone play, and an offline mesh.** A
+  badge no longer needs the internet, a laptop or a server to perform.
+
+  - **`.cbt`, the tune a badge stores** (`js/core/badge-tune.js`,
+    `docs/badge-tune-format.md`). One binary file holding up to 16 monophonic
+    tracks with the tempo map already resolved, so the badge does no tempo
+    maths at all. Notes carry **absolute** start times in a fixed 8-byte,
+    4-byte-aligned record, which is what lets a badge derive its playback
+    position from a clock instead of accumulating durations. The difference is
+    not cosmetic: with a 137 ms stall injected every second, a derived player
+    stays within one stall of correct while the accumulating alternative ends
+    **2.8 seconds** late. Also available as an export, so a tune can be
+    side-loaded without a server.
+  - **Uploading** (`js/net/badge-upload.js`, protocol v2 §6). Send a whole song
+    or a single track to a badge's flash over the existing WebSocket, with a
+    4-deep ack window, timeout resends and a CRC verified before anything is
+    committed. The Badges card gains a library per badge: what is stored, free
+    space, delete, and a progress bar. The server relays it while holding no
+    tune bytes at any point.
+  - **`docs/badge-mesh.md` + `tools/fake-mesh.mjs`.** ESP-NOW between badges:
+    one hosts, the rest join, the tune is shared to whoever lacks it, clocks
+    converge in an explicit ARM phase, and everyone starts on a shared instant.
+    Simulated at 8 badges and 10% packet loss, the ensemble holds **0.78 ms**
+    spread with no notes swallowed by resynchronisation.
+  - **`docs/badge-handover.md` and `docs/badge-app.md`** orient the firmware
+    team and recommend a device UI for the round 240×240 display.
+
+- **Live/scheduled switch** in the Badges card. Scheduled remains the default
+  (0.3 ms against live's 50 ms over a relay); the switch exists because the gap
+  narrows on a LAN, and because a badge that has not implemented `sched` needs
+  a way to be driven at all.
+
+### Changed
+
+- **Badge protocol is now v2, and it is a hard cut** - the server refuses any
+  other version rather than half-supporting it. Badges declare what they can do
+  in `hello` (`note`, `sched`, `store`, `mesh`) and the sequencer hides controls
+  a badge cannot honour, instead of sending frames it will ignore.
+- `.cbt` joins `.wav` and the project file as an exporter available in **poly**
+  as well as mono: it holds every track and the badge picks a part, which is
+  what polyphony means on single-voice hardware.
 
 ## [0.3.1] - 2026-08-07
 

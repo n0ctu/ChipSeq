@@ -23,7 +23,19 @@ import { fileURLToPath } from 'node:url';
 import { attachWebSocket } from './ws.mjs';
 import { Hub } from './rooms.mjs';
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
+
+// The largest frame the relay will forward. Upload chunks are capped at 1024
+// raw bytes (~1368 base64 characters) by the protocol, so this is generous -
+// it exists so a misbehaving controller cannot make the relay buffer without
+// bound, not to constrain a correct one.
+export const MAX_RELAY_BYTES = 8 * 1024;
+
+// Frames a badge may send TO the controller that owns it. An allowlist rather
+// than a passthrough: the badge is on the far side of the internet, and a
+// relay that forwards anything is a relay that forwards whatever an attacker
+// puts in it.
+const BADGE_TO_CONTROLLER = new Set(['put_ack', 'put_done', 'lib']);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -40,10 +52,15 @@ const MIME = {
 export function createServer({ root, log = () => {} } = {}) {
   const hub = new Hub();
   const controllers = new Set(); // { conn, sessionId }
-  // Live sockets for badges that are connected but not yet adopted. The hub
-  // only knows badges it owns, so without this the display flow could mint a
-  // code for a badge and then have no way to tell it that it worked.
-  const pendingConns = new Map(); // badgeId -> conn
+  // Badges that are connected but not yet adopted. The hub only knows badges
+  // it owns, so without this the display flow could mint a code for a badge
+  // and then have no way to tell it that it worked.
+  //
+  // It holds `caps` and `fw` as well as the socket because adoption happens on
+  // the CONTROLLER's connection, which never saw the badge's hello - and a
+  // badge whose capabilities were forgotten at adoption looks to the sequencer
+  // like one that can only play live notes.
+  const pendingConns = new Map(); // badgeId -> { conn, caps, fw }
 
   const httpServer = http.createServer(async (req, res) => {
     if (req.url === '/health') {
@@ -85,6 +102,22 @@ export function createServer({ root, log = () => {} } = {}) {
     }
   };
 
+  // The reverse path: a frame the BADGE authored, delivered to the controllers
+  // that own it. Everything else the badge sends is answered by the server
+  // itself; this is the only direction where a badge speaks and the sequencer
+  // listens, and it exists because an upload has to be acknowledged by the
+  // thing doing the writing.
+  //
+  // Sent to every controller in the session, not just whichever one started
+  // the upload: two open tabs should both see the library change.
+  const toControllers = (sessionId, frame) => {
+    let delivered = 0;
+    for (const c of controllers) {
+      if (c.sessionId === sessionId) { c.conn.sendJson(frame); delivered++; }
+    }
+    return delivered;
+  };
+
   attachWebSocket(httpServer, {
     path: '/ws',
     onConnection: (conn, req) => {
@@ -95,6 +128,7 @@ export function createServer({ root, log = () => {} } = {}) {
       let badgeId = null;
       let sessionId = null;
       let badgePingSeen = false;
+      let badgeCaps = null;
 
       conn.onClose = () => {
         if (role === 'badge' && badgeId) {
@@ -116,6 +150,13 @@ export function createServer({ root, log = () => {} } = {}) {
       };
 
       conn.onMessage = (text) => {
+        if (text.length > MAX_RELAY_BYTES) {
+          // Refused, but not fatal: a single oversized frame is a bug in the
+          // sender, not a reason to drop a badge mid-song.
+          conn.sendJson({ t: 'error', code: 'big', msg: `frame over ${MAX_RELAY_BYTES} bytes` });
+          log('oversize', { role, bytes: text.length });
+          return;
+        }
         let msg;
         try {
           msg = JSON.parse(text);
@@ -148,11 +189,14 @@ export function createServer({ root, log = () => {} } = {}) {
             log('controller', { sessionId });
             return;
           }
-          // A badge. Version check first: a badge that speaks a language we
-          // do not is told so plainly rather than left guessing.
-          if (typeof msg.v === 'number' && msg.v !== PROTOCOL_VERSION) {
+          // A badge. Version check first, and v2 is a HARD cut: a v1 badge is
+          // refused rather than half-supported. Told plainly, because the
+          // alternative is firmware that connects and then silently never
+          // receives anything it understands.
+          if (msg.v !== PROTOCOL_VERSION) {
             conn.sendJson({ t: 'error', code: 'version', need: PROTOCOL_VERSION });
             conn.close(1002, 'version');
+            log('version_refused', { v: msg.v ?? null });
             return;
           }
           role = 'badge';
@@ -162,8 +206,13 @@ export function createServer({ root, log = () => {} } = {}) {
             conn.close(1002, 'no id');
             return;
           }
-          const known = hub.attach(badgeId, msg.fw, conn);
-          if (!known) pendingConns.set(badgeId, conn);
+          // Absent caps means the minimum: live notes only. A badge that says
+          // nothing is not assumed to be capable of everything.
+          badgeCaps = Array.isArray(msg.caps)
+            ? msg.caps.filter((c) => typeof c === 'string').slice(0, 8)
+            : ['note'];
+          const known = hub.attach(badgeId, msg.fw, conn, badgeCaps);
+          if (!known) pendingConns.set(badgeId, { conn, caps: badgeCaps, fw: msg.fw });
           // An unadopted badge is handed a code to DISPLAY. A badge with a
           // screen shows it and you type it into the sequencer; one without
           // ignores it and uses the button flow instead. Both work.
@@ -190,7 +239,8 @@ export function createServer({ root, log = () => {} } = {}) {
               log('pair_failed', { badgeId, reason: res.error });
               return;
             }
-            hub.attach(badgeId, msg.fw, conn);
+            hub.attach(badgeId, msg.fw, conn, badgeCaps);
+            pendingConns.delete(badgeId);
             conn.sendJson({ t: 'paired', name: res.name });
             pushBadges(res.sessionId);
             log('paired', { badgeId, name: res.name });
@@ -208,8 +258,20 @@ export function createServer({ root, log = () => {} } = {}) {
           case 'bye':
             conn.close(1000, 'bye');
             return;
-          default:
-            return; // unknown types ignored, same rule the badge follows
+          default: {
+            // Upload acknowledgements and library reports travel back to the
+            // sequencer. Everything else a badge says is either handled above
+            // or ignored - the same rule the badge follows for us.
+            if (!BADGE_TO_CONTROLLER.has(msg.t)) return;
+            const b = hub.badges.get(badgeId);
+            if (!b) return; // unadopted badges have nobody to talk to
+            if (msg.t === 'lib' && hub.setLibrary(badgeId, msg)) pushBadges(b.sessionId);
+            // `badge` is stamped by the server, not taken from the frame: a
+            // badge must not be able to claim it is a different badge.
+            const delivered = toControllers(b.sessionId, { ...msg, badge: badgeId });
+            log(msg.t, { from: badgeId, delivered });
+            return;
+          }
         }
       }
 
@@ -231,12 +293,15 @@ export function createServer({ root, log = () => {} } = {}) {
               log('adopt_failed', { reason: res.error });
               return;
             }
-            // Reunite the freshly adopted badge with its live socket.
+            // Reunite the freshly adopted badge with its live socket, and with
+            // what it told us at hello - the controller's connection never saw
+            // that, so it has to come from where the badge's own connection
+            // left it.
             const live = pendingConns.get(res.badgeId);
             if (live) {
-              hub.attach(res.badgeId, '', live);
+              hub.attach(res.badgeId, live.fw, live.conn, live.caps);
               pendingConns.delete(res.badgeId);
-              live.sendJson({ t: 'paired', name: res.name });
+              live.conn.sendJson({ t: 'paired', name: res.name });
             }
             pushBadges(sessionId);
             log('adopted', { badgeId: res.badgeId, name: res.name });
@@ -263,16 +328,41 @@ export function createServer({ root, log = () => {} } = {}) {
           case 'note': {
             const b = need(msg.id);
             if (b && b.conn) b.conn.sendJson({ t: 'note', p: msg.p, ms: msg.ms });
+            log('note', { to: msg.id, p: msg.p, ms: msg.ms, delivered: !!(b && b.conn) });
             return;
           }
           case 'sched': {
             const b = need(msg.id);
             if (b && b.conn) b.conn.sendJson({ t: 'sched', t0: msg.t0, n: msg.n });
+            log('sched', { to: msg.id, notes: (msg.n || []).length, delivered: !!(b && b.conn) });
             return;
           }
           case 'stop': {
             const targets = msg.id ? [need(msg.id)] : hub.badgesOf(sessionId).map((x) => hub.badges.get(x.id));
             for (const b of targets) if (b && b.conn) b.conn.sendJson({ t: 'stop' });
+            return;
+          }
+          // ---- library and upload ----
+          //
+          // Forwarded verbatim minus the addressing. The server holds NO tune
+          // bytes: an upload that dies is retried by the controller, which is
+          // what keeps "state is in memory and there is nothing to persist"
+          // true even while several megabytes flow through.
+          case 'put':
+          case 'put_data':
+          case 'put_end':
+          case 'lib?':
+          case 'drop': {
+            const b = need(msg.badge);
+            if (!b || !b.conn) {
+              conn.sendJson({ t: 'put_done', id: msg.id, badge: msg.badge, ok: false, reason: 'offline' });
+              return;
+            }
+            const { badge, ...frame } = msg;
+            b.conn.sendJson(frame);
+            // Chunks are logged by count, not individually: a 39 kB tune is 39
+            // chunks and a per-chunk line would bury everything else.
+            if (msg.t !== 'put_data') log(msg.t, { to: msg.badge, id: msg.id });
             return;
           }
           default:

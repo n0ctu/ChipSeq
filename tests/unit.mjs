@@ -1382,8 +1382,12 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     assert(exporterById(fmt.id) === fmt, `${fmt.id} is found by id`);
   }
   assert(exporterById('mid') === null, 'a format we do not have is null, not a guess');
-  eq(exportersFor('mono').map((e) => e.id), ['h', 'fmf', 'wav', 'json'], 'mono can export everything');
-  eq(exportersFor('poly').map((e) => e.id), ['wav', 'json'], 'poly cannot export the badge formats');
+  eq(exportersFor('mono').map((e) => e.id), ['h', 'fmf', 'cbt', 'wav', 'json'], 'mono can export everything');
+  // .h and .fmf are single-voice FILES, so they have nothing to say about a
+  // poly song. .cbt is not in that group: it holds every track and the badge
+  // picks one, which is exactly what poly means on this hardware.
+  eq(exportersFor('poly').map((e) => e.id), ['cbt', 'wav', 'json'],
+    'poly cannot export the single-voice files, but can export a badge tune');
   assert(EXPORTERS.filter((e) => e.blockedByConflicts).every((e) => e.modes.join() === 'mono'),
     'only mono formats are blocked by overlaps - poly has voices to spare');
 }
@@ -2771,6 +2775,422 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(AUTOMATION_PARAMS.gain.max > HOT_ABOVE, 'the gain lane allows boost above unity');
   assert(AUTOMATION_PARAMS.gain.hot === true, 'the gain lane is marked as flaggable');
   assert(!AUTOMATION_PARAMS.duty.hot, 'duty is not a level and is never flagged');
+}
+
+// ---- .cbt: the tune a badge stores ----
+{
+  const {
+    buildTune, parseTune, noteAt, crc32, tuneIdHex, NONE,
+    HEADER_BYTES, TRACK_BYTES, NOTE_BYTES, FLAG_LOOP,
+  } = await import('../js/core/badge-tune.js');
+  const { badgeScore, REST } = await import('../js/core/badge-score.js');
+  const { exportHeader } = await import('../js/core/export-h.js');
+  const { migrate } = await import('../js/core/doc.js');
+  const { readFile } = await import('node:fs/promises');
+
+  const loadDemo = async (file) =>
+    migrate(JSON.parse(await readFile(new URL(`../demos/${file}`, import.meta.url), 'utf8')));
+
+  // CRC-32 against the check value every implementation publishes, so the
+  // badge's table-driven C version has something to agree with.
+  assert(crc32(new TextEncoder().encode('123456789')) === 0xcbf43926, 'CRC-32 check value');
+  assert(crc32(new Uint8Array(0)) === 0, 'CRC-32 of nothing is 0');
+  assert(tuneIdHex(0x0000beef) === '0000beef', 'tune ids are eight hex digits');
+
+  // Round trip: what the writer emits is what the documented reader sees.
+  {
+    const doc = await loadDemo('poly.chipseq.json');
+    const built = buildTune(doc, { name: 'Round Trip', loop: true });
+    const back = parseTune(built.bytes);
+    assert(back.name === 'Round Trip', 'the name survives');
+    assert(back.loop === true && (back.flags & FLAG_LOOP) !== 0, 'the loop flag survives');
+    assert(back.id === built.id, 'the parsed id is the built id');
+    assert(back.tracks.length === doc.tracks.length, 'every track is present');
+    eq(back.tracks.map((t) => t.notes.length), built.tracks.map((t) => t.notes), 'note counts match');
+    eq(back.tracks.map((t) => t.name), doc.tracks.map((t) => t.name), 'track names survive');
+    assert(back.totalMs === built.totalMs && back.totalMs > 0, 'the length survives');
+
+    // Every note, not just the counts - this is the payload.
+    doc.tracks.forEach((t, i) => {
+      const want = badgeScore(doc, t.id, { includeRests: false })
+        .map((n) => [n.startMs, n.durMs, n.pitch]);
+      const got = back.tracks[i].notes.map((n) => [n.startMs, n.durMs, n.pitch]);
+      eq(got, want, `track ${i} round-trips note for note`);
+    });
+  }
+
+  // Damage is detected rather than played. A half-written tune in a library
+  // is worse than no tune.
+  {
+    const doc = await loadDemo('mono.chipseq.json');
+    const bad = buildTune(doc).bytes.slice();
+    bad[bad.length - 2] ^= 0xff; // flip a pitch
+    let threw = null;
+    try { parseTune(bad); } catch (e) { threw = e.message; }
+    assert(threw && /crc/i.test(threw), 'a flipped byte fails the CRC');
+  }
+
+  // Structure: everything castable, everything aligned. The firmware reads
+  // this file by pointing structs at it, so an unaligned pool is not a
+  // cosmetic issue.
+  for (const file of ['mono.chipseq.json', 'poly.chipseq.json']) {
+    const doc = await loadDemo(file);
+    for (const name of ['', 'x', 'a name of quite ordinary length', 'ü'.repeat(40)]) {
+      const built = buildTune(doc, { name });
+      const view = new DataView(built.bytes.buffer);
+      const poolOffset = view.getUint32(24, true);
+      assert(poolOffset % 4 === 0, `${file}/${name.length}: note pool is 4-byte aligned`);
+      assert(poolOffset === HEADER_BYTES + doc.tracks.length * TRACK_BYTES,
+        `${file}/${name.length}: pool starts right after the track table`);
+      assert((built.bytes.length - poolOffset) % NOTE_BYTES === 0,
+        `${file}/${name.length}: the pool is a whole number of notes`);
+      // An over-long name is truncated on a codepoint boundary, so the badge
+      // renders a short name rather than a replacement character.
+      assert(!parseTune(built.bytes).name.includes('�'),
+        `${file}/${name.length}: truncation does not split a codepoint`);
+    }
+  }
+
+  // The invariant: .cbt and .h describe the same music. .h chains durations
+  // and includes rests; .cbt stores absolute starts and omits them. The two
+  // agree exactly when each .cbt startMs equals the running sum of the .h
+  // durations before it.
+  for (const file of ['mono.chipseq.json', 'rickroll.chipseq.json']) {
+    const doc = await loadDemo(file);
+    const built = buildTune(doc, { trackIds: [doc.melodyTrackId] });
+    const notes = parseTune(built.bytes).tracks[0].notes;
+
+    const entries = [];
+    for (const line of exportHeader(doc).text.split('\n')) {
+      for (const m of line.matchAll(/\{(NOTE_[A-Z0-9]+|NOTE_REST)\s*,\s*(-?\d+)\}/g)) {
+        entries.push({ symbol: m[1], ms: Number(m[2]) });
+      }
+    }
+    // .h trims leading silence for a standalone file; .cbt keeps the song's
+    // own origin. Rebase by the lead so the two are measured from one place.
+    const score = badgeScore(doc, doc.melodyTrackId, { includeRests: false });
+    const lead = score.length ? score[0].startMs : 0;
+
+    const want = [];
+    let at = 0;
+    for (const e of entries) {
+      if (e.symbol !== 'NOTE_REST') want.push([at, e.ms]);
+      at += e.ms;
+    }
+    eq(notes.map((n) => [n.startMs - lead, n.durMs]), want,
+      `${file}: .cbt starts are the running sum of the .h durations`);
+    assert(notes.length > 20, `${file}: and it is a real tune`);
+  }
+
+  // ---- noteAt: the whole player ----
+  {
+    const notes = [
+      { startMs: 100, durMs: 200, pitch: 60 }, // 100..300
+      { startMs: 300, durMs: 100, pitch: 60 }, // 300..400, same pitch, adjacent
+      { startMs: 900, durMs: 100, pitch: 64 }, // 900..1000, after a gap
+    ];
+    assert(noteAt(notes, 0) === NONE, 'silence before the first note');
+    assert(noteAt(notes, 99) === NONE, 'still silent one ms before');
+    assert(noteAt(notes, 100) === 0, 'the onset is inclusive');
+    assert(noteAt(notes, 299) === 0, 'the last millisecond still sounds');
+    assert(noteAt(notes, 300) === 1, 'the end is exclusive, so the next note owns it');
+    assert(noteAt(notes, 400) === NONE, 'silence in the gap');
+    assert(noteAt(notes, 899) === NONE, 'right up to the next onset');
+    assert(noteAt(notes, 900) === 2, 'and then the next note');
+    assert(noteAt(notes, 1000) === NONE, 'silence past the end');
+    assert(noteAt(notes, 1e9) === NONE, 'and long past it');
+    assert(noteAt([], 0) === NONE, 'an empty track is silent');
+
+    // Adjacent identical pitches are DIFFERENT indices, which is what makes
+    // the player re-articulate them instead of slurring them into one.
+    assert(noteAt(notes, 299) !== noteAt(notes, 300), 'adjacent same-pitch notes are distinct');
+  }
+
+  // ---- resync: the guarantees the mesh design rests on ----
+  //
+  // Correction is applied by assigning a new t0 and nothing else. These are
+  // the three claims that makes, tested against a real tune.
+  {
+    const doc = await loadDemo('rickroll.chipseq.json');
+    const notes = parseTune(buildTune(doc, { trackIds: [doc.melodyTrackId] }).bytes).tracks[0].notes;
+    const end = notes[notes.length - 1].startMs + notes[notes.length - 1].durMs;
+    const STEP = 2; // the player's evaluation interval
+
+    // (1) A correction the sounding note can absorb does not retrigger it.
+    //     The note is truncated or prolonged instead - which is only possible
+    //     because identity is the pool index, not a reconstructed cursor.
+    {
+      let checked = 0;
+      let retriggered = 0;
+      for (let i = 0; i < notes.length; i++) {
+        const n = notes[i];
+        for (const at of [n.startMs, n.startMs + Math.floor(n.durMs / 2), n.startMs + n.durMs - 1]) {
+          for (const delta of [-20, -5, -1, 1, 5, 20]) {
+            const after = noteAt(notes, at + delta);
+            // Only meaningful where the correction stays inside the note.
+            if (at + delta < n.startMs || at + delta >= n.startMs + n.durMs) continue;
+            checked++;
+            if (after !== i) retriggered++;
+          }
+        }
+      }
+      assert(checked > 500, 'the absorption case is actually exercised');
+      assert(retriggered === 0, 'a correction absorbed by the sounding note does not retrigger it');
+    }
+
+    // (2) Correcting BACKWARD - a badge that ran ahead - never swallows a
+    //     note. Every onset from the corrected position onward still plays.
+    {
+      let swallowed = 0;
+      for (let i = 1; i < notes.length; i++) {
+        const before = notes[i].startMs; // about to start note i
+        for (const back of [1, 10, 120, 700]) {
+          // After the correction the badge is earlier in the song, so note i
+          // must still be ahead of it and therefore still reachable.
+          const pos = before - back;
+          const next = notes.findIndex((n) => n.startMs >= pos);
+          if (next > i) swallowed++;
+        }
+      }
+      assert(swallowed === 0, 'correcting backward never skips a pending onset');
+    }
+
+    // (3) The anti-accumulation property - the reason the format stores
+    //     absolute starts at all. Run the derived player and the tempting
+    //     "sound a note, wait durMs, advance" player over the SAME stalling
+    //     clock, and compare. This is the whole argument, measured.
+    {
+      // A wall clock with a 137 ms stall every second: during a stall the
+      // loop simply does not run, exactly as a flash write or a watchdog
+      // would look from inside the player.
+      const STALL_MS = 137;
+      const ticks = [];
+      const blind = []; // [from, to) song time nobody observed
+      for (let wall = 0, next = 1000; wall <= end; wall += STEP) {
+        if (wall >= next) { blind.push([wall, wall + STALL_MS]); wall += STALL_MS; next += 1000; }
+        ticks.push(wall);
+      }
+      assert(blind.length > 20, 'the run is long enough for accumulation to show');
+      const inBlind = (from, to) => blind.some(([a, b]) => from < b && to > a);
+
+      // Derived: position is a pure function of the clock.
+      let sounding = NONE;
+      const derivedOnset = new Map(); // note index -> wall time it started
+      for (const wall of ticks) {
+        const i = noteAt(notes, wall);
+        if (i !== sounding) {
+          if (i !== NONE && !derivedOnset.has(i)) derivedOnset.set(i, wall);
+          sounding = i;
+        }
+      }
+
+      // A stall genuinely loses whatever fell inside it - that is the cost of
+      // the stall, not of the player. What must be true is that NOTHING ELSE
+      // is lost, and that the loss does not propagate past the stall.
+      const missed = [];
+      for (let i = 0; i < notes.length; i++) if (!derivedOnset.has(i)) missed.push(i);
+      const unexplained = missed.filter(
+        (i) => !inBlind(notes[i].startMs, notes[i].startMs + notes[i].durMs)
+      );
+      eq(unexplained, [], 'the derived player loses only notes that fell inside a stall');
+      assert(derivedOnset.size > notes.length * 0.85,
+        `and keeps the rest (${derivedOnset.size}/${notes.length})`);
+
+      let worst = 0;
+      for (const [i, wall] of derivedOnset) worst = Math.max(worst, wall - notes[i].startMs);
+      assert(worst <= STEP + STALL_MS,
+        `derived onset error stays bounded by one stall (worst ${worst} ms)`);
+
+      // Accumulating: the .h player. It walks a list that includes rests,
+      // advancing when the current entry's duration has elapsed since it
+      // actually began - so every stall is added to the total, permanently.
+      const withRests = badgeScore(doc, doc.melodyTrackId, { includeRests: true });
+      let k = 0;
+      let dueAt = withRests[0].startMs;
+      const naiveStart = new Map();
+      for (const wall of ticks) {
+        if (wall >= dueAt && k < withRests.length) {
+          naiveStart.set(k, wall);
+          dueAt = wall + withRests[k].durMs;
+          k++;
+        }
+      }
+      const lateAt = (j) => naiveStart.get(j) - withRests[j].startMs;
+      const lastK = k - 1;
+      const naiveLate = lateAt(lastK);
+      const midLate = lateAt(Math.floor(lastK / 2));
+
+      // The defining property of an accumulating player: its error GROWS. The
+      // derived player's is bounded by one stall no matter how long the song.
+      assert(midLate > STALL_MS && naiveLate > midLate * 1.5,
+        `an accumulating player falls further behind as it goes (${Math.round(midLate)} -> ${Math.round(naiveLate)} ms)`);
+      assert(naiveLate > worst * 10,
+        `and ends an order of magnitude worse than derived (${Math.round(naiveLate)} vs ${worst} ms)`);
+    }
+  }
+
+  // tools/fake-badge.mjs implements CRC-32 and the header read separately, on
+  // purpose: it is a specification artifact a firmware author reads on its
+  // own, and following an import into the sequencer to see how an upload is
+  // verified would make it worth less. The duplication is only safe because
+  // this asserts the two agree - the same arrangement the clock maths uses.
+  {
+    const fake = await import('../tools/fake-badge.mjs');
+    const doc = await loadDemo('poly.chipseq.json');
+    const built = buildTune(doc, { name: 'agreement' });
+
+    assert(fake.crc32(new TextEncoder().encode('123456789')) === 0xcbf43926,
+      'the fake badge agrees on the CRC-32 check value');
+    for (const file of ['mono.chipseq.json', 'tetris.chipseq.json']) {
+      const d = await loadDemo(file);
+      const t = buildTune(d);
+      assert(fake.crc32(t.bytes, 12) === crc32(t.bytes, 12),
+        `${file}: badge and sequencer compute the same CRC over a real tune`);
+    }
+
+    const head = fake.readTuneHeader(built.bytes);
+    const mine = parseTune(built.bytes);
+    assert(head.crc === mine.crc, 'the badge reads the same id out of the header');
+    assert(head.tracks === mine.tracks.length, 'and the same track count');
+    assert(head.totalMs === mine.totalMs, 'and the same length');
+    assert(head.name === mine.name, 'and the same name');
+  }
+
+  // Mono and poly are one code path with a filter, not two formats.
+  {
+    const doc = await loadDemo('poly.chipseq.json');
+    const one = buildTune(doc, { trackIds: [doc.tracks[0].id] });
+    assert(parseTune(one.bytes).tracks.length === 1, 'a mono tune has one track');
+    const all = buildTune(doc);
+    assert(parseTune(all.bytes).tracks.length === doc.tracks.length, 'and poly has all of them');
+    eq(parseTune(one.bytes).tracks[0].notes, parseTune(all.bytes).tracks[0].notes,
+      'the shared track is byte-identical either way');
+    assert(one.id !== all.id, 'but they are different tunes with different ids');
+  }
+}
+
+// ---- uploading a tune: the window, the resends, the commit ----
+//
+// The whole point of keeping this out of the card is that it can be driven
+// here with no socket and no clock.
+{
+  const { createUpload, splitChunks, toBase64, WINDOW, ACK_TIMEOUT_MS } =
+    await import('../js/net/badge-upload.js');
+
+  // A fake wire: collects what was sent, and lets the test decide when the
+  // badge answers and when time passes.
+  function rig(bytes, { chunkSize } = {}) {
+    const sent = [];
+    let clock = 0;
+    let ticker = null;
+    const up = createUpload({
+      send: (m) => sent.push(m),
+      badgeId: 'b1',
+      tune: { bytes, id: 'deadbeef', name: 'T', tracks: 1 },
+      now: () => clock,
+      setTimer: (fn) => { ticker = fn; return 1; },
+      clearTimer: () => { ticker = null; },
+    });
+    return {
+      up, sent,
+      advance: (ms) => { clock += ms; if (ticker) ticker(); },
+      ack: (seq) => up.handle({ t: 'put_ack', badge: 'b1', id: 'deadbeef', seq }),
+      done: (msg) => up.handle({ t: 'put_done', badge: 'b1', id: 'deadbeef', ...msg }),
+      data: () => sent.filter((m) => m.t === 'put_data'),
+    };
+  }
+
+  const bytes = new Uint8Array(5000).map((_, i) => i & 0xff);
+  assert(splitChunks(bytes).length === 5, '5000 bytes is 5 chunks of 1024');
+  assert(atob(toBase64(bytes)).length === 5000, 'base64 round-trips a large array');
+  // The chunked encoder exists because one call would blow the argument limit.
+  assert(toBase64(new Uint8Array(200000)).length > 0, 'and a 200 kB array does not overflow the stack');
+
+  // The window: only WINDOW chunks go out before anything is acknowledged.
+  {
+    const r = rig(bytes);
+    const p = r.up.start();
+    p.catch(() => {}); // settled below; not awaited here
+    assert(r.sent[0].t === 'put', 'the transfer is announced first');
+    eq(r.sent[0].bytes, 5000, 'with the real size');
+    assert(r.data().length === WINDOW, `only ${WINDOW} chunks are in flight at once`);
+
+    r.ack(0);
+    assert(r.data().length === WINDOW + 1, 'an ack releases exactly one more');
+    for (const s of [1, 2, 3, 4]) r.ack(s);
+    assert(r.sent.some((m) => m.t === 'put_end'), 'and the commit follows the last ack');
+    assert(r.sent.filter((m) => m.t === 'put_end').length === 1, 'exactly once');
+
+    r.done({ ok: true, crc: 'deadbeef', bytes: 5000 });
+    const res = await p;
+    assert(res.ok && res.crc === 'deadbeef', 'a committed upload resolves with the badge CRC');
+  }
+}
+{
+  const { createUpload, ACK_TIMEOUT_MS } = await import('../js/net/badge-upload.js');
+  const bytes = new Uint8Array(3000);
+
+  function rig() {
+    const sent = [];
+    let clock = 0;
+    let ticker = null;
+    const up = createUpload({
+      send: (m) => sent.push(m),
+      badgeId: 'b1',
+      tune: { bytes, id: 'cafe0001', name: 'T', tracks: 1 },
+      now: () => clock,
+      setTimer: (fn) => { ticker = fn; return 1; },
+      clearTimer: () => { ticker = null; },
+    });
+    return {
+      up, sent,
+      advance: (ms) => { clock += ms; if (ticker) ticker(); },
+      data: () => sent.filter((m) => m.t === 'put_data'),
+    };
+  }
+
+  // A chunk nobody acknowledged is re-sent. Over a relay this is not
+  // hypothetical, and the badge is required to treat the repeat as idempotent.
+  {
+    const r = rig();
+    r.up.start().catch(() => {});
+    const before = r.data().length;
+    r.advance(ACK_TIMEOUT_MS - 1);
+    eq(r.data().length, before, 'nothing is re-sent before the timeout');
+    r.advance(2);
+    assert(r.data().length > before, 'an unacknowledged chunk is re-sent after it');
+    const resent = r.data().slice(before);
+    assert(resent.every((m) => m.seq < before), 'and it is the same seq, not a new one');
+  }
+
+  // Frames for another badge or another tune belong to another transfer.
+  {
+    const r = rig();
+    r.up.start().catch(() => {});
+    const before = r.data().length;
+    r.up.handle({ t: 'put_ack', badge: 'someone-else', id: 'cafe0001', seq: 0 });
+    r.up.handle({ t: 'put_ack', badge: 'b1', id: 'ffffffff', seq: 0 });
+    eq(r.data().length, before, 'an ack for another transfer releases nothing');
+    eq(r.up.state().acked, 0, 'and is not counted');
+  }
+
+  // A refusal rejects with the badge's reason, so the card can say why.
+  {
+    const r = rig();
+    const p = r.up.start();
+    r.up.handle({ t: 'put_done', badge: 'b1', id: 'cafe0001', ok: false, reason: 'space' });
+    let rejected = null;
+    try {
+      await p;
+      assert(false, 'a refused upload must not resolve');
+    } catch (err) {
+      rejected = err;
+    }
+    eq(rejected && rejected.reason, 'space', 'a refusal rejects with the badge reason');
+    const after = r.sent.length;
+    r.advance(10000);
+    eq(r.sent.length, after, 'and nothing is sent after it settles');
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

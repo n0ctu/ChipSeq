@@ -54,7 +54,7 @@ function transposeScope(ctx) {
   return null;
 }
 
-export const TOOLS = [
+const CARDS = [
   {
     id: 'harmonics',
     name: 'Harmonics',
@@ -100,26 +100,6 @@ export const TOOLS = [
       };
     },
     load: () => import(`./mixer.js?v=${APP_VERSION}`),
-  },
-  {
-    id: 'badges',
-    name: 'Badges',
-    // Both modes: a badge plays one monophonic part, which is exactly what a
-    // mono project is and what one poly track can be reduced to.
-    when: () => true,
-    // Reads a module-level snapshot rather than the socket, so a COLLAPSED
-    // card costs nothing and connects to nothing.
-    status: () => {
-      const s = badgeState();
-      if (!s.connected) return { on: false, label: s.connecting ? 'connecting…' : 'offline' };
-      const mapped = s.badges.filter((b) => b.trackId).length;
-      if (!s.badges.length) return { on: true, label: 'no badges' };
-      return {
-        on: mapped > 0,
-        label: `${s.badges.length} badge${s.badges.length === 1 ? '' : 's'}, ${mapped} mapped`,
-      };
-    },
-    load: () => import(`./badges.js?v=${APP_VERSION}`),
   },
   {
     id: 'effects',
@@ -196,6 +176,41 @@ export const TOOLS = [
     load: () => import(`./instrument.js?v=${APP_VERSION}`),
   },
 ];
+
+// Tools pinned to the bottom of the sidebar, below every card above.
+//
+// A comment asking the next person to keep an entry last is a rule that gets
+// broken by whoever appends a tool without reading it. A second array makes
+// the order structural instead: a new tool goes into CARDS and cannot land
+// after this one by accident.
+const PINNED_LAST = [
+  {
+    id: 'badges',
+    // Named for the hardware rather than the concept: it is the one card that
+    // talks to a physical thing on the table, and that thing has a name.
+    name: 'LuxCamp Badge 2026',
+    // Both modes: a badge plays one monophonic part, which is exactly what a
+    // mono project is and what one poly track can be reduced to.
+    when: () => true,
+    // Reads a module-level snapshot rather than the socket, so a COLLAPSED
+    // card costs nothing and connects to nothing.
+    status: () => {
+      const s = badgeState();
+      if (!s.connected) return { on: false, label: s.connecting ? 'connecting…' : 'offline' };
+      const mapped = s.badges.filter((b) => b.trackId).length;
+      if (!s.badges.length) return { on: true, label: 'no badges' };
+      const count = `${s.badges.length} badge${s.badges.length === 1 ? '' : 's'}`;
+      // A badge holding a tune is configured even with nothing mapped - it can
+      // play on its own - so the dot follows either.
+      const stored = s.badges.reduce((a, b) => a + ((b.lib && b.lib.tunes.length) || 0), 0);
+      if (!mapped && stored) return { on: true, label: `${count}, ${stored} stored` };
+      return { on: mapped > 0, label: `${count}, ${mapped} mapped` };
+    },
+    load: () => import(`./badges.js?v=${APP_VERSION}`),
+  },
+];
+
+export const TOOLS = [...CARDS, ...PINNED_LAST];
 
 // Ids are used as storage keys for fold state and as reveal() targets, so a
 // duplicate would make one tool shadow another. Cheap to check, impossible to

@@ -1,0 +1,6 @@
+# chipseq-golden digest v1
+# artifact exceeds 32768 bytes - compared by hash, head/tail for context
+bytes:  137324
+sha256: d304992d8da330c16ca3fa72ce153f2d86d376132d18c449c51d46d553f081e4
+head:   # chipseq .cbt v1\nbytes:          39096\nid:             7c4d58fa\nname:           \"bad-apple\"\nflags:          0x00 (loop=false)\ntotalMs:        193043\nloop:           0..0\nbpmHint:        138\nnotePoolOffset: 352\n\ntrack 0: \"Lead\" notes=918 lengthMs=192283\ntrack 1: \"Chords\" notes=866 lengthMs=193043\ntr
+tail:   c 01 00 b3 01 23 00 90 5f 01 00 b3 01 2f 00\n009870  43 61 01 00 d9 00 31 00 1c 62 01 00 da 00 31 00\n009880  f6 62 01 00 b2 01 25 00 5b 66 01 00 b3 01 31 00\n009890  0e 68 01 00 d9 00 33 00 e7 68 01 00 da 00 33 00\n0098a0  c1 69 01 00 b2 01 27 00 26 6d 01 00 af 01 33 00\n0098b0  ba b8 01 00 d9 00 3b 00\n

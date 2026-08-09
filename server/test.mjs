@@ -259,5 +259,181 @@ async function until(fn, what, timeout = 3000) {
   httpServer.close();
 }
 
+// ---- v2: uploading a tune, and the badge answering back ----
+//
+// The reverse direction is new in v2: until now a badge never authored a frame
+// the sequencer read. An upload cannot work without it, so it gets the same
+// ownership scrutiny the play frames already have.
+{
+  const { httpServer } = createServer({});
+  await new Promise((r) => httpServer.listen(0, r));
+  const port = httpServer.address().port;
+  const url = `ws://127.0.0.1:${port}/ws`;
+
+  const { buildTune } = await import('../js/core/badge-tune.js');
+  const { migrate } = await import('../js/core/doc.js');
+  const { readFile } = await import('node:fs/promises');
+  const doc = migrate(JSON.parse(await readFile(new URL('../demos/poly.chipseq.json', import.meta.url), 'utf8')));
+  const tune = buildTune(doc, { name: 'uploaded' });
+
+  const Controller = class {
+    constructor() { this.messages = []; }
+    connect(session) {
+      return new Promise((resolve) => {
+        this.ws = new WebSocket(url);
+        this.ws.onopen = () => this.ws.send(JSON.stringify({ t: 'hello', role: 'controller', session }));
+        this.ws.onmessage = (e) => {
+          const m = JSON.parse(e.data);
+          this.messages.push(m);
+          if (m.t === 'welcome') { this.session = m.session; resolve(m); }
+        };
+      });
+    }
+    send(msg) { this.ws.send(JSON.stringify(msg)); }
+    last(type) { return [...this.messages].reverse().find((m) => m.t === type); }
+    all(type) { return this.messages.filter((m) => m.t === type); }
+  };
+
+  const controller = new Controller();
+  await controller.connect();
+
+  const badge = new FakeBadge({ url, id: 'up:01', fw: 'test-v2' });
+  const events = [];
+  badge.onEvent = (e) => events.push(e);
+  await badge.connect();
+  await until(() => events.some((e) => e.t === 'welcome'), 'badge welcome');
+  controller.send({ t: 'adopt', code: events.find((e) => e.t === 'welcome').code });
+  await until(() => (controller.last('badges') || { badges: [] }).badges.length === 1, 'adoption');
+
+  const id = controller.last('badges').badges[0].id;
+  eq(controller.last('badges').badges[0].caps, ['note', 'sched', 'store'],
+    'the badge advertises what it can do, and the sequencer is told');
+
+  // Chunk it the way js/net/badge-upload.js does.
+  const CHUNK = 1024;
+  const chunks = [];
+  for (let i = 0; i < tune.bytes.length; i += CHUNK) {
+    chunks.push(Buffer.from(tune.bytes.subarray(i, i + CHUNK)).toString('base64'));
+  }
+
+  const upload = (badgeId, data = chunks, tuneBytes = tune.bytes.length, tuneId = tune.id) => {
+    controller.send({ t: 'put', badge: badgeId, id: tuneId, name: 'uploaded', bytes: tuneBytes, chunks: data.length, tracks: doc.tracks.length });
+    data.forEach((d, seq) => controller.send({ t: 'put_data', badge: badgeId, id: tuneId, seq, d }));
+    controller.send({ t: 'put_end', badge: badgeId, id: tuneId });
+  };
+
+  upload(id);
+  await until(() => controller.last('put_done'), 'the badge to finish the upload');
+  const done = controller.last('put_done');
+  ok(done.ok === true, `the upload succeeds (${JSON.stringify(done)})`);
+  eq(done.crc, tune.id, 'and the badge computed the same CRC the writer did');
+  eq(done.badge, id, 'the reply is stamped with which badge sent it');
+  eq(controller.all('put_ack').length, chunks.length, 'every chunk was acknowledged');
+  ok(badge.tunes.has(tune.id), 'the badge is holding it');
+
+  // The library reaches the controller, and the roster carries it too.
+  await until(() => controller.last('lib'), 'a library report');
+  eq(controller.last('lib').tunes[0].id, tune.id, 'the library lists the tune');
+  await until(() => (controller.last('badges').badges[0].lib || {}).tunes, 'the roster to carry the library');
+  eq(controller.last('badges').badges[0].lib.tunes.length, 1, 'and the roster shows it without a round trip');
+
+  // A damaged upload is refused whole rather than stored half-right.
+  {
+    const broken = chunks.slice();
+    const raw = Buffer.from(broken[1], 'base64');
+    raw[10] ^= 0xff;
+    broken[1] = raw.toString('base64');
+    upload(id, broken);
+    await until(() => controller.all('put_done').length === 2, 'the second upload to finish');
+    const second = controller.all('put_done')[1];
+    ok(second.ok === false && second.reason === 'crc', `a corrupted upload is rejected (${JSON.stringify(second)})`);
+    eq(badge.tunes.size, 1, 'and nothing half-written is kept');
+  }
+
+  // A resent chunk is idempotent - it happens for real over a relay.
+  {
+    const before = badge.tunes.size;
+    controller.send({ t: 'put', badge: id, id: tune.id, name: 'uploaded', bytes: tune.bytes.length, chunks: chunks.length });
+    chunks.forEach((d, seq) => controller.send({ t: 'put_data', badge: id, id: tune.id, seq, d }));
+    controller.send({ t: 'put_data', badge: id, id: tune.id, seq: 0, d: chunks[0] }); // again
+    controller.send({ t: 'put_end', badge: id, id: tune.id });
+    await until(() => controller.all('put_done').length === 3, 'the third upload');
+    ok(controller.all('put_done')[2].ok === true, 'a repeated chunk does not break the transfer');
+    eq(badge.tunes.size, before, 'and re-uploading the same tune replaces rather than duplicates');
+  }
+
+  // Out of space is answered immediately, not after the bytes have crossed.
+  {
+    const tiny = new FakeBadge({ url, id: 'up:tiny', fw: 'test-v2', flashBytes: 100 });
+    const tinyEvents = [];
+    tiny.onEvent = (e) => tinyEvents.push(e);
+    await tiny.connect();
+    await until(() => tinyEvents.some((e) => e.t === 'welcome'), 'tiny badge welcome');
+    controller.send({ t: 'adopt', code: tinyEvents.find((e) => e.t === 'welcome').code });
+    await until(() => (controller.last('badges') || { badges: [] }).badges.length === 2, 'tiny adoption');
+    const tinyId = controller.last('badges').badges.find((b) => b.id === 'up:tiny').id;
+
+    const n = controller.all('put_done').length;
+    const acksBefore = controller.all('put_ack').length;
+    controller.send({ t: 'put', badge: tinyId, id: tune.id, name: 'too big', bytes: tune.bytes.length, chunks: chunks.length });
+    await until(() => controller.all('put_done').length > n, 'a refusal');
+    const refusal = controller.all('put_done')[n];
+    eq(refusal.reason, 'space', 'a tune that does not fit is refused up front');
+    eq(controller.all('put_ack').length, acksBefore,
+      'and the refusal came before any chunk was sent, not after');
+    tiny.close();
+  }
+
+  // Ownership: the reverse path must not leak, and a stranger must not upload.
+  {
+    const stranger = new Controller();
+    await stranger.connect();
+    eq(stranger.messages.filter((m) => m.t === 'lib').length, 0, 'another session never saw the library');
+    const before = badge.tunes.size;
+    stranger.send({ t: 'put', badge: id, id: 'ffffffff', name: 'hostile', bytes: 8, chunks: 1 });
+    stranger.send({ t: 'put_data', badge: id, id: 'ffffffff', seq: 0, d: 'AAAAAAAAAAA=' });
+    stranger.send({ t: 'put_end', badge: id, id: 'ffffffff' });
+    await sleep(150);
+    eq(badge.tunes.size, before, 'a stranger cannot upload to a badge it does not own');
+    eq((stranger.last('put_done') || {}).reason, 'offline',
+      'and is told the badge is not addressable');
+    eq(stranger.all('put_ack').length, 0, 'and never sees an acknowledgement from it');
+    stranger.ws.close();
+  }
+
+  // Deleting.
+  controller.send({ t: 'drop', badge: id, id: tune.id });
+  await until(() => badge.tunes.size === 0, 'the tune to be deleted');
+  await until(() => (controller.last('lib').tunes || []).length === 0, 'an empty library report');
+  ok(true, 'dropping a tune clears it and reports the new library');
+
+  // A v1 badge is refused outright - v2 is a hard cut.
+  {
+    const legacy = await new Promise((resolve) => {
+      const ws = new WebSocket(url);
+      const got = [];
+      ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 1, id: 'old:01', fw: 'v1' }));
+      ws.onmessage = (e) => got.push(JSON.parse(e.data));
+      ws.onclose = () => resolve(got);
+    });
+    eq(legacy[0], { t: 'error', code: 'version', need: 2 }, 'a v1 badge is told plainly and closed');
+  }
+
+  // An oversized frame is refused without dropping the connection.
+  {
+    const n = controller.messages.length;
+    controller.send({ t: 'put_data', badge: id, id: tune.id, seq: 0, d: 'A'.repeat(9000) });
+    await until(() => controller.last('error'), 'an oversize refusal');
+    eq(controller.last('error').code, 'big', 'an oversized frame is refused');
+    controller.send({ t: 'lib?', badge: id });
+    await until(() => controller.messages.length > n + 1, 'the connection to still work');
+    ok(true, 'and the connection survives it');
+  }
+
+  badge.close(); controller.ws.close();
+  await sleep(50);
+  httpServer.close();
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

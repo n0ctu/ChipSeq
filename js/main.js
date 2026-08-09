@@ -228,7 +228,9 @@ engine.on('scheduled', (ev) => badgeStream.onEngineEvents([ev]));
 initStatusBar({ store, uiStore, conflicts, roll, engine });
 // The sidebar builds its cards from js/ui/tools/manifest.js and imports a
 // tool's module only when its card first opens.
-const toolsPanel = initToolsPanel({ store, uiStore, engine, roll });
+// badgeStream goes in so the Badges card can offer the live/scheduled switch:
+// the stream owns that decision, and two places holding it would drift.
+const toolsPanel = initToolsPanel({ store, uiStore, engine, roll, badgeStream });
 initTracksPanel({
   store,
   uiStore,

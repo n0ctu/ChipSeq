@@ -530,3 +530,14 @@ body.dragging::after {
 .bg-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); flex: none; }
 .bg-dot.on { background: var(--accent); }
 .bg-name { flex: 1; }
+
+/* What a badge is holding. Indented and hairline-separated from the mapping
+   above it: storing a tune and streaming to one are different jobs that happen
+   to concern the same device. */
+.bg-lib { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.bg-tunes { display: flex; flex-direction: column; gap: 2px; margin: 4px 0; }
+.bg-tune { display: flex; align-items: baseline; gap: 6px; font-size: 11px; }
+.bg-tune b { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bg-bar { height: 4px; background: var(--bg-2); border-radius: 2px; overflow: hidden; margin: 4px 0; }
+.bg-bar > i { display: block; height: 100%; background: var(--accent); transition: width 120ms linear; }
+.bg-mode { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
