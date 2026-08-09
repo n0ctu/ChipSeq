@@ -7,6 +7,20 @@ must agree - the release workflow fails if they do not.
 Dates are release dates. Unreleased work sits under **Unreleased** until it is
 tagged.
 
+## [0.5.2] - 2026-08-10
+
+### Fixed
+
+- **A tool card's header went stale when its status came from outside the
+  document.** The Badges card kept saying "no badges" after one was adopted:
+  the panel repaints on document and UI-store changes, and badge state is
+  neither, so nothing it watched changed when the roster did. Not specific to
+  that label — connecting, mapping and going offline were all stale the same
+  way, and the card body was correct throughout, which is why it read as a
+  wrong label rather than a missing repaint. A tool now declares such a
+  dependency in the manifest with an optional `subscribe(fn)`, and the panel
+  wires it up without knowing what it is.
+
 ## [0.5.1] - 2026-08-10
 
 ### Added
