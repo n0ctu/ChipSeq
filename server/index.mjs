@@ -211,6 +211,27 @@ export function createServer({ root, log = () => {} } = {}) {
           badgeCaps = Array.isArray(msg.caps)
             ? msg.caps.filter((c) => typeof c === 'string').slice(0, 8)
             : ['note'];
+
+          // The badge is the authority on whether it holds an adoption. A
+          // device that was factory-reset, reflashed, or un-adopted from its
+          // own menu says so here and the server's record yields.
+          //
+          // Without this it stays in somebody's sequencer forever: the server
+          // answers `known: true`, offers no pairing code, and the badge is
+          // listed but unusable - the same dead end `release` fixed, reached
+          // by a badge that never got to send it.
+          //
+          // ABSENT means "no claim", NOT "not adopted". A badge that does not
+          // send the field must keep its adoption across a reconnect, which is
+          // the normal case and the whole reason adoption survives a blip.
+          if (msg.adopted === false) {
+            const disowned = hub.release(badgeId);
+            if (disowned) {
+              pushBadges(disowned);
+              log('disowned', { badgeId }); // the badge says it is not ours
+            }
+          }
+
           const known = hub.attach(badgeId, msg.fw, conn, badgeCaps);
           if (!known) pendingConns.set(badgeId, { conn, caps: badgeCaps, fw: msg.fw });
           // An unadopted badge is handed a code to DISPLAY. A badge with a

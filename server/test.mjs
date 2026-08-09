@@ -556,6 +556,69 @@ async function until(fn, what, timeout = 3000) {
     ctl.ws.close();
   }
 
+  // --- a badge that un-adopted ON THE DEVICE, and never got to say so ---
+  //
+  // Factory reset, reflash, or "forget pairing" in the badge's own menu. It
+  // reconnects holding nothing while the server still lists it, so it sat in
+  // the sequencer as a badge that could not be used or removed. The badge is
+  // the authority on its own adoption, so `hello` settles it.
+  {
+    const ctl = new Controller();
+    await ctl.connect();
+    const b3 = new FakeBadge({ url, id: 'rel:03', fw: 'rel' });
+    const e3 = [];
+    b3.onEvent = (e) => e3.push(e);
+    await b3.connect();
+    await adopt(ctl, b3, e3);
+    ok(hub.badges.has('rel:03'), 'adopted to begin with');
+
+    // It reboots having forgotten - and says so this time.
+    b3.close();
+    await sleep(150);
+    const reset = new FakeBadge({ url, id: 'rel:03', fw: 'rel', claimsAdopted: false });
+    const re = [];
+    reset.onEvent = (e) => re.push(e);
+    await reset.connect();
+    await until(() => re.some((e) => e.t === 'welcome'), 'welcome after reset');
+
+    const w = re.find((e) => e.t === 'welcome');
+    ok(w.known === false, 'the server takes the badge at its word');
+    ok(!!w.code, 'and offers a code straight away');
+    await until(() => (ctl.last('badges') || { badges: [null] }).badges.length === 0,
+      'the sequencer roster to drop it');
+    ok(hub.badges.has('rel:03') === false, 'it is gone from the server too');
+    reset.close();
+    ctl.ws.close();
+  }
+
+  // --- ...but silence is NOT a disclaimer ---
+  //
+  // Adoption surviving a reconnect is the whole reason a badge with a flaky
+  // link keeps working. A badge that simply does not send the field must not
+  // be freed by connecting.
+  {
+    const ctl = new Controller();
+    await ctl.connect();
+    const b4 = new FakeBadge({ url, id: 'rel:04', fw: 'rel' });
+    const e4 = [];
+    b4.onEvent = (e) => e4.push(e);
+    await b4.connect();
+    await adopt(ctl, b4, e4);
+
+    b4.close();
+    await sleep(150);
+    const back = new FakeBadge({ url, id: 'rel:04', fw: 'rel' }); // no claim
+    const be = [];
+    back.onEvent = (e) => be.push(e);
+    await back.connect();
+    await until(() => be.some((e) => e.t === 'welcome'), 'welcome after a blip');
+    ok(be.find((e) => e.t === 'welcome').known === true,
+      'a badge that makes no claim keeps its adoption across a reconnect');
+    ok(hub.badges.has('rel:04'), 'and stays in the roster');
+    back.close();
+    ctl.ws.close();
+  }
+
   // --- releasing when not adopted is harmless ---
   {
     const loose = new FakeBadge({ url, id: 'rel:loose', fw: 'rel' });

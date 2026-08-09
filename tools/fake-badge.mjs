@@ -97,6 +97,13 @@ export class FakeBadge {
   constructor({
     url, id, fw = 'fake-2.0.0', code = null, clockSkew = 0, onEvent = null,
     caps = ['note', 'sched', 'store'],
+    // What this badge claims about its own adoption in `hello`:
+    //   null  - no claim (the default, and what a badge with no persistent
+    //           store should send: the server's record stands)
+    //   false - "I hold no adoption" - a reset, reflashed or locally
+    //           un-adopted device. The server frees it.
+    //   true  - "I am adopted", informational.
+    claimsAdopted = null,
     flashBytes = DEFAULT_FLASH_BYTES, maxTunes = DEFAULT_MAX_TUNES,
   } = {}) {
     this.url = url;
@@ -106,6 +113,7 @@ export class FakeBadge {
     this.clockSkew = clockSkew;
     this.onEvent = onEvent || (() => {});
     this.caps = caps;
+    this.claimsAdopted = claimsAdopted;
 
     // The library, and the flash budget it lives in.
     this.flashBytes = flashBytes;
@@ -145,7 +153,12 @@ export class FakeBadge {
       ws.onopen = () => {
         ws.onerror = (e) => this.onEvent({ t: 'socket_error', e });
         this.attempt = 0;
-        this.send({ t: 'hello', v: 2, id: this.id, fw: this.fw, caps: this.caps });
+        const hello = { t: 'hello', v: 2, id: this.id, fw: this.fw, caps: this.caps };
+        // Omitted unless this badge actually has something to claim - a badge
+        // that sends `adopted: false` on every boot would drop its adoption
+        // every time it reconnected.
+        if (this.claimsAdopted !== null) hello.adopted = this.claimsAdopted;
+        this.send(hello);
         resolve(this);
       };
       ws.onmessage = (ev) => this.handle(JSON.parse(ev.data));
