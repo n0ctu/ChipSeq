@@ -271,6 +271,10 @@ export function createEngine(store) {
     return secondsToTick(doc, tickToSeconds(doc, passStartTick) + (t - passStartTime));
   }
 
+  // How long an auditioned note sounds. One constant, so the badges hold it
+  // for exactly as long as the speakers do.
+  const PREVIEW_MS = 180;
+
   function previewNote(pitch, instrumentId) {
     ensureCtx();
     const doc = store.getDoc();
@@ -279,9 +283,13 @@ export function createEngine(store) {
     scheduleNote(audioCtx, masterGain, getInstrument(doc, id), {
       pitch,
       startTime: now,
-      stopTime: now + 0.18,
+      stopTime: now + PREVIEW_MS / 1000,
       velocity: 100,
     });
+    // Emitted rather than sent: core stays free of the network, and every
+    // caller of previewNote gets badge audition without knowing badges exist.
+    // There are ten of them across the roll, the keymap and three tool cards.
+    emitter.emit('preview', { notes: [{ pitch, offsetMs: 0, durMs: PREVIEW_MS }] });
   }
 
   // Continuous audition loop: repeats a reference note, re-resolving the
@@ -331,6 +339,16 @@ export function createEngine(store) {
         velocity: ev.velocity ?? 100,
       });
     }
+    // Same timeline the speakers just got, in milliseconds from the first
+    // event - a decorated note is one gesture and the badges should hear the
+    // whole decoration, not its root.
+    emitter.emit('preview', {
+      notes: events.map((ev) => ({
+        pitch: ev.pitch,
+        offsetMs: Math.round(at(ev.startTick) * 1000),
+        durMs: Math.max(1, Math.round((at(ev.startTick + ev.durationTicks) - at(ev.startTick)) * 1000)),
+      })),
+    });
   }
 
   return {

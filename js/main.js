@@ -225,6 +225,11 @@ engine.on('playstate', ({ playing, fromTick }) => {
 // its own, so the badges play the performance the speakers are playing.
 engine.on('scheduled', (ev) => badgeStream.onEngineEvents([ev]));
 
+// Auditioning: a note played by hand in the roll sounds on every badge too.
+// Hooked to the engine rather than to the roll because ten call sites across
+// the roll, the keymap and three tool cards all audition through it.
+engine.on('preview', ({ notes }) => badgeStream.preview(notes));
+
 initStatusBar({ store, uiStore, conflicts, roll, engine });
 // The sidebar builds its cards from js/ui/tools/manifest.js and imports a
 // tool's module only when its card first opens.

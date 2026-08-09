@@ -1911,6 +1911,63 @@ await check('deleting a stored tune clears it from the card', `(async () => {
   return 'the tune is still listed';
 })()`);
 
+// ---- auditioning a note reaches the badges ----
+//
+// Asserted against the badge in THIS process: the browser cannot see what came
+// out the far end, and "the click made a sound locally" is not the claim.
+{
+  labBadge.played.length = 0;
+  await evaluate(`window.__chipseq.engine.previewNote(72, null)`);
+  await sleep(600);
+  const got = labBadge.played.filter((p) => p.pitch === 72);
+  if (got.length === 1) {
+    pass++;
+    console.log('OK  ', `auditioning a note plays it on the badge (${got[0].ms} ms)`);
+  } else {
+    fail++;
+    console.log('FAIL', `auditioning a note plays it on the badge -> ${got.length} received`);
+  }
+
+  // The badge is mapped to a track, but auditioning must reach it regardless
+  // of mapping - and an UNMAPPED badge must hear it too.
+  await evaluate(`(async () => {
+    const { getBadgeClient } = await import('/js/net/badges.js');
+    const b = getBadgeClient().state.badges[0];
+    getBadgeClient().map(b.id, null);
+  })()`);
+  await sleep(400);
+  labBadge.played.length = 0;
+  await evaluate(`window.__chipseq.engine.previewNote(76, null)`);
+  await sleep(600);
+  if (labBadge.played.some((p) => p.pitch === 76)) {
+    pass++;
+    console.log('OK  ', 'an unmapped badge still hears auditioned notes');
+  } else {
+    fail++;
+    console.log('FAIL', 'an unmapped badge still hears auditioned notes -> silent');
+  }
+
+  // ...but not over a running transport, where it would cut across the song.
+  await evaluate(`(async () => {
+    await window.__chipseq.engine.ensureCtx();
+    window.__chipseq.engine.play(0);
+  })()`);
+  await sleep(300);
+  labBadge.played.length = 0;
+  await evaluate(`window.__chipseq.engine.previewNote(79, null)`);
+  await sleep(400);
+  const during = labBadge.played.filter((p) => p.pitch === 79).length;
+  await evaluate(`window.__chipseq.engine.stop()`);
+  await sleep(200);
+  if (during === 0) {
+    pass++;
+    console.log('OK  ', 'auditioning is suppressed while the transport runs');
+  } else {
+    fail++;
+    console.log('FAIL', `auditioning is suppressed while the transport runs -> ${during} leaked`);
+  }
+}
+
 // ---- effects: buses and sends ----
 //
 // The plan's verification for this phase: identical topology in an

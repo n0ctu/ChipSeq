@@ -1304,6 +1304,99 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     eq(notes.map((n) => n.p), [60], 'only mapped tracks, and only real durations');
     eq(client.sent.filter((m) => m.t === 'sched'), [], 'live mode schedules nothing');
   }
+
+  // ---- auditioning a note onto the badges ----
+  {
+    const { PREVIEW_MIN_GAP_MS, PREVIEW_LEAD_MS } = await import('../js/net/badge-stream.js');
+    const roster = [
+      { id: 'mapped', trackId: track.id, online: true, caps: ['note', 'sched'] },
+      { id: 'unmapped', trackId: null, online: true, caps: ['note', 'sched'] },
+      { id: 'offline', trackId: track.id, online: false, caps: ['note', 'sched'] },
+    ];
+
+    // EVERY connected badge, mapped or not - clicking a note is "let me hear
+    // this", and it doubles as a check that the whole rig is alive.
+    {
+      const client = makeClient(roster, () => 1_000_000);
+      const stream = createBadgeStream({ client, store });
+      assert(stream.preview([{ pitch: 69, offsetMs: 0, durMs: 180 }], 0) === true, 'a preview is sent');
+      eq(client.sent.map((m) => `${m.t}:${m.id}`), ['note:mapped', 'note:unmapped'],
+        'every ONLINE badge hears it, mapped or not; an offline one is skipped');
+      eq(client.sent[0].ms, 180, 'for as long as the speakers hold it');
+    }
+
+    // Not over a running transport: the badges are mid-song with a queue
+    // already filled, and a stray note reads as the ensemble glitching.
+    {
+      const client = makeClient(roster, () => 1_000_000);
+      const stream = createBadgeStream({ client, store });
+      stream.start(0);
+      client.sent.length = 0;
+      assert(stream.preview([{ pitch: 69, offsetMs: 0, durMs: 180 }], 0) === false,
+        'previews are suppressed while the transport runs');
+      eq(client.sent, [], 'and nothing goes out');
+      stream.stop();
+      client.sent.length = 0;
+      assert(stream.preview([{ pitch: 69, offsetMs: 0, durMs: 180 }], 0) === true,
+        'and resume once it stops');
+    }
+
+    // A held arrow key repeats ~30x a second. Extra previews are DROPPED, not
+    // queued - a backlog of auditions is worse than none.
+    {
+      const client = makeClient(roster, () => 1_000_000);
+      const stream = createBadgeStream({ client, store });
+      const one = [{ pitch: 69, offsetMs: 0, durMs: 180 }];
+      assert(stream.preview(one, 0) === true, 'the first preview goes');
+      assert(stream.preview(one, PREVIEW_MIN_GAP_MS - 1) === false, 'a rapid repeat is dropped');
+      assert(stream.preview(one, PREVIEW_MIN_GAP_MS + 1) === true, 'and the next one lands');
+      eq(client.sent.filter((m) => m.t === 'note').length, 4,
+        'two previews x two online badges, not three previews');
+    }
+
+    // A decorated note is a whole gesture: it goes as a scheduled chunk so the
+    // arpeggio keeps its shape across the relay.
+    {
+      const client = makeClient(roster, () => 1_000_000);
+      const stream = createBadgeStream({ client, store });
+      const arp = [
+        { pitch: 60, offsetMs: 0, durMs: 100 },
+        { pitch: 64, offsetMs: 100, durMs: 100 },
+        { pitch: 67, offsetMs: 200, durMs: 100 },
+      ];
+      stream.preview(arp, 0);
+      const sched = client.sent.filter((m) => m.t === 'sched');
+      eq(sched.length, 2, 'both online badges get the whole decoration');
+      eq(sched[0].n, [[0, 60, 100], [100, 64, 100], [200, 67, 100]], 'with its timing intact');
+      eq(sched[0].t0, 1_000_000 + PREVIEW_LEAD_MS, 'anchored far enough ahead to clear the relay');
+    }
+
+    // A badge that never implemented `sched` has no clock, so a burst would
+    // arrive as one blur. It gets the note actually under the cursor.
+    {
+      const client = makeClient([{ id: 'simple', trackId: null, online: true, caps: ['note'] }], () => 1_000_000);
+      const stream = createBadgeStream({ client, store });
+      stream.preview([
+        { pitch: 60, offsetMs: 0, durMs: 100 },
+        { pitch: 64, offsetMs: 100, durMs: 100 },
+      ], 0);
+      eq(client.sent.map((m) => [m.t, m.p]), [['note', 60]],
+        'a note-only badge plays the root rather than a jumble');
+    }
+
+    // Nothing connected is not an error, and must not start the throttle -
+    // otherwise the first real preview after connecting would be swallowed.
+    {
+      const client = makeClient([], () => 1_000_000);
+      const stream = createBadgeStream({ client, store });
+      assert(stream.preview([{ pitch: 69, offsetMs: 0, durMs: 180 }], 0) === false, 'no badges, no send');
+      // A badge appears at the very same instant: the failed attempt must not
+      // have armed the throttle, or the first real preview would be swallowed.
+      client.state.badges.push({ id: 'late', trackId: null, online: true, caps: ['note'] });
+      assert(stream.preview([{ pitch: 69, offsetMs: 0, durMs: 180 }], 0) === true,
+        'and a preview the instant one connects still goes');
+    }
+  }
 }
 
 // ---- badge protocol: clock sync and late-drop ----

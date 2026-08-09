@@ -13,12 +13,29 @@
 // I/O only. What the music IS comes from js/core/badge-score.js.
 
 import { badgeScore, sliceScore, toSchedNotes, schedT0 } from '../core/badge-score.js';
+import { badgeCan } from './badges.js';
 
 // How far ahead scheduled chunks are pushed, and how often. The protocol asks
 // for 2-4 seconds of lead; refreshing twice per window means a dropped frame
 // has a second chance before anything goes silent.
 export const CHUNK_MS = 3000;
 export const REFRESH_MS = 1500;
+
+// Auditioning a note sends it to EVERY connected badge, not just the ones
+// mapped to the track being edited. Clicking a note is "let me hear this", and
+// an unmapped badge is idle anyway - it also makes the whole rig answer, which
+// is the fastest way to see that eight badges are alive before a show.
+//
+// Held down, an arrow key repeats around 30 times a second. That is 30 frames
+// per badge over a relay for something nobody can hear as separate notes, so
+// previews are rate-limited and DROPPED rather than queued - the same "late is
+// worse than absent" rule the rest of the protocol follows.
+export const PREVIEW_MIN_GAP_MS = 60;
+
+// A decorated note is sent as a scheduled chunk so its timing survives the
+// relay. The lead has to clear the round trip - measured at 50 ms over a real
+// Funnel - with enough margin that the first note is not already late.
+export const PREVIEW_LEAD_MS = 250;
 
 export function createBadgeStream({ client, store }) {
   let mode = 'sched'; // 'sched' | 'live'
@@ -91,7 +108,47 @@ export function createBadgeStream({ client, store }) {
     }
   }
 
+  // ---- auditioning ----
+  //
+  // A note played by hand in the piano roll, on every badge at once.
+  // -Infinity, not 0: the throttle must never swallow the FIRST preview. With
+  // 0 it only works by accident, because Date.now() happens to be far from the
+  // epoch - an injected clock starting at 0 loses the first note.
+  let lastPreviewAt = -Infinity;
+
+  function preview(notes, now = Date.now()) {
+    // Never over a running transport. The badges are mid-song with a queue
+    // already filled; a note arriving now plays on top of it, which is heard
+    // as the ensemble glitching rather than as an audition.
+    if (running) return false;
+    if (!notes || !notes.length) return false;
+    if (now - lastPreviewAt < PREVIEW_MIN_GAP_MS) return false;
+
+    const online = client.state.badges.filter((b) => b.online);
+    if (!online.length) return false;
+    lastPreviewAt = now;
+
+    const single = notes.length === 1;
+    const t0 = single ? 0 : Math.round(client.serverNow() + PREVIEW_LEAD_MS);
+    for (const b of online) {
+      // One note goes as `note`: it plays the moment it lands, which is the
+      // lowest latency available and needs no clock on the badge.
+      if (single) {
+        client.note(b.id, notes[0].pitch, notes[0].durMs);
+      } else if (badgeCan(b, 'sched')) {
+        client.sched(b.id, t0, notes.map((n) => [n.offsetMs, n.pitch, n.durMs]));
+      } else {
+        // No clock, so a burst of `note` frames would arrive as one blur.
+        // The first event is the note actually under the cursor, so playing
+        // just that is the honest reduction rather than a jumble.
+        client.note(b.id, notes[0].pitch, notes[0].durMs);
+      }
+    }
+    return true;
+  }
+
   return {
+    preview,
     setMode(next) {
       if (next === mode) return;
       this.stop();
@@ -124,6 +181,6 @@ export function createBadgeStream({ client, store }) {
 
     onEngineEvents,
     // Exposed for tests and the latency lab.
-    _state: () => ({ mode, running, sentUpTo, originServerMs, tracks: [...scores.keys()] }),
+    _state: () => ({ mode, running, sentUpTo, originServerMs, lastPreviewAt, tracks: [...scores.keys()] }),
   };
 }
