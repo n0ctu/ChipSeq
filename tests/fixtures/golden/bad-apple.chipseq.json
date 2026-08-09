@@ -1,6 +1,6 @@
 # chipseq-golden digest v1
 # artifact exceeds 32768 bytes - compared by hash, head/tail for context
-bytes:  1224302
-sha256: 8e50350d4bb53c21e75b4d7aa14a1427a2a024ad47b954b8c1b89b37025a7b38
+bytes:  1224087
+sha256: 32cc9acb9b278f37335946a625d088aaa940cb2813c6203f8d02d9781ac7f8e1
 head:   {\n  \"schema\": \"chipseq-tune\",\n  \"version\": 4,\n  \"id\": \"4bd0a248-5953-490c-97ad-eddf21dccf6c\",\n  \"name\": \"Bad Apple\",\n  \"mode\": \"poly\",\n  \"ppq\": 96,\n  \"song\": {\n    \"bpm\": 138,\n    \"timeSig\": {\n      \"num\": 4,\n      \"den\": 4\n    },\n    \"key\": {\n      \"tonic\": 3,\n      \"mode\": \"minor\"\n    },\n    \"temp
 tail:   : -7.3\n    }\n  },\n  \"buses\": [\n    {\n      \"id\": \"01034c1f-77e2-4664-936c-30d70e99f7b9\",\n      \"name\": \"Bus 1\",\n      \"chain\": [\n        {\n          \"kind\": \"reverb\",\n          \"v\": 1,\n          \"params\": {\n            \"seconds\": 0.5,\n            \"decay\": 1\n          }\n        }\n      ]\n    }\n  ]\n}\n

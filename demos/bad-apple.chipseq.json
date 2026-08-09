@@ -81,14 +81,6 @@
       "instrumentId": "badge",
       "notes": [
         {
-          "id": "3bc60959-0202-45d6-8026-0216a7952322",
-          "pitch": 66,
-          "startTick": 5616,
-          "durationTicks": 48,
-          "velocity": 100,
-          "harmonics": null
-        },
-        {
           "id": "eeeaa629-9a3e-42db-9079-ac0a15989d0c",
           "pitch": 63,
           "startTick": 5760,
