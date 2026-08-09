@@ -7,6 +7,50 @@ must agree - the release workflow fails if they do not.
 Dates are release dates. Unreleased work sits under **Unreleased** until it is
 tagged.
 
+## [0.5.0] - 2026-08-09
+
+### Added
+
+- **A badge can end its own adoption.** Adoption used to be a one-way door:
+  only the controller that made it could end it, and a controller loses its
+  session routinely — a closed browser, cleared storage, a different laptop.
+  A badge in that state reconnected as `known`, was offered no pairing code,
+  and could be adopted by nobody; restarting the server was the only way out.
+  `{t:"release"}` now frees it, on the badge's own authority, and a fresh
+  pairing code comes straight back on the same socket. `docs/badge-unadopt.md`
+  is the handover for the firmware side.
+- **Auditioning plays on the badges.** A note played by hand in the piano roll
+  now sounds on every connected badge, mapped or not — clicking a note is "let
+  me hear this", and it doubles as a check that the whole rig is alive. Hooked
+  to the engine, so the ten audition call sites across the roll, the keymap and
+  three tool cards are all covered. Suppressed while the transport runs,
+  rate-limited to one every 60 ms, and a decorated note goes as a scheduled
+  chunk so its arpeggio keeps its shape across the relay.
+
+### Fixed
+
+- **`sched` chunks arrived with no lead time.** The badge team measured 30 of
+  96 notes dropped over the Funnel, with chunks due on arrival where §5.2
+  promises 2–4 seconds. Three causes: the steady-state lead was
+  `CHUNK_MS - REFRESH_MS` = 1500 ms, under our own documented window; the
+  badges were anchored to *now* while the engine starts its audio 60 ms later,
+  so they ran ahead of the speakers by about the length of the relay hop; and
+  an edit while playing restarted the engine, which flushed every badge's queue
+  and re-anchored with zero lead. Measured before: first chunk 0 ms, steady
+  1500–2350 ms. After: 60 ms and 2623–3913 ms. Notes already past due are no
+  longer sent at all — they cannot arrive in time, and sending them moves the
+  decision somewhere we cannot see it.
+- **A badge that un-adopted on the device stayed in the sequencer.** A factory
+  reset, a reflash, or "forget pairing" from the badge's own menu while offline
+  left the server insisting it was still adopted, so it sat in the list
+  unusable. `hello` now carries an optional `adopted`, and `false` frees it —
+  the badge is the authority on its own pairing. Absent still means *no claim*,
+  so adoption survives an ordinary reconnect.
+- The Badges card never re-read a badge's library after it was released and
+  adopted again in the same session, showing it as empty while it held tunes.
+- **Bad Apple:** a stray F#4 an eighth note before the Lead's entry, from a
+  misclick. The melody now starts cleanly on bar 15 with the rest of the band.
+
 ## [0.4.1] - 2026-08-09
 
 ### Fixed
