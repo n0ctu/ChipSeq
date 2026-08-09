@@ -1778,6 +1778,19 @@ await check('a badge is adopted by typing the code it shows', `(async () => {
   return 'not adopted: ' + hint;
 })()`);
 
+// The card HEADER, not its body. The panel repaints on document and UI-store
+// changes, and badge state is neither - so adopting a badge left the header
+// saying "no badges" until an unrelated edit happened to repaint it.
+await check('the card header follows the badge roster', `(async () => {
+  const status = document.querySelector('#sec-badges .tool-status');
+  if (!status) return 'no status element';
+  for (let i = 0; i < 60; i++) {
+    if (/1 badge/.test(status.textContent)) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return 'header still says: ' + JSON.stringify(status.textContent);
+})()`);
+
 await check('the adopted badge shows as online and can be mapped to a track', `(async () => {
   const row = document.querySelector('#badges-body .bg-badge');
   if (!row) return 'no badge row';

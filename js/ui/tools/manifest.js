@@ -21,6 +21,11 @@
 //               is in play. It therefore lives here, not in the tool module,
 //               so nothing has to be loaded to answer it.
 //   load()      the only dynamic import. Runs on first expand, never before.
+//   subscribe(fn)  OPTIONAL. Anything a tool's status depends on that is not
+//               in the document or the UI store. The panel re-renders on those
+//               two, so a tool whose status comes from elsewhere - a socket,
+//               say - would otherwise show a stale label until an unrelated
+//               edit happened to repaint it. Returns an unsubscribe.
 //
 // status() returns { on, label }:
 //   on    - the tool is actually configured//in effect here. Drives the dot,
@@ -29,7 +34,7 @@
 //   label - short context line, shown open or closed.
 
 import { APP_VERSION } from '../../core/version.js';
-import { badgeState } from '../../net/badges.js';
+import { badgeState, onBadgeChange } from '../../net/badges.js';
 import { activeTrack, getTrack, trackGain, trackPan, DEFAULT_INSTRUMENTS } from '../../core/doc.js';
 import { DEFAULT_NORMALIZE, normalizeConfig } from '../../core/normalize.js';
 
@@ -206,6 +211,14 @@ const PINNED_LAST = [
       if (!mapped && stored) return { on: true, label: `${count}, ${stored} stored` };
       return { on: mapped > 0, label: `${count}, ${mapped} mapped` };
     },
+    // Badge state is a socket, not the document, so nothing the panel already
+    // watches changes when a badge is adopted, mapped or goes offline. Without
+    // this the header sat on whatever it last said - "no badges" for a session
+    // that had just adopted one.
+    //
+    // Subscribing does not connect anything: js/net/badges.js is inert until
+    // the card calls connect(), so the app still makes no request until asked.
+    subscribe: onBadgeChange,
     load: () => import(`./badges.js?v=${APP_VERSION}`),
   },
 ];

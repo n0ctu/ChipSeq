@@ -148,6 +148,9 @@ export function initToolsPanel(ctx) {
 
   ctx.store.subscribe(['doc', 'song', 'notes', 'tracks', 'harmonics', 'automation'], render);
   ctx.uiStore.subscribe(['selection', 'instrument'], render);
+  // A tool whose status depends on something outside those two stores says so
+  // in the manifest. Nothing else in the panel needs to know what that is.
+  for (const tool of TOOLS) if (tool.subscribe) tool.subscribe(render);
   render();
 
   return {
