@@ -255,6 +255,23 @@ export function createServer({ root, log = () => {} } = {}) {
               log('badge_ping', { badgeId }); // once, so a silent badge is visible
             }
             return;
+          case 'release': {
+            // The badge owner decides this adoption is over. Its authority is
+            // that it IS the badge - it is speaking on the connection that
+            // said `hello` with this id - so there is no session to check.
+            // Nothing new is exposed: anyone who could forge this could
+            // already impersonate the badge outright.
+            const freed = hub.release(badgeId);
+            // Straight back into the pairing flow on the SAME socket, with a
+            // code to display. Disconnecting instead would work, but it would
+            // make the badge look broken for the second it took to reconnect.
+            pendingConns.set(badgeId, { conn, caps: badgeCaps, fw: '' });
+            hub.revokeOffer(badgeId);
+            conn.sendJson({ t: 'released', code: hub.offerCode(badgeId) });
+            if (freed) pushBadges(freed); // the old owner's list just shrank
+            log('released', { badgeId, wasAdopted: !!freed });
+            return;
+          }
           case 'bye':
             conn.close(1000, 'bye');
             return;
@@ -322,9 +339,27 @@ export function createServer({ root, log = () => {} } = {}) {
               pushBadges(sessionId);
             }
             return;
-          case 'forget':
-            if (hub.forget(sessionId, msg.id)) pushBadges(sessionId);
+          case 'forget': {
+            // Grab the socket before the record goes: a forgotten badge is
+            // handed a fresh code on the connection it already has, so it is
+            // immediately adoptable again instead of appearing dead until it
+            // notices and reconnects. Same end state as a badge-initiated
+            // release, reached from the other side.
+            const target = hub.owned(sessionId, msg.id);
+            const live = target && target.conn && target.conn.open ? target.conn : null;
+            const caps = target ? target.caps : null;
+            const fw = target ? target.fw : '';
+            if (hub.forget(sessionId, msg.id)) {
+              if (live) {
+                pendingConns.set(msg.id, { conn: live, caps, fw });
+                hub.revokeOffer(msg.id);
+                live.sendJson({ t: 'released', code: hub.offerCode(msg.id) });
+              }
+              pushBadges(sessionId);
+              log('forgot', { badgeId: msg.id, told: !!live });
+            }
             return;
+          }
           case 'note': {
             const b = need(msg.id);
             if (b && b.conn) b.conn.sendJson({ t: 'note', p: msg.p, ms: msg.ms });

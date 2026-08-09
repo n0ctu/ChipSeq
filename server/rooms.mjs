@@ -251,10 +251,29 @@ export class Hub {
     return true;
   }
 
+  // A badge disowning itself. Returns the session that held it - so that
+  // controller can be told its roster shrank - or null if it was not adopted.
+  //
+  // Deliberately takes no sessionId: this is the one operation whose authority
+  // comes from BEING the badge rather than from owning it. Without it an
+  // adoption could only be ended by the controller that made it, and a
+  // controller whose session is gone takes the badge with it: it reconnects
+  // as known, is handed no pairing code, and cannot be adopted by anyone.
+  // Restarting the server was the only way out.
+  release(badgeId) {
+    const b = this.badges.get(badgeId);
+    if (!b) return null;
+    const { sessionId } = b;
+    this.badges.delete(badgeId);
+    return sessionId;
+  }
+
+  // The controller's half of the same thing. Does NOT close the socket - the
+  // caller hands the badge a fresh pairing code instead, so a released badge
+  // is immediately available rather than bouncing through a reconnect.
   forget(sessionId, badgeId) {
     const b = this.badges.get(badgeId);
     if (!b || b.sessionId !== sessionId) return false;
-    if (b.conn) b.conn.close(1000, 'unadopted');
     this.badges.delete(badgeId);
     return true;
   }

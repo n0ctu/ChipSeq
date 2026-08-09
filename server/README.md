@@ -111,7 +111,7 @@ timed.
 | `{t:"now"}` | replies `{t:"now", s}`. Re-sync the browser against the server clock. |
 | `{t:"rename", id, name}` | rename a badge; the badge is told too. |
 | `{t:"map", id, trackId}` | map to a track, or `null` to unmap. Unmapping sends `stop`, so the last note cannot hang. |
-| `{t:"forget", id}` | drop the adoption and disconnect it. |
+| `{t:"forget", id}` | drop the adoption. The badge is told on its existing socket and handed a fresh pairing code, rather than being disconnected. |
 | `{t:"note", id, p, ms}` | live mode: play now. |
 | `{t:"sched", id, t0, n}` | scheduled mode: play at server time `t0 + offset`. |
 | `{t:"stop", id?}` | silence one badge, or all of them when `id` is omitted. |
@@ -177,6 +177,12 @@ Reachable from the public internet, so:
 - Pair attempts are rate-limited per address (10 per minute), read from
   `x-forwarded-for` when behind Funnel, since the socket address there is the
   relay rather than the client.
+- **A badge can end its own adoption** (`{t:"release"}`, protocol §3.4), which
+  no session owns and none can veto. That is deliberate: the authority is being
+  the badge, and anyone able to forge it could already impersonate the badge
+  entirely. It is also the only way out of an adoption whose controller lost
+  its session — the badge would otherwise reconnect as known, be offered no
+  pairing code, and be adoptable by nobody until the server restarted.
 - Every controller action checks session ownership, **including upload**.
   `server/test.mjs` asserts a second controller can neither see nor play
   another session's badges, nor upload to one — and each of those was

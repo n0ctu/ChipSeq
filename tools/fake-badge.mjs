@@ -190,6 +190,16 @@ export class FakeBadge {
       case 'pair_failed':
         this.onEvent({ t: 'pair_failed', reason: msg.reason });
         return;
+      case 'released':
+        // No longer adopted - by our own request, or because the controller
+        // let us go. Either way the socket stays up and a fresh code arrives
+        // with it, so the badge goes straight back to advertising itself.
+        this.paired = false;
+        this.name = null;
+        this.showingCode = msg.code || null;
+        this.stopAll();
+        this.onEvent({ t: 'released', code: this.showingCode });
+        return;
       case 'pong': {
         const now = this.clock();
         this.offsets.push(offsetFrom(msg.c, now, msg.s));
@@ -238,6 +248,13 @@ export class FakeBadge {
         // one breaks the moment the server learns a new message.
         this.onEvent({ t: 'ignored', type: msg.t });
     }
+  }
+
+  // The badge owner ending the adoption. On real hardware this is a menu
+  // entry, and it should be confirmed - it is not destructive, but it does
+  // silently drop the badge out of somebody's performance.
+  release() {
+    this.send({ t: 'release' });
   }
 
   // ---- the library ----

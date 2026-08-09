@@ -435,5 +435,144 @@ async function until(fn, what, timeout = 3000) {
   httpServer.close();
 }
 
+// ---- releasing an adoption, from the badge ----
+//
+// Adoption used to be a one-way door: only the owning controller could end it,
+// so a controller whose session was gone took the badge with it - reconnecting
+// as `known` with no pairing code, adoptable by nobody, recoverable only by
+// restarting the server. This is the way out, and the orphan case is the test
+// that matters.
+{
+  const { httpServer, hub } = createServer({});
+  await new Promise((r) => httpServer.listen(0, r));
+  const port = httpServer.address().port;
+  const url = `ws://127.0.0.1:${port}/ws`;
+
+  const Controller = class {
+    constructor() { this.messages = []; }
+    connect(session) {
+      return new Promise((resolve) => {
+        this.ws = new WebSocket(url);
+        this.ws.onopen = () => this.ws.send(JSON.stringify({ t: 'hello', role: 'controller', session }));
+        this.ws.onmessage = (e) => {
+          const m = JSON.parse(e.data);
+          this.messages.push(m);
+          if (m.t === 'welcome') { this.session = m.session; resolve(m); }
+        };
+      });
+    }
+    send(msg) { this.ws.send(JSON.stringify(msg)); }
+    last(type) { return [...this.messages].reverse().find((m) => m.t === type); }
+  };
+
+  const adopt = async (ctl, badge, events) => {
+    await until(() => events.some((e) => e.t === 'welcome' && e.code), 'a code to adopt with');
+    const code = [...events].reverse().find((e) => e.t === 'welcome' && e.code).code;
+    ctl.send({ t: 'adopt', code });
+    await until(() => (ctl.last('badges') || { badges: [] }).badges.length > 0, 'adoption');
+  };
+
+  // --- the badge lets itself go, and the owner is told ---
+  const owner = new Controller();
+  await owner.connect();
+  const badge = new FakeBadge({ url, id: 'rel:01', fw: 'rel' });
+  const ev = [];
+  badge.onEvent = (e) => ev.push(e);
+  await badge.connect();
+  await adopt(owner, badge, ev);
+  ok(badge.paired === true, 'the badge is adopted to begin with');
+
+  badge.release();
+  await until(() => ev.some((e) => e.t === 'released'), 'the badge to be released');
+  const released = ev.find((e) => e.t === 'released');
+  ok(badge.paired === false, 'the badge no longer considers itself adopted');
+  ok(!!released.code, `and is handed a fresh code to display (${released.code})`);
+  await until(() => (owner.last('badges') || { badges: [null] }).badges.length === 0,
+    'the owner roster to shrink');
+  ok(hub.badges.has('rel:01') === false, 'and the server no longer holds the adoption');
+
+  // The connection survives it - the badge must not look dead while it waits.
+  ok(badge.ws.readyState === 1, 'the socket stays open through a release');
+
+  // --- and it is genuinely adoptable again, by someone else ---
+  {
+    const other = new Controller();
+    await other.connect();
+    other.send({ t: 'adopt', code: released.code });
+    await until(() => (other.last('badges') || { badges: [] }).badges.length === 1,
+      'the new controller to adopt it');
+    ok(true, 'a different controller can adopt it with the new code');
+    ok(badge.paired === true, 'and the badge knows it');
+    other.ws.close();
+  }
+
+  // --- the orphan case, which is the reason this exists ---
+  {
+    const lost = new Controller();
+    await lost.connect();
+    const orphan = new FakeBadge({ url, id: 'rel:orphan', fw: 'rel' });
+    const oev = [];
+    orphan.onEvent = (e) => oev.push(e);
+    await orphan.connect();
+    await adopt(lost, orphan, oev);
+
+    // The controller vanishes for good: closed browser, cleared storage.
+    lost.ws.close();
+    await sleep(150);
+
+    // Before `release` existed this was terminal - reconnecting gave
+    // known:true and NO code, so nobody could ever adopt it again.
+    orphan.release();
+    await until(() => oev.some((e) => e.t === 'released'), 'the orphan to free itself');
+    const code = oev.find((e) => e.t === 'released').code;
+    ok(!!code, 'an orphaned badge can free itself and gets a code');
+
+    const rescuer = new Controller();
+    await rescuer.connect();
+    rescuer.send({ t: 'adopt', code });
+    await until(() => (rescuer.last('badges') || { badges: [] }).badges.length === 1,
+      'the rescuer to adopt it');
+    ok(true, 'and a fresh controller can then adopt it - no server restart needed');
+    rescuer.ws.close();
+    orphan.close();
+  }
+
+  // --- forget, from the controller, lands in the same place ---
+  {
+    const ctl = new Controller();
+    await ctl.connect();
+    const b2 = new FakeBadge({ url, id: 'rel:02', fw: 'rel' });
+    const e2 = [];
+    b2.onEvent = (e) => e2.push(e);
+    await b2.connect();
+    await adopt(ctl, b2, e2);
+
+    ctl.send({ t: 'forget', id: 'rel:02' });
+    await until(() => e2.some((e) => e.t === 'released'), 'the badge to be told it was forgotten');
+    ok(b2.paired === false, 'a forgotten badge learns it is free');
+    ok(!!e2.find((e) => e.t === 'released').code, 'and gets a code without reconnecting');
+    ok(b2.ws.readyState === 1, 'without its socket being closed');
+    b2.close();
+    ctl.ws.close();
+  }
+
+  // --- releasing when not adopted is harmless ---
+  {
+    const loose = new FakeBadge({ url, id: 'rel:loose', fw: 'rel' });
+    const le = [];
+    loose.onEvent = (e) => le.push(e);
+    await loose.connect();
+    await until(() => le.some((e) => e.t === 'welcome'), 'welcome');
+    loose.release();
+    await until(() => le.some((e) => e.t === 'released'), 'a release from an unadopted badge');
+    ok(loose.ws.readyState === 1, 'releasing when not adopted is a no-op, not an error');
+    loose.close();
+  }
+
+  badge.close(); owner.ws.close();
+  await sleep(50);
+  httpServer.close();
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
