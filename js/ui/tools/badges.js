@@ -88,6 +88,12 @@ export function mount(body, { store, badgeStream = null }) {
     // re-flashed, or a different one may reconnect under the same name.
     if (!state.connected) { asked.clear(); return; }
     if (!client) return;
+    // Forget badges that have left the roster, so re-adopting one asks again.
+    // Without this a badge that releases itself and is adopted back in the
+    // same session keeps its id in here, is never asked, and shows an empty
+    // library for the rest of the session while actually holding tunes.
+    const present = new Set(state.badges.map((b) => b.id));
+    for (const id of asked) if (!present.has(id)) asked.delete(id);
     for (const b of state.badges) {
       if (!b.online || !badgeCan(b, 'store') || asked.has(b.id)) continue;
       asked.add(b.id);
