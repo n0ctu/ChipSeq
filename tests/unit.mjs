@@ -3401,6 +3401,48 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   }
 }
 
+// ---- which relay the Badges card prefills ----
+//
+// This had no test at all, which is how moving the site from github.io to
+// chipseq.app silently prefilled wss://chipseq.app/ws - a static host that
+// serves no socket. The cases below are the two sides of the rule: anywhere you
+// might be running the relay yourself gets the origin, anywhere published gets
+// the relay we ship.
+{
+  const { relayUrlFor, PUBLIC_BADGE_SERVER } = await import('../js/net/badges.js');
+  const loc = (url) => {
+    const u = new URL(url);
+    return { protocol: u.protocol, host: u.host, hostname: u.hostname };
+  };
+
+  // Published builds: the origin is never the badge server.
+  eq(relayUrlFor(loc('https://chipseq.app/')), PUBLIC_BADGE_SERVER,
+    'chipseq.app is a static host, so it gets the relay we ship');
+  eq(relayUrlFor(loc('https://n0ctu.github.io/ChipSeq/')), PUBLIC_BADGE_SERVER,
+    'github.io likewise');
+  eq(relayUrlFor(loc('https://example.com/chipseq/')), PUBLIC_BADGE_SERVER,
+    'and so does a host nobody has thought of - the rule does not enumerate them');
+
+  // Places the relay itself plausibly serves the app.
+  eq(relayUrlFor(loc('http://localhost:8000/')), 'ws://localhost:8000/ws',
+    'localhost keeps its port and its scheme');
+  eq(relayUrlFor(loc('http://127.0.0.1:8080/')), 'ws://127.0.0.1:8080/ws',
+    'loopback by address too');
+  eq(relayUrlFor(loc('http://192.168.1.5:8080/')), 'ws://192.168.1.5:8080/ws',
+    'a LAN address, which is the venue case');
+  eq(relayUrlFor(loc('http://10.0.0.9:8080/')), 'ws://10.0.0.9:8080/ws', 'and 10/8');
+  eq(relayUrlFor(loc('http://172.16.4.4:8080/')), 'ws://172.16.4.4:8080/ws', 'and 172.16/12');
+  eq(relayUrlFor(loc('https://box.tailnet.ts.net/')), 'wss://box.tailnet.ts.net/ws',
+    'a tailnet host serves the app itself, and https means wss');
+
+  // 172.32 is outside the private range and must not be mistaken for it.
+  eq(relayUrlFor(loc('https://172.32.0.1/')), PUBLIC_BADGE_SERVER,
+    '172.32 is public, so it is not treated as somewhere you run the relay');
+
+  assert(relayUrlFor(null) === '' && relayUrlFor({}) === '',
+    'no location at all yields nothing rather than throwing');
+}
+
 // ---- playhead following ----
 //
 // The three phases are asserted as properties of one calculation rather than as

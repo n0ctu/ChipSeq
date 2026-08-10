@@ -66,30 +66,55 @@ export function badgeState() {
 // fine for scheduled playback and poor for live note-by-note.
 export const PUBLIC_BADGE_SERVER = 'wss://ws.chipseq.app/ws';
 
-// A guess, and only a good one when the app is served BY the badge server.
-// Opened from a plain dev server it points at that instead, which is silently
-// wrong - so isGuessedUrl() lets the card say so rather than presenting it as
-// settled fact.
-export function defaultServerUrl() {
-  try {
+// Somewhere the relay could plausibly be serving this page: a machine you are
+// running it on. Everything else is a published build on a static host.
+//
+// The rule is written this way round deliberately. It used to ask "is this a
+// known static host?" and name github.io, which meant the answer was an
+// open-ended list - and the moment the site moved to chipseq.app the list was
+// out of date and the card prefilled wss://chipseq.app/ws, an origin that
+// serves no socket at all. The set of places you might run the relay yourself
+// is bounded and stable; the set of hosts someone might publish to is not.
+function selfHosted(hostname) {
+  return (
+    hostname === 'localhost' ||
+    hostname === '::1' ||
+    /^127\./.test(hostname) ||
+    /^10\./.test(hostname) ||
+    /^192\.168\./.test(hostname) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+    /(^|\.)ts\.net$/.test(hostname)
+  );
+}
+
+// Pure, so tests can ask it about hosts this build will never be served from.
+// `host` carries the port and `hostname` does not, and both are needed: the
+// port belongs in the URL, and it must not confuse the classification.
+export function relayUrlFor(loc) {
+  const { protocol, host, hostname } = loc || {};
+  if (!host || !hostname) return '';
+  if (!selfHosted(hostname)) return PUBLIC_BADGE_SERVER;
+  if (protocol === 'http:' || protocol === 'https:') {
     // The scheme has to follow the page: an https page cannot open ws://.
-    const { protocol, host } = window.location;
-    // Pages serves static files and nothing else, so its origin is never the
-    // badge server. Guessing it would be confidently wrong.
-    if (/(^|\.)github\.io$/.test(host)) return PUBLIC_BADGE_SERVER;
-    if (protocol === 'http:' || protocol === 'https:') {
-      return `${protocol === 'https:' ? 'wss' : 'ws'}://${host}/ws`;
-    }
-  } catch {
-    /* no window: tests */
+    return `${protocol === 'https:' ? 'wss' : 'ws'}://${host}/ws`;
   }
   return '';
 }
 
-// True when the address shown is the origin guess rather than one that has
-// actually worked. The port is the part that is usually wrong.
+export function defaultServerUrl() {
+  try {
+    return relayUrlFor(window.location);
+  } catch {
+    return ''; // no window: tests
+  }
+}
+
+// True when the address shown was inferred from this page rather than being the
+// relay we ship. The published relay is a known address, not a guess, so saying
+// otherwise would put a warning under the one value that is usually right.
 export function isGuessedUrl() {
-  return !read(URL_KEY) && !!defaultServerUrl();
+  const url = defaultServerUrl();
+  return !read(URL_KEY) && !!url && url !== PUBLIC_BADGE_SERVER;
 }
 
 const read = (key, fallback = '') => {

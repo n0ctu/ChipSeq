@@ -7,6 +7,30 @@ must agree - the release workflow fails if they do not.
 Dates are release dates. Unreleased work sits under **Unreleased** until it is
 tagged.
 
+## [0.7.2] - 2026-08-10
+
+### Fixed
+
+- **The Badges card prefilled the wrong relay on chipseq.app.** It offered
+  `wss://chipseq.app/ws`, an origin that serves the app and no socket at all.
+  The rule asked "is this a known static host?" and named `github.io`, so it was
+  an open-ended list, and moving the site to its own domain left the list a
+  release out of date. It now asks the bounded question instead: guess the
+  origin only where the relay could plausibly be serving the page, meaning
+  localhost, a private LAN address or a tailnet host, and use the relay we ship
+  everywhere else. A host nobody has thought of yet gets the right answer,
+  which the previous shape could not manage by construction.
+- The "Guessed from this page's address" hint no longer appears under
+  `wss://ws.chipseq.app/ws`. That address is the relay we ship, not an
+  inference, and the warning was sitting under the one value that is usually
+  right.
+
+### Added
+
+- Tests for which relay the card prefills. There were none, which is why the
+  domain move broke it silently; they were confirmed to fail against the old
+  rule before the new one went in.
+
 ## [0.7.1] - 2026-08-10
 
 ### Added
