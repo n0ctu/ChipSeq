@@ -18,6 +18,9 @@ ENV_FILE="$DIR/.env"
 IMAGE="${CHIPSEQ_IMAGE:-ghcr.io/n0ctu/chipseq-relay}"
 HEALTH_URL="${CHIPSEQ_HEALTH_URL:-https://ws.chipseq.app/health}"
 DEADLINE_S="${CHIPSEQ_DEADLINE_S:-120}"
+# Where compose.yaml is read from at deploy time. Set empty to disable the sync
+# and manage the file by hand.
+REPO_RAW="${CHIPSEQ_REPO_RAW:-https://raw.githubusercontent.com/n0ctu/ChipSeq}"
 
 FORCE=0
 ROLLBACK=0
@@ -81,6 +84,74 @@ set_env() {
 
 compose() { docker compose --project-directory "$DIR" "$@"; }
 
+# compose.yaml belongs to the release, not to the box.
+#
+# Deploying only the image is how a release can look successful and do nothing:
+# `--db` lives in compose's `command:`, not in the Dockerfile CMD, so an image
+# built to persist adoptions runs happily in memory when the box is still on the
+# previous compose.yaml - healthy, gate passed, feature silently absent. The
+# reverse pairing is worse in a different way: `command:` without its volume
+# puts the database on a read-only root and crash-loops.
+#
+# So the file is fetched at the tag being deployed, and the old one is kept for
+# the rollback: putting an image back while leaving the newer compose.yaml in
+# place is a combination that was never tested and need not be.
+#
+# Every failure here is non-fatal on purpose. A registry blip, no network at a
+# venue, or a tag with no compose.yaml should leave the box deploying with the
+# file it already has, not refuse to deploy at all.
+# Set when this run replaced compose.yaml, and only then. Without it
+# restore_compose fires on any .previous it finds, including one left by an
+# EARLIER deploy - so a release whose compose.yaml happened to be unchanged
+# would, on failing its health gate, roll the image back one version while
+# reverting compose.yaml to a file from two releases ago. That pairing never
+# existed anywhere, which is the exact failure this whole mechanism is for.
+# Reproduced before fixing: image back to v9.0.0, compose back to the file that
+# predated v9.0.0.
+COMPOSE_SYNCED=0
+
+sync_compose() {
+  local ref="${1##*:}" tmp
+  [ -n "$REPO_RAW" ] || return 0
+  case "$ref" in
+    v[0-9]*) ;;
+    # --image can name anything - a digest, a local build. Only a release tag
+    # has a compose.yaml that is meaningfully "the one that goes with this".
+    *) log "$ref is not a release tag, keeping the current compose.yaml"; return 0 ;;
+  esac
+
+  tmp="$(mktemp)"
+  if ! curl -fsS --max-time 30 "$REPO_RAW/$ref/server/compose.yaml" -o "$tmp"; then
+    log "could not fetch compose.yaml for $ref, keeping the one on disk"
+    rm -f "$tmp"
+    return 0
+  fi
+  # Validate BEFORE it can replace a working file. A compose.yaml that does not
+  # parse would otherwise take the service down on the next `up -d` and leave
+  # nothing to roll back to.
+  if ! compose -f "$tmp" --env-file "$ENV_FILE" config >/dev/null 2>&1; then
+    log "compose.yaml at $ref does not validate, keeping the one on disk"
+    rm -f "$tmp"
+    return 0
+  fi
+  if cmp -s "$tmp" "$DIR/compose.yaml"; then
+    rm -f "$tmp"
+    return 0
+  fi
+  cp "$DIR/compose.yaml" "$DIR/compose.yaml.previous"
+  mv "$tmp" "$DIR/compose.yaml"
+  chmod 644 "$DIR/compose.yaml"
+  COMPOSE_SYNCED=1
+  log "compose.yaml updated from $ref"
+}
+
+restore_compose() {
+  [ "$COMPOSE_SYNCED" = 1 ] || return 0
+  [ -f "$DIR/compose.yaml.previous" ] || return 0
+  mv "$DIR/compose.yaml.previous" "$DIR/compose.yaml"
+  log "restored the previous compose.yaml"
+}
+
 # Healthy means BOTH the container's own healthcheck has passed and the relay
 # answers through the proxy. The first alone would call a container healthy
 # while Caddy could not reach it; the second alone would accept a stale
@@ -117,16 +188,30 @@ deploy() {
     log "pull failed, using the local copy of $target"
   fi
 
-  set_env RELAY_IMAGE "$target"
-  compose up -d >/dev/null
+  sync_compose "$target"
 
-  if wait_healthy; then
+  set_env RELAY_IMAGE "$target"
+
+  # Under `set -e` a failing `up` would abort the script outright, leaving the
+  # new image AND the new compose.yaml recorded with nothing running and no
+  # rollback attempted. More likely now that compose.yaml itself changes: a
+  # file whose volume or network the box cannot satisfy fails here rather than
+  # at the health gate.
+  if ! compose up -d >/dev/null 2>&1; then
+    log "compose up failed for $target"
+  elif wait_healthy; then
     set_env RELAY_IMAGE_PREVIOUS "$previous"
+    # Nothing consumes this after a success: --rollback re-fetches the file for
+    # the tag it is going back to. Leaving it would only be a file whose name
+    # stops being true at the next deploy.
+    rm -f "$DIR/compose.yaml.previous"
+    COMPOSE_SYNCED=0
     log "healthy on $target"
     return 0
   fi
 
   log "NOT healthy within ${DEADLINE_S}s, rolling back to $previous"
+  restore_compose
   set_env RELAY_IMAGE "$previous"
   compose up -d >/dev/null
   if wait_healthy; then

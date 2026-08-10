@@ -108,6 +108,21 @@ cp app/server/deploy-chipseq /srv/docker/chipseq/ && chmod +x /srv/docker/chipse
 sudo systemctl enable --now chipseq-deploy.timer
 ```
 
+**`compose.yaml` is fetched from the tag being deployed.** It belongs to the
+release, not to the box: `--db` lives in compose's `command:` rather than the
+image's `CMD`, so a new image on an old `compose.yaml` runs happily in memory,
+passes its health gate, and has no persistence - a deploy that looks entirely
+successful and silently does nothing. The reverse pairing crash-loops instead,
+writing the database to a read-only root.
+
+Failures there are non-fatal on purpose: an unreachable registry, no network at
+a venue, or a tag without the file leaves the box deploying with what it
+already has. A fetched file is validated before it can replace a working one,
+and if the deploy then fails its health gate, that file is rolled back with the
+image. Only a file *this run* installed is rolled back; restoring any
+`.previous` lying around would revert compose.yaml further than the image, to a
+pairing that never shipped.
+
 Only one deploy runs at a time. systemd will not overlap a oneshot service
 with itself, but a manual run alongside a timer-fired one would, and both write
 `.env` - which is what the rollback path reads. Interleaving those writes could
