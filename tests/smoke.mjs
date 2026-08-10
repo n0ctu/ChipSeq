@@ -3,6 +3,7 @@
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { rmSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findChrome } from './util.mjs';
@@ -12,14 +13,27 @@ import { FakeBadge } from '../tools/fake-badge.mjs';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const CHROME = findChrome();
 const PORT = 8931;
-const DEBUG_PORT = 9333;
+const PROFILE = '/tmp/chipseq-smoke-profile-' + Date.now();
 
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml' };
+const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
+// When set, served instead of the sw.js on disk. The update test needs the
+// worker's BYTES to change at the same URL - that is the only thing a browser
+// treats as a new version - and doing it here keeps the repository file
+// untouched even if the run dies halfway.
+let swOverride = null;
 const server = http.createServer(async (req, res) => {
   try {
     const path = req.url === '/' ? '/index.html' : req.url.split('?')[0];
-    const data = await readFile(join(ROOT, path));
-    res.writeHead(200, { 'Content-Type': MIME[extname(path)] || 'application/octet-stream' });
+    const data = path === '/sw.js' && swOverride ? swOverride : await readFile(join(ROOT, path));
+    res.writeHead(200, {
+      'Content-Type': MIME[extname(path)] || 'application/octet-stream',
+      // Same reason dev-server.mjs does it, plus one specific to this file: with
+      // no Cache-Control at all Chrome caches heuristically, and the offline
+      // test at the bottom then passes on the HTTP cache while the service
+      // worker does nothing. Verified by disabling the worker's cache lookup
+      // entirely - the app still booted offline until this header existed.
+      'Cache-Control': 'no-store, must-revalidate',
+    });
     res.end(data);
   } catch {
     res.writeHead(404);
@@ -41,12 +55,33 @@ const chrome = spawn(CHROME, [
   '--autoplay-policy=no-user-gesture-required',
   // tall window: reproduces the fractional-scrollPitch clamp at load
   '--window-size=1400,1300',
-  `--remote-debugging-port=${DEBUG_PORT}`,
-  '--user-data-dir=/tmp/chipseq-smoke-profile-' + Date.now(),
+  // Port 0, not a fixed one. A fixed port silently attaches to whatever
+  // browser already holds it: a leaked Chrome from an earlier run kept
+  // /tmp/chipseq-smoke-profile-* alive for days, so every run since had been
+  // driving a stale profile. Harmless until service workers, which persist -
+  // an edited sw.js installed as `waiting` while the old one kept serving, and
+  // a deliberately broken worker passed every offline test.
+  '--remote-debugging-port=0',
+  `--user-data-dir=${PROFILE}`,
   'about:blank',
 ], { stdio: 'ignore' });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Chrome writes the port it actually chose here, so we can only ever talk to
+// the browser we just started.
+let DEBUG_PORT = null;
+for (let i = 0; i < 100; i++) {
+  try {
+    const line = (await readFile(join(PROFILE, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
+    if (Number(line)) { DEBUG_PORT = Number(line); break; }
+  } catch {}
+  await sleep(100);
+}
+if (!DEBUG_PORT) {
+  console.error('FAIL Chrome never reported a debugging port');
+  process.exit(1);
+}
 
 // wait for CDP endpoint
 let targets = null;
@@ -66,8 +101,22 @@ await new Promise((r) => (ws.onopen = r));
 let msgId = 0;
 const pending = new Map();
 const consoleErrors = [];
+// One-shot waiters for CDP events, so a navigation can be awaited instead of
+// slept through.
+const eventWaiters = new Map();
+function once(method) {
+  return new Promise((resolve) => {
+    const list = eventWaiters.get(method) || [];
+    list.push(resolve);
+    eventWaiters.set(method, list);
+  });
+}
 ws.onmessage = (ev) => {
   const msg = JSON.parse(ev.data);
+  if (msg.method && eventWaiters.has(msg.method)) {
+    for (const resolve of eventWaiters.get(msg.method)) resolve(msg.params);
+    eventWaiters.delete(msg.method);
+  }
   if (msg.id && pending.has(msg.id)) {
     pending.get(msg.id)(msg);
     pending.delete(msg.id);
@@ -110,6 +159,42 @@ async function check(label, expr) {
   }
 }
 
+// Boot is a condition, not a duration. The demos are 1.9 MB and the static
+// server sends no-store, so how long a reload takes depends on the machine -
+// the fixed sleeps here were tuned against a warm browser profile and started
+// failing the moment the harness began using a genuinely fresh one.
+async function waitUntil(expr, { timeout = 20000, every = 100 } = {}) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    let v = false;
+    try { v = await evaluate(expr); } catch {}
+    if (v === true) return true;
+    if (Date.now() > deadline) return false;
+    await sleep(every);
+  }
+}
+
+// The app object exists and it has settled on a screen: the start page with
+// its demos listed, or straight into the editor for a returning visitor.
+const BOOTED = `!!window.__chipseq && (
+  !document.getElementById('screen-editor').hidden
+  || document.querySelectorAll('#demo-list .demo-item').length > 0
+)`;
+
+async function navigateAndBoot() {
+  // Wait for the load event before evaluating anything. A Runtime.evaluate
+  // sent while the old document is being torn down is simply dropped, and
+  // send() then waits for a reply that never comes - the run hangs rather than
+  // failing, which is a far worse way to be wrong.
+  const loaded = once('Page.loadEventFired');
+  await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+  await Promise.race([loaded, sleep(20000)]);
+  if (!(await waitUntil(BOOTED))) {
+    console.log('FAIL the app did not finish booting within 20s');
+    fail++;
+  }
+}
+
 // Shared by every test that measures rendered audio. Defined up here so a
 // test's position in the file does not decide whether it can measure.
 const WAV_HELPERS = `
@@ -135,12 +220,10 @@ const WAV_HELPERS = `
 
 await send('Runtime.enable');
 await send('Page.enable');
-await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
-await sleep(1500);
+await navigateAndBoot();
 // hermetic run even if a stale browser profile is reused
 await evaluate(`localStorage.clear()`);
-await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
-await sleep(1200);
+await navigateAndBoot();
 
 // ---- fresh boot: start page greets new users with the seeded demo ----
 await check('fresh boot greets with the start page', `!document.getElementById('screen-start').hidden && !!window.__chipseq`);
@@ -2632,8 +2715,7 @@ await check('the engine exposes a pre-limiter peak for the clip indicator', `(()
 // ---- autosave + reload ----
 await sleep(700); // let autosave debounce flush
 const projName = await evaluate(`window.__chipseq.store.getDoc().name`);
-await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
-await sleep(1500);
+await navigateAndBoot();
 await check('reload resumes the LAST-OPENED project (incl. its mode)', `(() => {
   const doc = window.__chipseq && window.__chipseq.store.getDoc();
   const activeSeg = document.querySelector('#seg-mode .seg-btn.active');
@@ -2990,10 +3072,112 @@ if (consoleErrors.length) {
   console.log('OK   no console errors');
 }
 
+// ---- offline: the app opens with no network at all ----
+//
+// Last, and after the console-error gate, because pulling the network out from
+// under a page legitimately makes noise - the badge socket cannot reconnect,
+// and that is not a fault to report.
+//
+// This is the claim the whole service worker exists to make, so it is tested by
+// actually cutting the network rather than by checking that a file is present.
+// 127.0.0.1 is a secure context, which is why a worker can register here at all.
+await navigateAndBoot();
+
+await check('the service worker registers and takes control', `(async () => {
+  const reg = await navigator.serviceWorker.ready;
+  return !!(reg && navigator.serviceWorker.controller) || 'no controller';
+})()`);
+
+await check('one versioned cache holds the whole app', `(async () => {
+  await navigator.serviceWorker.ready;
+  const names = (await caches.keys()).filter((n) => n.startsWith('chipseq-'));
+  if (names.length !== 1) return 'caches=' + JSON.stringify(names);
+  const keys = await (await caches.open(names[0])).keys();
+  return keys.length > 60 || 'entries=' + keys.length;
+})()`);
+
+// An update must install and then WAIT. This is the behaviour that protects
+// unsaved work and stops a running page importing a tool card out of another
+// build's cache, so it is worth more than a comment.
+{
+  const real = await readFile(join(ROOT, 'sw.js'), 'utf8');
+  swOverride = real.replace(/const VERSION = '[^']+'/, "const VERSION = 'smoke-update'");
+  await evaluate(`navigator.serviceWorker.getRegistration().then((r) => r.update()).then(() => true)`);
+  const appeared = await waitUntil(`!document.getElementById('st-update').hidden`, { timeout: 20000 });
+  if (appeared) { pass++; console.log('OK   a new build offers itself in the status bar'); }
+  else { fail++; console.log('FAIL a new build never offered itself'); }
+
+  await check('...and does NOT activate on its own', `(async () => {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const names = await caches.keys();
+    // The new worker is parked, and the page is still served by the old one.
+    return (!!reg.waiting && reg.active && names.includes('chipseq-smoke-update'))
+      || 'waiting=' + !!reg.waiting + ' caches=' + JSON.stringify(names);
+  })()`);
+  swOverride = null;
+}
+
+// Offline by SHUTTING THE SERVER DOWN, not by CDP's network emulation. The
+// emulation applies to the page target only, and a service worker is a
+// separate target - so its own fetches went out over a live network and every
+// assertion below passed while fully online. The control caught that. Closing
+// the origin is also the honest version of the scenario: a laptop that rebooted
+// somewhere with no internet.
+server.close();
+server.closeAllConnections();
+await sleep(300);
+
+// The control. Without it every assertion below would also pass on a network
+// that never actually went away.
+await check('a file outside the precache really cannot be fetched', `(async () => {
+  try {
+    await fetch('README.md', { cache: 'no-store' });
+    return 'the network is still up';
+  } catch {
+    return true;
+  }
+})()`);
+
+await navigateAndBoot();
+
+await check('the app boots with the network off', `(() => {
+  const start = document.getElementById('screen-start');
+  const editor = document.getElementById('screen-editor');
+  return (!!window.__chipseq && (!start.hidden || !editor.hidden))
+    || 'app=' + !!window.__chipseq;
+})()`);
+
+
+await check('demo songs load from the cache', `(async () => {
+  const files = await (await fetch('demos/index.json')).json();
+  const doc = JSON.parse(await (await fetch('demos/' + files[0])).text());
+  return (files.length >= 4 && !!doc.tracks) || 'files=' + files.length;
+})()`);
+
+// The subtle one: tool cards import with ?v=APP_VERSION, and the precache key
+// carries no query. A worker matching URLs exactly would serve every card from
+// the network - fine online, and a blank sidebar offline.
+await check('a lazily loaded tool module resolves despite its ?v= query', `(async () => {
+  const m = await import('./js/ui/tools/transpose.js?v=offline-smoke');
+  return Object.keys(m).length > 0 || 'no exports';
+})()`);
+
 labBadge.close();
 badgeHub.httpServer.close();
 
 console.log(`\n${pass} passed, ${fail} failed`);
-chrome.kill();
-server.close();
+
+// Wait for Chrome to actually be gone before exiting. kill() followed straight
+// by process.exit() leaves the whole tree orphaned and the profile half
+// deleted - which is how a leaked browser came to hold the debugging port for
+// days. SIGTERM lets it reap its own children; SIGKILL is the backstop.
+await new Promise((resolve) => {
+  const done = setTimeout(() => { chrome.kill('SIGKILL'); resolve(); }, 5000);
+  chrome.once('exit', () => { clearTimeout(done); resolve(); });
+  chrome.kill('SIGTERM');
+});
+// The offline test closes it; this is here for the paths that never reach that.
+if (server.listening) server.close();
+// Leaving these behind is what filled /tmp with 236 profiles.
+try { rmSync(PROFILE, { recursive: true, force: true }); } catch {}
 process.exit(fail ? 1 : 0);

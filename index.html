@@ -4,6 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ChipSeq - n0ctus chiptune sequencer for Arduino, Flipper Zero, MCUs and more</title>
+  <!-- Installable, and offline once installed. Every path here is relative, so
+       the same files work at /ChipSeq/ on Pages and at / on the badge server. -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#101214" />
+  <link rel="icon" href="assets/icon-192.png" sizes="192x192" type="image/png" />
+  <link rel="apple-touch-icon" href="assets/icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="ChipSeq" />
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/layout.css" />
   <link rel="stylesheet" href="css/components.css" />
@@ -120,6 +128,8 @@
       <span class="st-spacer"></span>
       <span id="st-zoom" class="st-item mono-font"></span>
       <span id="st-save" class="st-item"></span>
+      <span id="st-update" class="st-item st-update" hidden
+        title="A newer build is cached and ready. Click to reload into it.">&#8635; update ready</span>
       <span id="st-brand" class="st-item mono-font"></span>
     </footer>
   </section>

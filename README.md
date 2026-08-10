@@ -37,6 +37,42 @@ therefore carries `?v=${APP_VERSION}` - `main.js` is what supplies the version
 string, so the moment it is fresh, every module it lazily asks for is too.
 It's a fully static site - GitHub Pages serves it as-is.
 
+## Install it (and use it with no internet)
+
+ChipSeq is a PWA: your browser will offer to install it, and once installed it
+opens from the dock or start menu and **works with the network off** - a
+rebooted laptop in a field with no signal still edits, plays, renders and
+exports. Nothing about the app needed changing for that; it has no CDN, no
+fonts, no API, and projects already live in `localStorage`. All that was
+missing was the browser having a copy of the files.
+
+`sw.js` keeps that copy. Three things about it are worth knowing:
+
+- **The file list is generated, never written.** `node tools/gen-precache.mjs`
+  walks `index.html` and the real import graph - static imports, the tool
+  cards' dynamic ones, the manifest's icons, the demos named by
+  `demos/index.json` - and rewrites a marked block inside `sw.js`. A unit test
+  fails if the committed block is stale, so a new module cannot ship missing
+  from it. That matters more here than anywhere else in the repo: a file left
+  out works perfectly until the one moment offline support is the point.
+- **An update never activates by itself.** A new release installs in the
+  background and waits; the status bar offers `↻ update ready` and the switch
+  happens when you click it. Activating unasked would reload away whatever is
+  on screen, and would let a running page dynamic-import a tool card out of a
+  different build's cache.
+- **A release re-downloads only what changed.** Each entry carries a content
+  hash, so installing copies untouched files across from the previous cache.
+  The app is 2.4 MB, most of it demo songs; a typical release changes two
+  modules and moves a few KB.
+
+Service workers require a **secure context**, so this works on GitHub Pages, on
+a Tailscale Funnel hostname and on `localhost` - but *not* over plain `http` to
+a LAN address, where the browser will not register a worker at all and the app
+stays online-only. Worth knowing before relying on it at a venue.
+
+If a worker ever misbehaves, `__chipseq.offline.unregister()` in the console
+removes it and drops its caches.
+
 ## Releasing
 
 Pushes to `main` do **not** publish. Tags do:
@@ -714,7 +750,7 @@ In the grid: plain drag marquee-selects, a plain click just moves the cursor.
 No frameworks here either - plain Node scripts in `tests/` (Node 22+):
 
 ```sh
-node tests/unit.mjs        # core-logic tests (arps, chords, exporters, MIDI, migrations, limiter)
+node tests/unit.mjs        # core-logic tests (arps, chords, exporters, MIDI, migrations, limiter, precache list)
 node tests/check.mjs       # imports every ES module to catch syntax errors
 node tests/golden.mjs      # byte-compares exporter + pipeline output against fixtures
 node tests/smoke.mjs       # browser tests driving the real UI headlessly
@@ -738,6 +774,27 @@ Rendered audio is deliberately not byte-compared: `WaveShaper` behaviour
 varies between Chromium builds, so the browser suite asserts peak, RMS,
 duration and RIFF structure instead.
 
+`smoke.mjs` finishes by **shutting its own web server down** and asserting the
+app still boots, still loads demos and still resolves a lazily imported tool
+card. Two things make that assertion mean something, and both were learned the
+hard way:
+
+- It first checks that a file *outside* the precache genuinely fails to load.
+  Without that control the whole offline section passed while fully online -
+  CDP's network emulation applies to the page target, and a service worker is
+  a separate target, so its fetches went out over a live network.
+- The static server sends `Cache-Control: no-store`. With no header at all,
+  Chrome cached heuristically and the app booted offline from the *HTTP* cache
+  with the worker doing nothing - verified by disabling the worker's cache
+  lookup entirely and watching every test still pass.
+
+The harness also takes a **random debugging port** and reads the one Chrome
+actually chose from `DevToolsActivePort`. A fixed port silently attaches to
+whatever browser already holds it: a leaked Chrome kept a profile alive for
+days, so runs were driving a stale browser. Harmless until service workers,
+which persist - an edited `sw.js` installed as `waiting` while the old one kept
+serving, and a deliberately broken worker passed every test.
+
 ## Hacking
 
 - `js/core/` - engine, no DOM: document model (`doc.js`), snapshot undo
@@ -750,5 +807,12 @@ duration and RIFF structure instead.
   plus `manifest.js` which declares them. Adding a tool means adding a file and
   a manifest entry - nothing else in the app has to know it exists.
 - Theme: edit the custom properties in `css/base.css` - the canvases read
-  them too.
-- Console handle: `window.__chipseq` exposes `{store, uiStore, engine}`.
+  them too. The app icons are drawn from the same two colours by
+  `tools/gen-icons.mjs` (a PNG is a signature, three chunks and a CRC, and Node
+  ships the deflate) - change the mark, re-run it, commit the PNGs.
+- `sw.js` + `manifest.webmanifest` make it installable and offline-capable;
+  the precache list inside `sw.js` is generated by `tools/gen-precache.mjs`
+  and held current by a unit test. Adding a module needs nothing from you -
+  regenerate and the test passes.
+- Console handle: `window.__chipseq` exposes `{store, uiStore, engine}`, plus
+  `offline` for the service worker (`update()`, `activate()`, `unregister()`).

@@ -24,6 +24,7 @@ import { initExportDialog } from './ui/export-dialog.js';
 import { midiImportDialog } from './ui/midi-import-dialog.js';
 import { createConflicts } from './ui/conflicts.js';
 import { initPanelResizers } from './ui/panel-resize.js';
+import { initOffline } from './ui/offline.js';
 
 // openDemoFile != null while an unmodified demo is open: the first edit
 // forks it into a personal project (copy-on-write), so demos themselves are
@@ -236,7 +237,15 @@ engine.on('scheduled', (ev) => badgeStream.onEngineEvents([ev]));
 // the roll, the keymap and three tool cards all audition through it.
 engine.on('preview', ({ notes }) => badgeStream.preview(notes));
 
-initStatusBar({ store, uiStore, conflicts, roll, engine });
+const statusBar = initStatusBar({ store, uiStore, conflicts, roll, engine });
+
+// Offline: sw.js caches the app so it opens with no network at all. A new build
+// installs in the background and then WAITS - the status bar offers it, and the
+// switch happens only when someone accepts, because reloading unasked would
+// discard whatever is on screen.
+const offline = initOffline({
+  onUpdateReady: () => statusBar.showUpdateReady(() => offline.activate()),
+});
 // The sidebar builds its cards from js/ui/tools/manifest.js and imports a
 // tool's module only when its card first opens.
 // badgeStream goes in so the Badges card can offer the live/scheduled switch:
@@ -291,4 +300,6 @@ async function boot() {
 boot();
 
 // Console/debugging handle (also used by the smoke tests).
-window.__chipseq = { store, uiStore, engine, conflicts, openProject };
+// `offline` is here so a worker serving something wrong can be removed from the
+// console - __chipseq.offline.unregister() - rather than through devtools.
+window.__chipseq = { store, uiStore, engine, conflicts, openProject, offline };

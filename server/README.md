@@ -25,6 +25,13 @@ content, and — with Tailscale Funnel — one thing to publish rather than two.
 It also gives you a copy of the sequencer that works at the venue with no
 internet at all. GitHub Pages stays the public build.
 
+One caveat if you are relying on that offline: the app installs as a PWA and
+caches itself, but **service workers need a secure context**. `localhost` and
+the Funnel hostname qualify; `http://192.168.x.x:8080` does not, and the
+browser will not register a worker there at all. Reaching the venue server by
+LAN address works fine while it is running - it just is not the thing that
+keeps working after the laptop reboots.
+
 ---
 
 ## Publishing with Tailscale Funnel

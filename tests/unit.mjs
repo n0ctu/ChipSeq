@@ -3401,5 +3401,52 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   }
 }
 
+// ---- offline precache list ----
+//
+// The service worker's file list is generated from the real import graph. These
+// hold it to that, because the failure it prevents is invisible in normal use:
+// a module missing from the list works perfectly until someone opens the app
+// with no network.
+{
+  const { walk, buildBlock, currentBlock } = await import('../tools/gen-precache.mjs');
+  const { existsSync, readdirSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const root = fileURLToPath(new URL('../', import.meta.url));
+
+  assert(
+    currentBlock() === buildBlock(),
+    'sw.js precache list is current (run: node tools/gen-precache.mjs)'
+  );
+
+  const list = walk();
+  assert(list.every((path) => existsSync(root + path)), 'every precached path exists on disk');
+
+  // Both directions. The list containing only real files is not enough - the
+  // gap that matters is a real file the list does not contain.
+  const walked = new Set(list);
+  const onDisk = [];
+  (function scan(dir) {
+    for (const entry of readdirSync(root + dir, { withFileTypes: true })) {
+      const path = dir + entry.name;
+      if (entry.isDirectory()) scan(path + '/');
+      else if (entry.name.endsWith('.js')) onDisk.push(path);
+    }
+  })('js/');
+  const unreachable = onDisk.filter((path) => !walked.has(path));
+  eq(unreachable, [], 'every module under js/ is reachable from index.html, so all are precached');
+
+  for (const name of ['index.html', 'manifest.webmanifest', 'demos/index.json']) {
+    assert(walked.has(name), `${name} is precached`);
+  }
+  assert(!walked.has('sw.js'), 'sw.js does not precache itself');
+  // Serving a stale worker from the HTTP cache is how an update never arrives.
+  assert(
+    /updateViaCache:\s*'none'/.test(
+      (await import('node:fs')).readFileSync(root + 'js/ui/offline.js', 'utf8')
+    ),
+    'the worker registers with updateViaCache: none'
+  );
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

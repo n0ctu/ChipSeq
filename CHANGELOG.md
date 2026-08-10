@@ -7,6 +7,68 @@ must agree - the release workflow fails if they do not.
 Dates are release dates. Unreleased work sits under **Unreleased** until it is
 tagged.
 
+## [0.6.0] - 2026-08-10
+
+### Added
+
+- **ChipSeq installs as an app and works with no internet.** Your browser will
+  offer to install it; once installed it opens from the dock and keeps working
+  on a machine that rebooted somewhere with no signal — editing, playback,
+  rendering, `.h`/`.fmf`/`.wav`/`.cbt` export, MIDI import and the demos, all
+  from a local copy. Nothing in the app had to change for this: it has no CDN,
+  no fonts and no API, and projects were already in `localStorage`. The only
+  thing missing was the browser having the files. Badge features still need the
+  relay, and say so.
+- `sw.js` and `manifest.webmanifest`, plus app icons drawn by
+  `tools/gen-icons.mjs` — a square wave, on a 32×32 grid, written as PNG with
+  the CRC-32 the badge format already had and the deflate Node already ships.
+  No image library, in keeping with the rest of the repository.
+
+### Changed
+
+- **The precache list is derived, not maintained.** `tools/gen-precache.mjs`
+  walks `index.html` and the real import graph — including the tool cards'
+  dynamic imports and the demos named by `demos/index.json` — and rewrites a
+  marked block in `sw.js`; a unit test fails if the committed block is stale.
+  A file left out of that list would work perfectly until the one moment
+  offline support is the point, which is too late to find out.
+- **An update installs in the background and then waits.** The status bar
+  offers `↻ update ready`; nothing switches until it is clicked. Activating
+  unasked would reload away unsaved work, and would let a running page
+  dynamic-import a tool card — they carry `?v=APP_VERSION` — out of a
+  different build's cache.
+- **A release re-downloads only what changed.** Entries carry a content hash,
+  so installing copies untouched files across from the previous cache. The app
+  measures 2.4 MB, most of it demo songs; a typical release moves a few KB.
+- `tests/check.mjs` now derives its module list from the same walk instead of
+  keeping its own. The hand-written one had quietly lost `core/badge-tune.js`
+  and `net/badge-upload.js`; it now covers 56 of 56 modules by construction.
+
+### Fixed
+
+- **`tests/smoke.mjs` had been driving a stale browser.** It asked for a fixed
+  debugging port, which silently attaches to whatever Chromium already holds
+  it — a leaked instance had kept one profile alive since 5 August, along with
+  236 abandoned profile directories. It now takes a random port and reads the
+  one Chrome actually chose from `DevToolsActivePort`, and removes its profile
+  afterwards. This was invisible until service workers, which persist: an
+  edited `sw.js` installed as `waiting` while the old one kept serving, so a
+  deliberately broken worker passed every offline test.
+- **`tests/smoke.mjs` slept through navigations instead of waiting for them.**
+  The fixed delays had been tuned against a warm profile and were not enough
+  on a genuinely fresh one; the suite now waits for the load event and then
+  for the app to finish booting. Evaluating during a navigation also hangs the
+  run rather than failing it, because the reply to a dropped `Runtime.evaluate`
+  never arrives.
+- **The smoke server sends `Cache-Control: no-store`.** With no header Chrome
+  cached heuristically, and the offline test passed on the HTTP cache while
+  the service worker did nothing — confirmed by disabling the worker's cache
+  lookup entirely and watching every test still pass.
+- `.webmanifest` is served as `application/manifest+json` by both
+  `dev-server.mjs` and `server/index.mjs`. With the wrong type the manifest is
+  ignored and the app is simply not installable, with nothing in the console
+  to explain why.
+
 ## [0.5.2] - 2026-08-10
 
 ### Fixed

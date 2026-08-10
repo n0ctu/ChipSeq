@@ -104,5 +104,19 @@ export function initStatusBar({ store, uiStore, conflicts, roll, engine }) {
     );
   });
 
+  // A cached newer build. Deliberately the quietest thing in the status bar:
+  // nothing is broken, the open project is fine, and the only cost of ignoring
+  // it is running last week's version - so it offers rather than interrupts.
+  const update = $('st-update');
+  let activate = null;
+  update.addEventListener('click', () => activate && activate());
+
   render();
+
+  return {
+    showUpdateReady(onActivate) {
+      activate = onActivate;
+      update.hidden = false;
+    },
+  };
 }

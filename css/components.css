@@ -376,6 +376,10 @@
 }
 #st-conflicts { color: var(--danger); cursor: pointer; }
 #st-conflicts .stfix { text-decoration: underline; margin-left: 6px; }
+/* a newer build is cached and waiting. An offer, not an alarm: nothing is
+   wrong, and the current version keeps working for as long as you ignore it */
+.st-update { color: var(--accent); cursor: pointer; text-decoration: underline; }
+.st-update[hidden] { display: none; }
 
 /* dialogs */
 dialog {
