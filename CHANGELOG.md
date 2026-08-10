@@ -7,7 +7,7 @@ must agree - the release workflow fails if they do not.
 Dates are release dates. Unreleased work sits under **Unreleased** until it is
 tagged.
 
-## [Unreleased]
+## [0.7.0] - 2026-08-10
 
 ### Added
 
@@ -28,6 +28,29 @@ tagged.
   scroll *is* the anchored position, with no lag trailing a moving target.
   Seeking while playing eases the same way, and the transport already announces
   it, so nothing has to guess at it from a jump in the playhead.
+- **A second deployment target: chipseq.app on cyon**, published over FTPS by
+  `.github/workflows/cyon.yml` on the same tag that publishes to Pages. Both
+  hosts run in parallel until the domain is proven; dropping Pages later is one
+  file deleted.
+- `.htaccess`, carrying the one thing a default server gets wrong: without
+  `AddType application/manifest+json .webmanifest` the manifest is served as
+  `application/octet-stream`, the browser ignores it, and the app stops being
+  installable with nothing in the console to explain why. cyon runs LiteSpeed,
+  which reads `.htaccess` but ignores directives it does not recognise
+  *silently* - so the deploy asserts the headers this file should produce
+  rather than assuming that shipping it was the same as it working.
+
+### Changed
+
+- **The README is now something a user can read in full.** Everything that only
+  matters to someone changing the code moved to
+  [DEVELOPMENT.md](DEVELOPMENT.md): architecture, the file format rules, audio
+  internals, the service worker, testing, releasing and deployment. What stayed
+  was then cut again against a sharper rule: no design rationale, and nothing a
+  user learns in the first minute of clicking around. What is left is what the
+  app will not tell you itself, such as which gestures exist, what the M and C
+  markers actually govern, and which guarantees hold when you edit a shared
+  preset. 878 lines became 265, plus a 520-line developer guide.
 
 ### Fixed
 
@@ -42,21 +65,6 @@ tagged.
 - **The playhead was 2px wide while playing and 1px while stopped**, so the
   line visibly changed weight on every start and stop. It is always 1px now, in
   the roll and in the automation lanes.
-
-- **A second deployment target: chipseq.app on cyon**, published over FTPS by
-  `.github/workflows/cyon.yml` on the same tag that publishes to Pages. Both
-  hosts run in parallel until the domain is proven; dropping Pages later is one
-  file deleted.
-- `.htaccess`, carrying the one thing a default server gets wrong: without
-  `AddType application/manifest+json .webmanifest` the manifest is served as
-  `application/octet-stream`, the browser ignores it, and the app stops being
-  installable with nothing in the console to explain why. cyon runs LiteSpeed,
-  which reads `.htaccess` but ignores directives it does not recognise
-  *silently* - so the deploy asserts the headers this file should produce
-  rather than assuming that shipping it was the same as it working.
-
-### Fixed
-
 - **`tests/live-check.mjs` had the same fixed-debugging-port flaw as
   `tests/smoke.mjs`** - it hardcoded 9339, so it could silently attach to a
   leaked browser and check a stale profile while reporting a pass. It now takes
@@ -69,18 +77,6 @@ tagged.
   now waits for the load event and then for the app to boot - and three seconds
   was a guess about someone else's network besides.
 - `tests/live-check.mjs` now defaults to `https://chipseq.app/`.
-
-### Changed
-
-- **The README is now something a user can read in full.** Everything that only
-  matters to someone changing the code moved to
-  [DEVELOPMENT.md](DEVELOPMENT.md): architecture, the file format rules, audio
-  internals, the service worker, testing, releasing and deployment. What stayed
-  was then cut again against a sharper rule: no design rationale, and nothing a
-  user learns in the first minute of clicking around. What is left is what the
-  app will not tell you itself, such as which gestures exist, what the M and C
-  markers actually govern, and which guarantees hold when you edit a shared
-  preset. 878 lines became 265, plus a 520-line developer guide.
 
 ### Notes on the deploy
 
