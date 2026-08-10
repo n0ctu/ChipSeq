@@ -8,7 +8,7 @@ import {
   getBadgeClient, onBadgeChange, onBadgeFrame, badgeState, savedUrl,
   shouldAutoConnect, isGuessedUrl, badgeCan,
 } from '../../net/badges.js';
-import { createUpload } from '../../net/badge-upload.js';
+import { createUpload, replacePlan } from '../../net/badge-upload.js';
 import { buildTune } from '../../core/badge-tune.js';
 import { icon } from '../icons.js';
 
@@ -298,13 +298,28 @@ export function mount(body, { store, badgeStream = null }) {
       render();
       return;
     }
-    const existing = b.lib && b.lib.tunes.find((t) => t.id === built.id);
-    const free = b.lib ? b.lib.freeBytes + (existing ? existing.bytes : 0) : Infinity;
+    // Sending the same song again REPLACES the copy on the badge: same name,
+    // different id means the old versions are dropped once the new one has
+    // committed. Same id means the exact bytes are already there.
+    const plan = replacePlan(b.lib, { id: built.id, name: doc.name, bytes: built.bytes.length });
+    if (!plan.upload) {
+      state.error = null;
+      ensureClient().askLibrary(badgeId);
+      render();
+      return;
+    }
+    // Space is judged with the about-to-be-dropped copies credited back - but
+    // the refusal happens BEFORE any drop is sent, so a tune that will not fit
+    // even after the replacement costs nothing that was already stored.
+    const credit = plan.dropFirst.reduce(
+      (n, tid) => n + ((b.lib.tunes.find((t) => t.id === tid) || {}).bytes || 0), 0);
+    const free = b.lib ? b.lib.freeBytes + credit : Infinity;
     if (built.bytes.length > free) {
       state.error = `“${doc.name}” needs ${formatBytes(built.bytes.length)} but only ${formatBytes(free)} is free on ${b.name}.`;
       render();
       return;
     }
+    for (const tid of plan.dropFirst) ensureClient().dropTune(badgeId, tid);
 
     const entry = {
       name: doc.name, acked: 0, chunks: 0,
@@ -324,6 +339,8 @@ export function mount(body, { store, badgeStream = null }) {
     entry.transfer.start().then(
       () => {
         uploads.delete(badgeId);
+        // The new version is committed, so the stale same-named copies can go.
+        for (const tid of plan.dropAfter) ensureClient().dropTune(badgeId, tid);
         // The badge sends a fresh `lib` on its own after a commit; ask anyway,
         // so a firmware that forgets still leaves the card correct.
         ensureClient().askLibrary(badgeId);

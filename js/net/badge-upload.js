@@ -46,6 +46,45 @@ export function splitChunks(bytes, size = CHUNK_BYTES) {
 //
 // `send` and `now` are injectable so the whole machine can be driven in a test
 // with no socket and no clock.
+// What sending a tune should do to the tunes already on the badge.
+//
+// A tune's id IS its content - the CRC-32 of the bytes - and that is
+// load-bearing for the mesh, so editing a song and sending it again produces a
+// different id and the badge rightly stores both. But the person pressing Send
+// is thinking in names, not checksums: to them the second copy is not a new
+// tune, it is the same one improved, and two entries called "Tetris" is a bug.
+// So Send REPLACES: same name, different id means the stale copies go.
+//
+// The badge's reported library is the ground truth here, deliberately - not
+// something remembered in localStorage - so it works from any browser, any
+// session, and also cleans up duplicates that accumulated before this existed.
+//
+// Order is the point of returning a plan rather than doing it:
+//
+//   dropAfter  the normal case. Upload first, drop the stale copies only once
+//              the new one has committed - a failed upload then costs nothing.
+//   dropFirst  only when both versions cannot coexist (space, or the tune
+//              count is at maxTunes). The old copy is briefly the only thing
+//              at risk, but the alternative was refusing entirely, and the
+//              project in the browser remains the source of truth throughout.
+//
+// upload:false means the exact bytes are already stored - same id implies same
+// name, since the name is inside the checksummed region - so there is nothing
+// to send and nothing to drop.
+export function replacePlan(lib, tune) {
+  if (!lib) return { upload: true, dropFirst: [], dropAfter: [] };
+  if (lib.tunes.some((t) => t.id === tune.id)) {
+    return { upload: false, dropFirst: [], dropAfter: [] };
+  }
+  const stale = lib.tunes.filter((t) => t.name === tune.name && t.id !== tune.id);
+  const fitsBeside =
+    tune.bytes <= lib.freeBytes && (!lib.maxTunes || lib.tunes.length < lib.maxTunes);
+  if (!stale.length || fitsBeside) {
+    return { upload: true, dropFirst: [], dropAfter: stale.map((t) => t.id) };
+  }
+  return { upload: true, dropFirst: stale.map((t) => t.id), dropAfter: [] };
+}
+
 export function createUpload({
   send,
   badgeId,

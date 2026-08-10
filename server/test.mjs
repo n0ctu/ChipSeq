@@ -502,6 +502,42 @@ async function until(fn, what, timeout = 3000) {
     stranger.ws.close();
   }
 
+  // Replacing: the frame sequence js/ui/tools/badges.js sends when a song is
+  // edited and sent again - upload the new version, and only after it commits,
+  // drop the old id. Same name, different id; the badge briefly holds both,
+  // which is the property that makes a failed upload cost nothing.
+  {
+    const v2doc = structuredClone(doc);
+    v2doc.tracks[0].notes[0].pitch += 1; // the edit
+    const v2 = buildTune(v2doc, { name: 'uploaded' });
+    ok(v2.id !== tune.id, 'an edited song has a different id (it is the content checksum)');
+
+    const v2chunks = [];
+    for (let i = 0; i < v2.bytes.length; i += CHUNK) {
+      v2chunks.push(Buffer.from(v2.bytes.subarray(i, i + CHUNK)).toString('base64'));
+    }
+    const n = controller.all('put_done').length;
+    upload(id, v2chunks, v2.bytes.length, v2.id);
+    await until(() => controller.all('put_done').length > n, 'the new version to commit');
+    ok(controller.all('put_done')[n].ok === true, 'the new version commits');
+    eq(badge.tunes.size, 2, 'both versions coexist until the drop - the safe window');
+
+    controller.send({ t: 'drop', badge: id, id: tune.id });
+    await until(() => badge.tunes.size === 1, 'the stale version to be dropped');
+    ok(badge.tunes.has(v2.id) && !badge.tunes.has(tune.id),
+      'what remains is the new version, under the old name');
+    await until(() => (controller.last('lib').tunes || []).length === 1
+      && controller.last('lib').tunes[0].id === v2.id, 'the library to show one tune');
+    eq(controller.last('lib').tunes[0].name, 'uploaded',
+      'so sending an edited song updates it instead of duplicating it');
+
+    // Put the fixture back the way the following tests expect it.
+    controller.send({ t: 'drop', badge: id, id: v2.id });
+    await until(() => badge.tunes.size === 0, 'cleanup');
+    upload(id);
+    await until(() => badge.tunes.has(tune.id), 'the original restored');
+  }
+
   // Deleting.
   controller.send({ t: 'drop', badge: id, id: tune.id });
   await until(() => badge.tunes.size === 0, 'the tune to be deleted');

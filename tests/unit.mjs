@@ -3281,6 +3281,50 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
 //
 // The whole point of keeping this out of the card is that it can be driven
 // here with no socket and no clock.
+
+// ---- sending a tune again replaces it ----
+//
+// A tune's id is the CRC-32 of its content, so editing a song and sending it
+// again used to leave two entries with the same name on the badge. The plan
+// decides what Send does about the copies already stored; the id staying
+// content-addressed is load-bearing for the mesh, so the fix is here and not
+// in the format.
+{
+  const { replacePlan } = await import('../js/net/badge-upload.js');
+  const lib = (tunes, freeBytes = 100000, maxTunes = 16) => ({ tunes, freeBytes, maxTunes });
+  const t = (id, name, bytes = 1000) => ({ id, name, bytes });
+
+  eq(replacePlan(null, t('aa', 'Tetris')), { upload: true, dropFirst: [], dropAfter: [] },
+    'an unread library uploads without dropping anything');
+
+  eq(replacePlan(lib([t('aa', 'Tetris')]), t('aa', 'Tetris')).upload, false,
+    'identical bytes already stored means nothing to send');
+
+  eq(replacePlan(lib([t('old1', 'Tetris'), t('bb', 'Rickroll')]), t('new1', 'Tetris')),
+    { upload: true, dropFirst: [], dropAfter: ['old1'] },
+    'an edited song replaces its old version: upload first, drop after commit');
+
+  eq(replacePlan(lib([t('old1', 'Tetris'), t('old2', 'Tetris')]), t('new1', 'Tetris')).dropAfter,
+    ['old1', 'old2'],
+    'duplicates that accumulated before this existed are all cleaned up');
+
+  eq(replacePlan(lib([t('bb', 'Rickroll')]), t('new1', 'Tetris')),
+    { upload: true, dropFirst: [], dropAfter: [] },
+    'a differently named tune is left alone');
+
+  eq(replacePlan(lib([t('old1', 'Tetris', 5000)], 800), t('new1', 'Tetris', 4000)),
+    { upload: true, dropFirst: ['old1'], dropAfter: [] },
+    'when both versions cannot fit, the stale one is dropped first');
+
+  eq(replacePlan(lib([t('old1', 'Tetris')], 100000, 1), t('new1', 'Tetris')).dropFirst,
+    ['old1'],
+    'a badge at its tune-count limit also drops first');
+
+  eq(replacePlan(lib([t('old1', 'Tetris')], 100000, 0), t('new1', 'Tetris')).dropAfter,
+    ['old1'],
+    'maxTunes of 0 means unreported, not full - it must not force a drop-first');
+}
+
 {
   const { createUpload, splitChunks, toBase64, WINDOW, ACK_TIMEOUT_MS } =
     await import('../js/net/badge-upload.js');
