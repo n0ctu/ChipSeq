@@ -2,877 +2,314 @@
 
 **n0ctus chiptune sequencer for Arduino, Flipper Zero, MCUs and more**
 
-A purely browser-based chiptune sequencer with badge-accurate square-wave
-preview and a non-destructive arpeggiator. Born for an ESP-driven event badge,
-it exports to Arduino-style `.h` note arrays, Flipper Zero `.fmf` files, and
-`.wav`. No build step, no dependencies - plain HTML/CSS/JS with native ES
-modules.
+A browser-based chiptune sequencer with badge-accurate square-wave preview and
+a non-destructive arpeggiator. Born for an ESP-driven event badge, it exports
+Arduino-style `.h` note arrays, Flipper Zero `.fmf` files and `.wav`.
 
-### ▶ [chipseq.app](https://chipseq.app/)
+**[chipseq.app](https://chipseq.app/)**
 
-The production instance. It **installs as an app** — your browser will offer
-it — and once installed it works with no network at all: editing, playback,
-rendering and every exporter, from a local copy.
-
-[n0ctu.github.io/ChipSeq](https://n0ctu.github.io/ChipSeq/) mirrors the same
-release and will be retired.
+Your browser will offer to install it as an app. Once installed it works with
+the network off: editing, playback, rendering and every exporter run from a
+local copy, so a rebooted laptop in a field with no signal still works.
+Projects live in your browser, never on a server.
 
 ![ChipSeq editor](assets/screenshot.png)
 
-## Run it
+## Mono and poly
 
-```sh
-node dev-server.mjs           # from this directory
-# open http://localhost:8000
-```
+**Mono** is one voice with a badge-accurate square-wave preview. It exports a
+`.h` header (`{NOTE_E4, 80}` entries, rests as `{NOTE_REST, ms}`) or a Flipper
+Zero `.fmf` file. Overlapping notes are flagged red; press `N` to cycle through
+them, or use Auto-fix in the status bar. Mono exports stay blocked until the
+overlaps are resolved, because a single-voice device cannot play them.
 
-Any static file server works (the app uses ES modules, so `file://` won't),
-but prefer this one while developing: it sends `Cache-Control: no-store`.
+**Poly** is multiple tracks with their own instruments, exported as `.wav`.
+Everything below marked *(poly)* applies only here; mono deliberately ignores
+mixing, effects and automation so that what you hear is exactly what the badge
+will play.
 
-That matters more than it sounds. The tool cards load lazily, so
-`import('./instrument.js')` runs when a card is first expanded - *after* the
-page has finished loading. A hard reload bypasses the cache for the
-navigation and everything fetched during it, but a later runtime import is an
-ordinary fetch obeying the ordinary cache. `python3 -m http.server` sends no
-`Cache-Control` at all, so the browser falls back to heuristic caching from
-`Last-Modified` and can hand you a stale tool card while the statically
-imported core around it is already up to date. The app then looks broken
-rather than stale, which is a genuinely nasty thing to debug.
+## Writing notes
 
-In production the same shape exists with a shorter fuse: Pages serves JS with
-`cache-control: max-age=600`, so a visitor could hold a fresh `main.js` beside
-a tool card from the previous release. Every `load()` in the tool manifest
-therefore carries `?v=${APP_VERSION}` - `main.js` is what supplies the version
-string, so the moment it is fresh, every module it lazily asks for is too.
-It's a fully static site - GitHub Pages serves it as-is.
+Click the ruler to place the cursor (the green marker, where `Space` starts
+from); drag on it for a loop region, right-click it for loop and trim options.
 
-## Install it (and use it with no internet)
+In the grid, a plain drag marquee-selects and a plain click moves the cursor.
+`Shift+drag` draws a note from start to release, `Alt` for freeform;
+`Shift+click` adds one at the last-used length. Right-click deletes, and drags
+to sweep-erase. `Alt+drag` duplicates. The wheel scrolls through time,
+`Shift+wheel` scrolls pitch, `Ctrl+wheel` zooms and middle-drag pans.
 
-ChipSeq is a PWA: your browser will offer to install it, and once installed it
-opens from the dock or start menu and **works with the network off** - a
-rebooted laptop in a field with no signal still edits, plays, renders and
-exports. Nothing about the app needed changing for that; it has no CDN, no
-fonts, no API, and projects already live in `localStorage`. All that was
-missing was the browser having a copy of the files.
+The panels are resizable by dragging their inner edge; double-click resets.
 
-`sw.js` keeps that copy. Three things about it are worth knowing:
+During playback the view follows along. The playhead travels until it reaches a
+third of the way across, then holds there while the grid scrolls underneath it,
+and when the grid runs out it moves on again to the end. Scrolling by hand
+while playing stands the following down so you can look elsewhere; pressing
+play again re-engages it.
 
-- **The file list is generated, never written.** `node tools/gen-precache.mjs`
-  walks `index.html` and the real import graph - static imports, the tool
-  cards' dynamic ones, the manifest's icons, the demos named by
-  `demos/index.json` - and rewrites a marked block inside `sw.js`. A unit test
-  fails if the committed block is stale, so a new module cannot ship missing
-  from it. That matters more here than anywhere else in the repo: a file left
-  out works perfectly until the one moment offline support is the point.
-- **An update never activates by itself.** A new release installs in the
-  background and waits; the status bar offers `↻ update ready` and the switch
-  happens when you click it. Activating unasked would reload away whatever is
-  on screen, and would let a running page dynamic-import a tool card out of a
-  different build's cache.
-- **A release re-downloads only what changed.** Each entry carries a content
-  hash, so installing copies untouched files across from the previous cache.
-  The app is 2.4 MB, most of it demo songs; a typical release changes two
-  modules and moves a few KB.
+## Arpeggios
 
-Service workers require a **secure context**, so this works on GitHub Pages, on
-a Tailscale Funnel hostname and on `localhost` - but *not* over plain `http` to
-a LAN address, where the browser will not register a worker at all and the app
-stays online-only. Worth knowing before relying on it at a venue.
+Select a note and use the right panel. The arpeggio is stored **on** the note,
+so it is never destructive: tweak or remove it at any time and the original
+note is still there. You get steps per beat, pattern (up, down, up-down,
+random), octave range, per-step gap, and chord (auto song-chords, auto
+diatonic, major, minor, power, sus4, octaves). Configurations can be saved as
+presets.
 
-If a worker ever misbehaves, `__chipseq.offline.unregister()` in the console
-removes it and drops its caches.
+The panel always shows which chord the arp resolved to and why, such as
+"Am - song chords", or a yellow warning when a fallback kicked in. The ▶ button
+auditions the selected note's arp.
 
-## Releasing
+Chords are stacked upward from the note by default, like FamiTracker's `0xy`
+effect. If the note is not a chord tone the sweep uses only the chord tones
+above it, so you never get semitone clusters. **Voicing** flips the chord below
+the note, making the note the top tone, which is the classic shape for bass
+accompaniment. **Octave shift** moves the whole sweep by up to three octaves.
 
-Pushes to `main` do **not** publish. Tags do:
+"Auto (song chords)" follows the track marked as *chords*, but that mark is
+only a recommendation. Every arp has a "Chord source" menu ordered by
+familiarity: the recommended track first, then the chord any other track
+implies at that position, then quality chords, and finally "Pick notes…" for
+arbitrary ones. Track sources stay live, so editing the track updates the arps.
 
-```sh
-git tag v0.2.0 && git push origin v0.2.0
-```
+## Tracks
 
-Before tagging, bump `APP_VERSION` in `js/core/version.js` and add the matching
-`## [x.y.z]` section to `CHANGELOG.md`. The workflow checks all three agree and
-fails the release if they do not - a site that announces a version nobody can
-find in the history is worse than a late release.
+Drag a row from anywhere to reorder it. A plain click still selects and a
+double-click still opens the Track dialog, where name and colour are set
+together. Track colour is either a palette index that follows the theme, or a
+literal hex value you type in.
 
-### chipseq.app (cyon)
+Use the **M** and **C** buttons in the track list to mark the melody and chords
+tracks. The M marker is independent of which row is highlighted: clicking a row
+only changes what you are viewing and editing, while what plays in mono moves
+only when you click M.
 
-A release also publishes to **chipseq.app**, hosted on cyon, via
-`.github/workflows/cyon.yml`. It is a separate workflow from the Pages one on
-purpose: both hosts run in parallel while the domain is proven, and dropping
-Pages later is one file deleted.
+Chord tracks are analysed like a DAW chord track. Each chord holds until the
+next one, and staccato hits or broken figures resolve to their full chord per
+bar. With no chords track, or before the first chord, it falls back to the song
+key.
 
-The deploy is **FTPS**, not SSH, and that is a constraint of the host rather
-than a preference. cyon's SSH is main-user only and additional FTP users get no
-SSH at all, so an SSH key in CI would hand the workflow every other site on the
-hosting account. An additional FTP account *can* be confined to a single
-directory (my.cyon → Webhosting → FTP), with system data and mail invisible to
-it. Those accounts cannot use SFTP — that rides on SSH — but they can use FTPS,
-so the transfer is still TLS end to end. Scoped and encrypted, not one or the
-other.
+### Mute and solo
 
-`lftp` does the mirroring rather than a marketplace action, which would receive
-the FTP password on every run. `--delete` prunes files that no longer exist,
-which is safe precisely because the account cannot reach beyond this one site.
-`.git` is removed before the mirror rather than merely excluded — uploading it
-would republish the entire history over HTTP.
+|  | sounds | in the grid | counted by Levels |
+|---|---|---|---|
+| **mute** | no | hidden | no, it is not part of the piece |
+| **solo** | only soloed tracks | others stay visible, drawn faint | yes, unchanged |
 
-Setup, once:
+Solo not touching Levels is the point of it: a soloed track previews at the
+level it has *in the mix*, which is the only level worth judging it at. Mute is
+the opposite, since a muted track leaves the piece and the others get its
+headroom back.
 
-| where | what |
-|---|---|
-| my.cyon → Webhosting → FTP | an FTP account whose directory is `public_html/chipseq.app` |
-| repo secrets | `CYON_FTP_HOST`, `CYON_FTP_USER`, `CYON_FTP_PASSWORD` |
-| repo variable (optional) | `CYON_FTP_DIR`, default `/` — already the scoped account's root |
+Several tracks can be soloed at once. Mute beats solo, and the track you are
+editing stays visible even when muted so that muting never makes it
+uneditable.
 
-Put the secrets on the `chipseq-app` **environment** rather than the repository
-if you want only this workflow's deploy job to be able to read them.
+## Instruments (poly)
 
-`.htaccess` carries the one thing a default Apache gets wrong: without
-`AddType application/manifest+json .webmanifest` the manifest is served as
-`application/octet-stream`, the browser ignores it, and the app stops being
-installable with nothing in the console to explain why. The deploy asserts the
-served content type afterwards rather than assuming it.
+The **Instrument** card edits the active track: wave (square, sine, sawtooth,
+triangle, and PWM with a duty cycle), a full ADSR envelope, and gain. Edits
+make the track "Custom" until you save them as a named preset, which then
+appears in every track's picker and travels inside the project file.
 
-`.app` is HSTS-preloaded at the TLD, so browsers refuse plain HTTP before a
-request is made — the service worker's secure-context requirement is satisfied
-by construction, with none of the caveats that apply to the venue server.
+Editing an instrument never modifies a shared preset, so a preset used by three
+tracks stays put when one of them is changed.
 
-### The Pages workflow
+**Spectrum** shapes the wave's own harmonics. A base wave *is* its harmonic
+series, so picking a wave and tuning its harmonics is one idea rather than two.
+**Tilt** is the main control, in dB per octave across the whole series, so one
+knob darkens or brightens. Eight **drawbars** are the detail layer, scaling the
+lowest partials where the ear is most sensitive.
 
-`.github/workflows/pages.yml` runs the unit, module-import and golden suites,
-checks the tag against `APP_VERSION` and the changelog, and then deploys. Branch-based publishing was dropped because Pages runs one deployment
-at a time per repository: a burst of pushes queues up, and each deploy step
-aborts itself after ~10 minutes of waiting. The workflow sets
-`cancel-in-progress`, so a newer release supersedes an older one instead of
-both dying. `workflow_dispatch` republishes without minting a tag.
+Multipliers scale what the wave already has and cannot invent a partial that is
+not there, so a sine offers no spectrum at all. Start from Saw to sculpt
+freely, since it is the one wave carrying every harmonic. 100% everywhere with
+zero tilt is the raw wave.
 
-## Modes
-
-- **Mono** - one voice, badge-accurate square-wave preview, exports a `.h`
-  header (`{NOTE_E4, 80}` entries, rests as `{NOTE_REST, ms}`) or a Flipper
-  Zero `.fmf` file (RTTTL-style: note lengths quantized to 1/1…1/128 incl.
-  dotted, rests as `P`; anything rounded is listed in the export warnings).
-  Overlapping notes are flagged red (press `N` to cycle, status bar offers
-  Auto-fix); mono exports are blocked until they're resolved.
-- **Poly** - multiple tracks with instruments, exports `.wav`. Besides the
-  square / sine / sawtooth presets, the **Instrument** tool (always in the
-  sidebar, editing the active track) sets wave (incl. triangle and PWM with
-  duty cycle), full ADSR envelope and gain. Edits make
-  the track "Custom" until saved as a named preset, which then appears in
-  every track's picker and travels in the project file.
-
-## Spectrum: shaping a wave's own harmonics
-
-A base wave **is** its harmonic series - a saw is every harmonic at 1/n, a
-square the odd ones, a triangle the odd ones at 1/n² with alternating sign. So
-"pick a wave, then tune its harmonics" is one idea rather than two: the wave
-supplies the series and the **Spectrum** section scales it.
-
-- **Tilt** is the primary control: dB per octave across the whole series, so
-  one knob darkens or brightens. At +6 dB/oct a saw comes out flat; at -6 its
-  1/n slope becomes 1/n².
-- **Eight drawbars** are the detail layer, multipliers (0-200%) on the lowest
-  partials, where the ear is most sensitive.
-
-The section sits below the envelope and folds away, following the same rule
-the tool cards do: open when the instrument is shaped, closed when it is
-neutral, and sticky once you have opened or closed it yourself. Its summary
-reports the state, so a collapsed section still tells you whether anything is
-happening.
-
-100% everywhere with zero tilt is the raw wave, and an instrument with no
-spectrum block falls through to the browser's own band-limited oscillator - so
-opening the editor and changing nothing changes nothing.
-
-Multipliers scale what the base already has and cannot invent a partial that is
-not there: a sine has one harmonic, so it offers no spectrum at all. **Start
-from Saw to sculpt freely**, since it is the one wave carrying every harmonic.
-
-This follows how additive engines actually work. In Harmor and Razor the filter
-acts at the *generation* stage, scaling partial amplitudes inside the
-oscillator rather than processing audio afterwards, and Harmor starts from "the
-classic all-overtone saw wave" for the reason above. The alternative - one
-slider per partial - is how the Kawai K5000 reached a thousand parameters per
-patch and a reputation for being unusable; the Hammond's nine drawbars are the
-counter-example this copies.
-
-Stored as an optional `instrument.spectrum = { kind:'spectrum', v:1, tilt,
-partials }` block, so an older build ignores it and plays the base wave - it
-loses the shaping but sounds sensible. No schema bump.
-
-One limit worth knowing: the shaped wave is baked into a `PeriodicWave`, so it
-is **static for the note's duration**. A moving filter sweep needs a real
-filter node, which is what the effects phase adds - the two are complementary
-rather than competing.
+The **envelope** is one shape with two editors. The four ADSR sliders drive it
+while it stays ADSR-shaped; drag a point on the canvas into something they
+cannot express and the sliders grey out rather than rounding your curve back
+into four numbers. "Reset to ADSR" brings them back exactly as they were. A
+note shorter than its own attack releases from wherever it actually got to,
+not from a sustain level it never reached.
 
 ## Automation lanes (poly)
 
-Below the piano roll, every control of the active track's instrument gets its
-own expandable **Automation** lane: Gain, Attack, Decay, Sustain, Release -
-plus Duty for PWM instruments. Gain starts expanded (baseline 100%); the rest
-sit collapsed as slim read-only previews and expand on click (clicking a
-collapsed lane never edits anything). In an expanded lane: click adds a
-keyframe, drag moves it, double-click cycles the curve (step / linear /
-ease), right-click deletes. Levels read as percentages, where 0% is silence
-and 100% is unity - the gain lane goes to 150%, with a dashed "100%" line
-marking unity and any keyframe above it drawn in the warning colour, because
-that is where the master limiter starts working. ADSR/duty values are
-absolute overrides of the instrument's setting (dashed baseline = the
-current value); values are
-sampled per note event - every arp step reads the curve independently, so
-fast arps become smooth sweeps - and held notes get true intra-note gain
-ramps. Poly-only; mono and the `.h`/`.fmf` exports ignore automation
-entirely.
+Below the piano roll, every control of the active track's instrument gets an
+expandable lane: Gain, Attack, Decay, Sustain, Release, plus Duty for PWM
+instruments. Gain starts expanded; the rest sit collapsed as slim read-only
+previews and expand on click, so clicking a collapsed lane never edits
+anything.
 
-## Levels (polyphony normalization)
+In an expanded lane, click adds a keyframe, drag moves it, double-click cycles
+the curve (step, linear, ease) and right-click deletes. Levels read as
+percentages where 100% is unity. The gain lane goes to 150%, with a dashed
+"100%" line marking unity and anything above it drawn in the warning colour,
+because that is where the master limiter starts working.
 
-Voices sum linearly, so with the default instrument gain **three simultaneous
-notes already reach the limiter's knee** - a polyphonic sequencer that starts
-distorting on the fourth note is mis-calibrated. Measured on the shipped
-demos, Tetris and Bad Apple had been running about +5 dB into the limiter
-since they were made.
+Values are sampled per note event, so every arp step reads the curve
+independently and fast arps become smooth sweeps. Held notes get true
+intra-note ramps.
 
-The **Levels** card fixes it by scaling voices by `N^-k` in two stages, where
-N is how many voices are sounding:
+## Mixing (poly)
 
-- **track** - how many voices does *this* track have right now? Balances a
-  chord against a single note within one instrument.
-- **song** - how many are sounding *anywhere* right now? Balances the whole
-  arrangement against a solo passage.
+The **Mixer** card sets per-track **gain** and **pan**, plus solo.
 
-`k` is the dial: `0` is off (voices sum, as before), `0.5` is equal power
-(four voices are twice one voice, not four times) and `1` is constant sum (a
-chord is exactly as loud as one note). A single global "turn it down" number
-was rejected deliberately - it makes a sparse melody quiet to accommodate one
-dense bar elsewhere. Because the factor follows what is actually sounding, a
-solo passage has N=1 and is multiplied by exactly 1.
-
-A voice **holds its final gain value through its release**, so that value is
-taken from the level the note actually had - sampled a whole grid cell inside
-the note, and floored by the last few milliseconds rather than read at a
-single instant. Both matter: 0.1 ms of backoff rounded into the same 5 ms
-cell as the note's end, where simultaneous notes had already stopped being
-counted, and smoothing eases the factor back toward 1 before a note is over.
-Together they made a ducked chord release at 2.5x its own level.
-
-A track can be **excluded** from Levels entirely (the checkboxes in the card,
-stored as `track.normalize = false`). Excluded means excluded from *both*
-stages: the voice plays at exactly the level it was written at and carries no
-moving gain, while the rest of the arrangement still normalizes around it.
-That is what you want for a lead - it used to cancel only the track stage,
-which for a monophonic lead was indistinguishable from doing nothing, because
-the song stage kept riding it anyway. Setting a **number** instead (`0`..`1`)
-overrides just that track's own exponent and keeps the song stage, so `0` is
-still available for the old meaning.
-
-**Smoothing** is the other dial and it matters more than it looks: the factor
-changes in steps, and a step in gain is a click, but too much smoothing lets
-short dense hits through. Bad Apple's notes run 18-109 ms, and 30 ms of
-smoothing let a six-voice stack back over full scale where 10 ms held it
-under. The card shows the predicted peak with and without normalization so a
-setting can be judged by number as well as by ear.
-
-### Make-up
-
-Levels only ever attenuates - `N^-k` is at most 1 - so a mostly polyphonic
-song sits permanently below unity and nothing brings it back. Measured on Bad
-Apple, that left **6.8 dB of headroom unused**, which is quiet for a finished
-piece.
-
-**Analyse** renders the song once, reads the *pre-limiter* peak, and sets a
-single master gain so that peak lands at **-1 dBFS**. It is not automatic:
-nothing changes until you press it, and the result is a stored number
-(`doc.master.makeup`), so preview and export apply exactly the same gain - a
-value recomputed per render could not promise that.
-
-The card shows what it measured and what it set, the slider overrides it by
-hand, and pressing Analyse again re-measures. Reading the pre-limiter peak is
-what makes the correction exact even when the current setting is already
-driving the limiter.
-
-All of it is a pure function of the flattened score, so it is deterministic
-and preview still equals export. **Mono is never touched** - one voice has
-nothing to normalize - which is what keeps `.h`/`.fmf` and the badge-accurate
-preview out of reach of any of it.
-
-## Mixing
-
-Every track gets its own node in the audio graph - `buildGraph` in
-`js/core/graph.js`, called identically by playback and the WAV renderer - so
-per-track **gain** and **pan** are audio operations rather than numbers baked
-into each voice. The **Mixer** card in the sidebar edits both (gain as a
-percentage, pan as `L50`/`C`/`R100`), plus **solo**.
-
-### Two gain stages, and which one to reach for
-
-`instrument.gain` is the instrument's own level, and the presets are
-calibrated against each other so a sine and a saw sit at a similar loudness.
-`track.gain` in the **Mixer** is where a track is balanced against the others.
-
-Reach for the **Mixer** to mix. The Instrument tool's Gain is part of the
-sound's design, and changing it makes the track Custom - which is why the
-control now says so underneath itself rather than only in here.
-
-A **reset to default** link appears beside the percentage - and only while
-the gain has drifted from the level its wave was calibrated at (square 35%,
-sine 50%, sawtooth 35%; anything else follows the square). At the calibrated
-level there is nothing to reset, so neither the link nor the explanation
-under the slider is drawn. It reads the built-in presets rather than the
-document's own, so a project whose stored gains have drifted still resets to
-the right number instead of back to whatever it drifted to.
-
-Editing any instrument parameter is **copy-on-write**: it writes an inline
-`track.instrument` and never modifies the shared preset, so a preset used by
-three tracks stays put when one of them is edited. The gain lane multiplies
-on top of both, so a lane at 100% with the track at 80% is 80%.
+There are two gain stages and it is worth knowing which to reach for. The
+Instrument card's gain is part of the sound's design, and changing it makes the
+track Custom. The Mixer's gain is where a track is balanced against the others,
+so reach for the Mixer to mix.
 
 **Pan** also exists as an automation lane, so a voice can sweep across the
-field over time - the classic ping-pong. A lane overrides the track's static
-pan (the same rule every other lane follows), and because position then
-changes per event, each voice carries its own panner instead of sharing the
-track's; the Mixer's pan slider stands down and reads `lane`.
+field over time. **Spread** fans the tracks out in one click, melody centred
+and the rest alternating outward, as a starting point you then adjust. A MIDI
+import of more than two tracks gets the same treatment, so a multi-track file
+arrives sounding like an arrangement rather than a mush stacked dead centre.
 
-**Spread** fans the tracks out in one click - melody centred, the rest
-alternating outward - as a starting point you then adjust. A MIDI import of
-more than two tracks into a poly project gets the same treatment, so a
-multi-track file arrives sounding like an arrangement rather than a mush
-stacked dead centre.
-
-Exports go stereo **only when something is actually panned**; an unpanned
-project renders the same mono file it always did. The export dialog says
-which it will be and why (`Output: stereo - 2 of 4 tracks panned`), with a
-**Force stereo** checkbox for when you want two channels regardless - the
-hint there used to claim "mono mix" unconditionally, which stopped being true
-the moment panning shipped. A `StereoPannerNode` is likewise only inserted
-when it will do something, because at pan 0 it still applies the -3 dB centre
-law - downmixed into a mono render, that would have made every unpanned
-export quietly 3 dB quieter.
-
-Mute and solo stay *flatten-time* filters rather than becoming node gains:
-routing a muted track through a zero-gain node would mean scheduling and
-rendering audio nobody can hear - 5650 notes of it in the Bad Apple demo - to
-save a re-flatten that costs nothing. Solo beats mute-by-omission, and mono
-ignores all of it: the melody track is the voice, which is what keeps `.h` and
-`.fmf` out of reach of the mixer entirely.
+Exports go stereo only when something is actually panned; an unpanned project
+renders the same mono file it always did. The export dialog says which it will
+be and why, with a **Force stereo** checkbox for when you want two channels
+regardless.
 
 ## Effects (poly)
 
 A **bus** is a shared effect. Tracks send part of their signal to it and the
-result is mixed back in, so one reverb serving six tracks is one convolver
-rather than six.
+result is mixed back in, so one reverb serving six tracks is one reverb rather
+than six. Three kinds ship: **delay** (synced to the grid, so it follows the
+tempo), **filter**, and **reverb**.
 
-```jsonc
-doc.buses   = [{ id, name, chain: [{ kind: 'delay', v: 1, params: {…} }] }]
-track.sends = [{ busId, level }]
-```
+There is deliberately no per-effect dry/wet control. The dry path is the
+track's own output and the send level decides how much arrives, so a mix knob
+would be a second control for one thing.
 
-Routing is **per-track node + sends**, chosen over an insert chain per track
-because sends map 1:1 onto MIDI (CC91 reverb, CC93 chorus) while inserts map
-onto nothing. `track.sends` is an array, so a full matrix is already
-expressible even though the card edits one send at a time.
+## Levels (poly)
 
-The tap comes off the track node - post-fader, pre-pan - so a track's fader
-moves its sends with it, and pulling a track down does not leave its reverb
-hanging there.
+Voices sum together, so with the default instrument gain three simultaneous
+notes already reach the limiter. The **Levels** card fixes that by scaling
+voices according to how many are sounding, in two stages:
 
-Three kinds ship: **delay** (time synced to the grid in ticks, so it follows
-the tempo), **filter** (`BiquadFilterNode`), and **reverb** (`ConvolverNode`
-fed a *generated* impulse - decaying noise from a seeded PRNG, because
-fetching an impulse would break the no-external-requests rule and
-`Math.random` would give live and offline renders different reverbs).
+- **track**: how many voices does *this* track have right now? Balances a
+  chord against a single note within one instrument.
+- **song**: how many are sounding anywhere right now? Balances the whole
+  arrangement against a solo passage.
 
-There is deliberately no per-effect dry/wet: the dry path is the track's own
-output and the send level decides how much arrives. A mix knob would be a
-second control for one thing.
+`k` is the dial. `0` is off, `0.5` is equal power (four voices are twice one
+voice, not four times), and `1` is constant sum (a chord is exactly as loud as
+one note). Because the factor follows what is actually sounding, a solo passage
+is left alone entirely.
 
-Adding an effect is one entry in `EFFECTS` plus one `build(ctx, spec, env) ->
-{ input, output }`. An unknown kind is **skipped** rather than fatal, so a
-project from a newer build loses that effect and not its whole sound - the
-same rule `doc.uses` follows, applied at the audio layer.
+**Smoothing** matters more than it looks: the factor changes in steps, and a
+step in gain is a click, but too much smoothing lets short dense hits through.
+The card shows the predicted peak with and without normalization, so a setting
+can be judged by number as well as by ear.
 
-Poly only, and `.h`/`.fmf` never see this graph.
+Individual tracks can be **excluded**, which is usually what you want for a
+lead. An excluded voice plays at exactly the level it was written at while the
+rest of the arrangement still normalizes around it.
 
-## Envelopes and modulation
+**Analyse** (make-up) renders the song once, reads the peak, and sets a single
+master gain so that peak lands just below full scale. Levels only ever turns
+things down, so without it a mostly polyphonic song sits permanently quiet.
+Nothing changes until you press it, and the result is stored in the project so
+preview and export apply the same gain.
 
-There used to be two systems for "a value that moves over time" - ADSR
-(note-relative, gain only, rendered as Web Audio ramps) and automation lanes
-(song-absolute, sampled per event) - and because ramps and
-`setValueCurveAtTime` cannot share an `AudioParam`, gain automation needed a
-**second gain node**. That node was the tell: two things were being combined
-in the node *graph* when they should be combined in the *value* domain.
-
-`js/core/modulation.js` does the multiplying, so a voice now uses **one gain
-node**. Two paths, chosen by whether anything actually varies:
-
-- **ramps** - only the envelope moves and it is ADSR-shaped. Scheduled as
-  exact Web Audio ramps, so the badge's 2 ms attack lands on the sample it
-  should. This is the common case, and it is bit-for-bit what it always was.
-- **curve** - a gain lane varies across the note, or the envelope was drawn
-  freehand. Instrument gain x envelope x lane are sampled together
-  into one array covering the whole voice, release tail included. Sampling is
-  by *time* (0.5 ms), not by a fixed points-per-note budget, because the
-  latter smears a 2 ms attack away on any note longer than a second.
-
-### Velocity is stored, not applied
-
-Every note carries a `velocity`, and MIDI import fills it in from the file -
-Rickroll arrives with 48 distinct values spanning 2 to 100. It is preserved
-through every edit, save and export, and it is **deliberately not applied to
-the sound**.
-
-Nothing in the UI shows or edits it, so a note sitting 3 dB below its
-neighbours looks identical to them with nothing on screen to explain why -
-which is indistinguishable from a bug. Until there is a velocity editor,
-every note sounds at the nominal value (`NOMINAL_VELOCITY = 100`, the value
-notes written in the app already carry, so ignoring velocity moves the notes
-that *deviate* rather than shifting everything 2.1 dB).
-
-Two places must agree on this, and share one constant so they cannot drift:
-the voice in `instruments.js` and the peak estimate in `normalize.js`. An
-estimate that disagreed with what is rendered would warn about clipping that
-cannot happen, or miss clipping that can. Re-enabling velocity is a one-line
-change in each, plus a UI.
-
-The **envelope** is one shape with two editors. The four ADSR sliders drive it
-while it stays ADSR-shaped; drag a point on the canvas into something they
-cannot express and the shape is stored explicitly as
-`instrument.env = {kind:'env', v:1, points, sustainIndex, timeBase:'sec'}` -
-following the extension-block rule, so no migration - and the sliders grey out
-rather than rounding your curve back into four numbers. "Reset to ADSR" drops
-the block and the sliders come back exactly as they were. Points up to the
-sustain index are measured from note onset; the rest are measured from note
-off. A note shorter than its own attack releases from wherever it actually
-got to, not from a sustain level it never reached.
-
-The four ADSR **automation lanes are unchanged** - they still override
-a/d/s/r per event, now by feeding the envelope generator instead of a parallel
-code path.
-
-`note.detune` (cents) and `note.lfo` are live targets, which is what makes
-vibrato and portamento data rather than deferred features; only the editing UI
-is missing.
-
-## Tracks
-
-Rows are **reorderable** - drag a track from anywhere on it. The drag arms on
-mousedown and only begins once the pointer has moved a few pixels, so a plain
-click still selects the track and a double-click still opens the dialog;
-buttons and the instrument menu keep their own gestures. Past the threshold
-the click is swallowed, so a drag is one undo entry rather than a reorder
-plus a track switch.
-Order is presentational (playback reads whichever tracks are playable and
-sorts events by tick), but it does decide the palette position of any track
-that has not picked a colour.
-
-Double-clicking a track's name opens the **Track** dialog: name and colour
-together, since those are the two things you change about a track as an
-object. Every track carries a colour explicitly, assigned at birth from the
-least-used entry - deriving it from row position was tidy until rows could be
-reordered, at which point every colour shuffled whenever the list did. An
-identity that moves is not an identity.
-
-`track.color` is one field in **two forms**:
-
-```jsonc
-"color": 6          // palette index 0..7, resolved through the theme
-"color": "#ff8800"  // a literal colour, used verbatim
-```
-
-An index keeps the look retunable from `css/base.css` (and will follow a light
-theme, if one ever lands); a hex covers anything the palette does not, and is
-there to be hand-edited. Both are the *same field*, so the two can never drift
-apart the way an index plus a mirrored hex would - and every view resolves it
-through the same pair of helpers, `trackColor()` for canvas and
-`trackColorCss()` for inline styles. Shorthand (`#f80`) works. A string that
-does not parse as a hex is ignored, and the dialog leaves the existing colour
-alone rather than storing a typo.
-
-### Mute and solo
-
-They answer different questions, and the difference is deliberate:
-
-| | sounds | in the grid | counted by Levels |
-|---|---|---|---|
-| **mute** | no | hidden | **no** - it is not part of the piece |
-| **solo** | only soloed tracks | others stay visible, drawn faint | **yes, unchanged** |
-
-Solo not touching Levels is the point of it: a soloed track previews at the
-level it has *in the mix*, which is the only level worth judging it at. If
-soloing changed the level, you would be auditioning something you never
-actually hear. Mute is the opposite - a muted track leaves the piece, so the
-others get its headroom back.
-
-Several tracks can be soloed at once and play together. Mute beats solo:
-soloing a track you have muted does not unmute it, and if the only soloed
-track is muted then nothing is really soloed. The track you are editing stays
-visible even when muted, so muting it never makes it uneditable.
-
-## The project file
-
-Projects are `.chipseq.json` - the compound extension is deliberate. It keeps
-the `.json` suffix, so editors syntax-highlight and validate it, `jq` works on
-it and GitHub renders it in the browser, which matters for a tool whose pitch
-is plain files and no build step. A short custom extension would have bought
-three characters and cost all of that, and being a web app there is no OS file
-association to claim anyway. Older `.tune.json` files still open - the picker
-matches on `.json`, and the in-file format id never changed.
-
-Saved with every project, so reopening puts you exactly where you left off:
-the loop region, snap/grid preference, active track, **scroll position, zoom
-level and cursor position**. The view is a self-versioned block that is
-deliberately *not* declared in `doc.uses` - a reader that ignores it still
-plays the file correctly, which is the bar for belonging in that list.
-Scrolling never pushes an undo entry and never triggers a save on its own; it
-rides along with the next save, or with the flush when you leave the tab.
-
-## Growing the file format
-
-Three rules keep `.chipseq.json` extensible without breaking files. The point of
-all three: a build that meets a file it does not fully understand must still
-open it, say what it cannot honour, and - above all - not quietly destroy the
-parts it could not read.
-
-One caveat about direction. A **v3 build refuses a v4 file outright**: its
-validator predates these rules and throws on any newer version. That is fixed
-from v4 on - `validate()` now opens a newer file and lets `doc.uses` explain
-what is missing - so the guarantee holds going forward, not backward.
-
-1. **Extension blocks are namespaced and self-versioned.** Anything a feature
-   owns lives in its own object carrying `kind` and `v`, e.g.
-   `master.limiter = {kind:'limiter', v:1, ceilingDb:-0.1}`. A block evolves on
-   its own `v`; `SCHEMA_VERSION` is bumped only for renames or changed meaning,
-   never for additions (which default on load).
-2. **Unknown keys are preserved verbatim.** `migrate()` mutates the parsed JSON
-   instead of rebuilding a document from known fields, so a block this build has
-   never heard of survives load-and-save untouched. Never reconstruct a document
-   field-by-field - that is what silently drops a newer build's data.
-3. **`doc.uses` declares what a reader must understand**, e.g.
-   `['harmonics','automation','tempoMap']`. Meeting an entry it does not know,
-   a build says so - "this project uses X, which this version can't play; it is
-   preserved, not lost" - instead of playing the file wrong in silence. Entries
-   this build cannot evaluate are carried over rather than recomputed away.
-
-`tests/golden.mjs` pins all three.
-
-### Tempo and meter are maps
-
-`song.tempo` is `[{tick, bpm}]` and `song.meter` is `[{tick, num, den}]`, even
-though the editing UI only ever writes one entry. Everything reads them through
-`bpmAt` / `timeSigAt` / `tickToSeconds` / `secondsToTick`, and `tickToSeconds`
-integrates across entries - so adding mid-song tempo changes is a UI job, not a
-rewrite of the engine and all four exporters. MIDI import already keeps whole
-maps instead of discarding tempo changes with a warning.
-
-`song.bpm` and `song.timeSig` remain as **derived mirrors** of the first map
-entry, doing two jobs: a future build that restructures the maps can still find
-a tempo in a file written here, and this build can still find one in that
-file - `bpmAt`/`timeSigAt` fall back to the scalars when the maps are missing.
-`syncLegacyFields` recomputes them; the maps are always authoritative.
-
-A multi-entry map is declared in `doc.uses` precisely because a reader that
-falls back to the mirror plays one tempo throughout - which sounds fine and is
-wrong, the worst kind of failure.
-
-## Integrity and resilience
-
-**Every id in the document names something that exists.** `enforceInvariants`
-runs inside the store on every commit, project open, undo and redo, so
-"well-formed" is a property of every snapshot rather than something each call
-site has to remember - deleting a track just deletes the track, and the
-active/melody/chord markers are re-pointed for it. Orphaned instrument
-references fall back to Square, a track-less or instrument-less project is
-given the minimum back, and `chordTrackId` stays a soft reference that may be
-null. Only *actual* repairs are reported (via `doc-repaired`, shown in the
-status bar), so a healthy project is never touched and the pass can run
-constantly without becoming noise.
-
-Deliberately not enforced: a **muted melody track**. It is a legitimate thing
-to do, and moving the M marker in response would repeat an annoyance that was
-already reported once - markers do not wander on their own.
-
-**Storage can fail at any moment, and the editor does not care.** Private
-modes and restricted iframes throw `SecurityError` on the first access; a full
-quota throws `QuotaExceededError` on a write that used to work. Every
-localStorage access goes through wrappers in `js/core/persist.js` that never
-throw: on failure the app degrades to an in-memory store, keeps the open
-project fully editable for the rest of the session, and the status bar says
-`not saving - storage is full` (a persistent message, not a flash - every later
-edit is also not being saved). It never deletes another project to make room,
-and a corrupt entry reads as absent rather than throwing into the boot path.
-
-## Output level
-
-Playback and the `.wav` exporter share one output stage (`js/core/graph.js`),
-so what you hear is what you get - they used to differ, with exports rendering
-about 1 dB hotter than the preview because only the engine applied the master
-gain.
-
-That stage ends in a soft clipper, so the downmix can never leave the master
-above 0 dBFS: below -3 dBFS it is exactly transparent, above that it bends
-smoothly toward a -0.1 dBFS ceiling. A stateless `WaveShaper` is used rather
-than a compressor precisely because it behaves identically in realtime and
-offline rendering.
-
-Because a limited mix still *sounds* clean, the level is also reported: the
-export dialog shows the peak and warns when the mix only fit because it was
-shaped ("Mix peaks at +3.2 dB…"), and the status bar flags playback that goes
-over. Both read the peak *before* the clipper, which is the number you need to
-act on. The limiter is stored per project as
-`master.limiter = {kind, v, enabled, ceilingDb, kneeDb}`; there is no UI switch
-yet, but the data supports one.
-
-## The tools sidebar (and how to add a tool)
-
-Each tool is a **collapsible card**, boxed so it is obvious where one starts
-and what belongs to it. A card **opens itself when its tool is actually in
-play and stays closed when it is not** - select a note carrying an arpeggio
-and Harmonics opens; select a plain one and it waits, showing `1 note`. The
-status indicator is drawn for collapsed cards too: that is its main job, so a
-closed card still tells you whether the tool is in effect.
-
-Fold state is tri-state. Absent means *auto* (follow the tool's own status);
-an explicit click is **sticky** from then on, because a card someone
-deliberately closed must not spring back open every time the selection
-changes. `reset` in the panel header returns everything to auto.
-
-**Adding a tool is one file plus one manifest entry.** `js/ui/tools/manifest.js`
-declares each tool with four things:
-
-| | |
-|---|---|
-| `when(ctx)` | is it applicable at all? `false` hides the card |
-| `status(ctx)` | `{on, label}` for the indicator - **cheap and pure** |
-| `load()` | the only dynamic `import()`, run on first expand |
-| `id`, `name` | identity; ids are asserted unique at load |
-
-`status()` deliberately lives in the manifest rather than the tool module,
-because it runs for *collapsed* cards - answering it must not require loading
-anything. `js/ui/tools-panel.js` imports no tool at all: it builds every card
-from the manifest and calls `tool.load()` the first time a card opens, so a
-tool you never touch is never fetched, parsed or wired up. The tool module
-itself only exports `mount(host, ctx)` and fills the card body.
-
-Nothing looks a tool up by string - the panel iterates the array - so a typo
-is a missing card at load time rather than a card that silently renders
-nothing, and `tests/check.mjs` imports every `load()` target so a broken tool
-fails CI instead of at runtime.
-
-The tools themselves: **Harmonics** (below), **Transpose** - bulk pitch moves,
-±1 octave, ±1 semitone, ±1 *scale degree* (stays in the song key), plus "snap
-chromatic notes to key" for cleanup after imports or key changes - and
-**Instrument** (poly), which edits the active track and is therefore always
-present: collapsed while the track uses a stock Square/Sine/Saw, opening
-itself once the sound is fine-tuned into a Custom config or switched to a
-saved preset. A track's instrument picker focuses that track and reveals the
-card for the session, without pinning it open for good.
-
-## Arpeggios (the fun part)
-
-Select a note → right panel. The arpeggio is stored **on** the note
-(non-destructive): tweak or remove it anytime, the original note stays.
-Configure steps/beat, pattern (up / down / up-down / random), octave range,
-per-step gap and chord (Auto song-chords / Auto diatonic / major / minor /
-power / sus4 / octaves). Save configs as presets to reapply quickly.
-
-The panel always shows **which chord the arp resolved to and why** (e.g.
-"Am - song chords", or a yellow warning when a fallback kicked in), and the
-▶ button auditions the selected note's arp. By default chords are stacked
-upward from the note like FamiTracker's `0xy` effect - if the note isn't a
-chord tone, the sweep uses only the chord's tones above it (no semitone
-clusters). The **Voicing** control flips the chord below the note (the note
-becomes the top tone - the classic shape for bass accompaniment), and
-**Octave shift** transposes the whole sweep ±3 octaves, e.g. to imitate a
-bass chords part without moving the note out of the melody register.
-
-"Auto (song chords)" follows the track marked as *chords* - but that mark is
-only a **recommendation**, not a lock-in. Every arp gets a "Chord source"
-menu, ordered by familiarity: the recommended track first, then the chord
-any *other* track implies at that position, then quality chords (major,
-minor, power, 7ths … the more exotic, the further down), and finally "Pick
-notes…" - a 12-key picker for arbitrary chords. Track sources stay live
-(edit the track and the arps follow); presets never store source info.
-
-Use the **M**/**C** buttons in the track list to pick the melody and chords
-tracks in any mode (right-clicking a track also toggles chords). The M marker
-is independent of the highlighted row: clicking a row only changes which
-track you're viewing/editing - what plays in mono moves only when you click
-M. The panels
-are resizable by dragging their inner edge (double-click resets). Chord
-tracks are analyzed like a DAW chord track: each chord **holds until the
-next one**, staccato hits and broken/arpeggiated figures resolve to their
-full chord per bar. With no chords track (or before the first chord) it
-falls back to the song key; chromatic notes get the key mode's triad
-quality - every fallback is spelled out in the panel.
+Mono is never touched by any of this.
 
 ## MIDI import
 
-Drop a `.mid` file anywhere to start a **new project** from it. To pull tracks
-**into the project you're working on**, use the music-note button next to "+"
-in the tracks panel: the same assignment dialog appears, but the chosen tracks
-are appended - song settings, existing tracks and the melody marker stay put,
-and colliding names get a numbered suffix. Notes keep their musical positions,
-so a file with a different tempo simply plays at the project's BPM (the dialog
-warns when they differ).
+Drop a `.mid` file anywhere to start a new project from it. To pull tracks into
+the project you already have open, use the music-note button next to "+" in the
+tracks panel: the same dialog appears, but the chosen tracks are appended and
+your song settings, existing tracks and melody marker stay put.
 
-Drop a `.mid` file anywhere. Every MIDI instrument (each channel in each
-chunk) becomes its own track, labeled with its General MIDI program name.
-You then assign each one a role (melody / chords / muted / skip) - the app
-pre-suggests them: lead-like instruments become the melody, piano/organ/guitar
-comping is preferred over pads and ambience for the chords role, and drums are
-skipped. BPM, time signature and key are taken from the file; if the file has
-no key-signature event, the key is guessed from the notes (and marked as a
-guess). The ♪? button next to the Key selector re-runs that detection on the
-current song at any time.
+Every MIDI instrument becomes its own track, labelled with its General MIDI
+program name. You assign each one a role (melody, chords, muted, skip) and the
+app pre-suggests them: lead-like instruments become the melody, comping
+instruments are preferred for chords, and drums are skipped. BPM, time
+signature and key come from the file; if there is no key signature the key is
+guessed from the notes and marked as a guess. The ♪? button next to the Key
+selector re-runs that detection at any time.
 
-## Files
+Notes keep their musical positions, so a file with a different tempo simply
+plays at the project's BPM. The dialog warns when they differ.
 
-- Projects autosave to localStorage on every change (recent list on the start
-  screen). `Export → .chipseq.json` gives a portable project file; everything in
-  it stays editable, including applied arpeggios.
-- Opening the app resumes the project you last had open, with the piano roll
-  centred on the active track's notes (mono badge tunes sit high, so the
-  default view would cut them off).
-- **Demos** get their own section on the start page and are loaded fresh from
-  `demos/` on every visit, so updates always reach everyone - they are never
-  copied into your storage. Open one to explore it; the moment you edit, a
-  personal copy with the same name is created and the demo stays pristine.
-  Add your own by dropping a `.chipseq.json` into `demos/` and listing it in
-  `demos/index.json` - that list is also the display order. Shipped: "Demo Mono" (arpeggios), "Demo Poly"
-  (automation lanes: PWM duty sweep, intra-note gain swell, stepped-gain
-  echoes, release change), "Rickroll", "Tetris" and "Bad Apple".
-- The export dialog can restrict `.h`/`.wav` output to the **loop region**
-  (checkbox, shown with its bar range). Region exports keep leading/trailing
-  rests and are cut to the exact region length, so they loop seamlessly on
-  the badge and in samplers.
+## Exporting
 
-## Tables: commands and exporters
+Press `Ctrl+E`. The formats available depend on the mode:
 
-Two things the app used to say twice now live in one array each.
+| Format | Mode | What it is |
+|---|---|---|
+| `.h` | mono | Arduino-style note array for a badge or MCU |
+| `.fmf` | mono | Flipper Zero Music Format |
+| `.wav` | poly | 44.1 kHz 16-bit render, using the playback engine |
+| `.chipseq.json` | both | the full project, nothing lost |
 
-**`js/ui/commands.js`** holds every action that has both a shortcut and a
-button. They were previously defined once in `toolbar.js` as a click handler
-and once in `keymap.js` as a switch case, so a button and its key could drift
-apart and nothing could enumerate what the app can do. Now the toolbar binds
-to the table, the keymap dispatches through it, and **Ctrl+K** lists it -
-filtered as you type, and showing only commands whose guard passes, because
-offering "Undo" with nothing to undo is a menu entry that lies.
+`.h` and `.wav` can be restricted to the **loop region** with a checkbox that
+shows its bar range. Region exports keep leading and trailing rests and are cut
+to the exact region length, so they loop seamlessly on the badge and in
+samplers.
 
-Two commands claiming one chord used to be invisible - whichever bound last
-simply won. `duplicateChords()` is asserted empty by the unit suite.
+`.fmf` quantizes note lengths to the durations that format allows, and anything
+that had to be rounded is listed in the export warnings.
 
-Deliberately not everything: grid editing (arrows, delete, note nudging, snap
-digits) stays in `keymap.js`. Those are positional and contextual, and
-meaningless as palette entries - a table you have to lie to is worse than two
-honest handlers.
+## Projects, demos and storage
 
-**`js/core/exporters.js`** holds the formats: id, extension, MIME type, which
-modes they apply to, whether overlapping notes block them, and `render(doc,
-opts)`. The export dialog derives its tabs, its disabled states and its
-download step from that array, so adding `.mid` later is one builder plus one
-entry rather than another branch in three places.
+Projects autosave to your browser's local storage on every change, and the
+start screen lists the recent ones. Opening the app resumes the project you
+last had open, with the piano roll centred on the active track's notes.
 
-## Keyboard (excerpt)
+Everything is saved with the project, so reopening puts you exactly where you
+left off: the loop region, snap and grid preference, active track, scroll
+position, zoom level and cursor position.
+
+`Export → .chipseq.json` gives a portable project file in which everything
+stays editable, including applied arpeggios. The compound extension is
+deliberate: it keeps the `.json` suffix so editors, `jq` and GitHub all still
+understand the file. Older `.tune.json` files still open.
+
+**Demos** have their own section on the start page and load fresh on every
+visit, so they are never copied into your storage. Open one to explore it; the
+moment you edit, a personal copy with the same name is created and the demo
+itself stays pristine. Shipped: Demo Mono (arpeggios), Demo Poly (automation
+lanes), Rickroll, Tetris and Bad Apple.
+
+If local storage is unavailable, as in some private browsing modes, or full,
+the editor keeps working for the rest of the session and the status bar says
+`not saving` rather than losing your work silently.
+
+## Playing on badges
+
+The **LuxCamp Badge 2026** card pairs ESP32 badges over the internet and plays
+a track live on them, uploads tunes for standalone playback, and lets badges
+form their own offline mesh. That needs the relay server, which has its own
+guide in [`server/README.md`](server/README.md).
+
+## Keyboard
 
 | Keys | Action |
 |---|---|
-| `Space` / `Shift+Space` | play/stop (always from the placed cursor) - pause/resume in place |
-| Arrows / `Shift+Arrows` | move cursor - move/transpose selection |
+| `Space` / `Shift+Space` | play/stop from the cursor, pause/resume in place |
+| Arrows / `Shift+Arrows` | move cursor, move or transpose selection |
 | `Alt+←/→` | resize selection |
-| `Enter` / `Delete` | add-or-select note - delete selection |
-| `Tab` | next note, `Ctrl+A` select all |
-| `Ctrl+Z/Y` `Ctrl+C/X/V/D` | undo/redo, clipboard, duplicate |
-| `1`-`6`, `7`, `0` | snap 1/1…1/32 - triplet - off |
+| `Enter` / `Delete` | add-or-select note, delete selection |
+| `Tab` / `Ctrl+A` | next note, select all |
+| `Ctrl+Z/Y`, `Ctrl+C/X/V/D` | undo/redo, clipboard, duplicate |
+| `1`-`6`, `7`, `0` | snap 1/1 to 1/32, triplet, off |
 | `Q` | quantize selection |
-| `L` `M` `N` | loop - metronome - next conflict |
+| `L` `M` `N` | loop, metronome, next conflict |
 | `Ctrl+Shift+[` / `]` | trim before / after cursor |
 | `Ctrl+E` | export |
+| `Ctrl+K` | command palette |
 
-Click the ruler to place the cursor (green marker - `Space` always starts
-there; right-click offers "Reset cursor to start"); drag on it for a loop
-region, right-click for loop/trim options. The loop region is part of the
-project - it survives reloads and travels in `.chipseq.json` files, as does
-the snap/grid preference.
-In the grid: plain drag marquee-selects, a plain click just moves the cursor.
-`Shift+drag` draws a note from start to release (snapped; `Alt` for freeform),
-`Shift+click` adds one at the last-used length. Right-click deletes notes
-(drag to sweep-erase); `Alt+drag` duplicates. Wheel scrolls through time,
-`Shift+wheel` scrolls pitch, `Ctrl+wheel` zooms, middle-drag pans.
+`Ctrl+K` lists every command that has a shortcut, filtered as you type, and
+shows only the ones that would actually do something right now.
 
-## Tests
+## More
 
-No frameworks here either - plain Node scripts in `tests/` (Node 22+):
+- [DEVELOPMENT.md](DEVELOPMENT.md) covers running it locally, the
+  architecture, the file format, testing, releasing and deployment.
+- [`server/README.md`](server/README.md) is the badge relay server.
+- [CHANGELOG.md](CHANGELOG.md) is the release history.
 
-```sh
-node tests/unit.mjs        # core-logic tests (arps, chords, exporters, MIDI, migrations, limiter, precache list)
-node tests/check.mjs       # imports every ES module to catch syntax errors
-node tests/golden.mjs      # byte-compares exporter + pipeline output against fixtures
-node tests/smoke.mjs       # browser tests driving the real UI headlessly
-node tests/live-check.mjs  # verifies a deployed instance (defaults to https://chipseq.app/)
-```
-
-The browser suites need a Chromium binary - they auto-detect Playwright's
-cache and common system paths, or set `CHROME_BIN=/path/to/chrome`.
-
-`golden.mjs` is the regression net for "preview = export = badge": it pins the
-migrated document, the flattened event stream and the `.h`/`.fmf` text for
-every shipped demo, plus a determinism check (the same document must always
-flatten identically) and a forward-compatibility check (unknown blocks in a
-`.chipseq.json` survive a load/save round-trip untouched). Artifacts over 32 kB
-are stored as a hash with head/tail context instead of in full. After a
-*deliberate* output change, regenerate with `node tests/golden.mjs --update`
-and review the diff in its own commit - never inside a feature commit, or an
-unintended change can hide in the noise.
-
-Rendered audio is deliberately not byte-compared: `WaveShaper` behaviour
-varies between Chromium builds, so the browser suite asserts peak, RMS,
-duration and RIFF structure instead.
-
-`smoke.mjs` finishes by **shutting its own web server down** and asserting the
-app still boots, still loads demos and still resolves a lazily imported tool
-card. Two things make that assertion mean something, and both were learned the
-hard way:
-
-- It first checks that a file *outside* the precache genuinely fails to load.
-  Without that control the whole offline section passed while fully online -
-  CDP's network emulation applies to the page target, and a service worker is
-  a separate target, so its fetches went out over a live network.
-- The static server sends `Cache-Control: no-store`. With no header at all,
-  Chrome cached heuristically and the app booted offline from the *HTTP* cache
-  with the worker doing nothing - verified by disabling the worker's cache
-  lookup entirely and watching every test still pass.
-
-Both browser suites take a **random debugging port** and read the one Chrome
-actually chose from `DevToolsActivePort`, then wait for Chrome to exit before
-deleting their profile. A fixed port silently attaches to whatever browser
-already holds it: a leaked Chrome kept a profile alive for days, so runs were
-driving a stale browser. Harmless until service workers, which persist - an
-edited `sw.js` installed as `waiting` while the old one kept serving, and a
-deliberately broken worker passed every test.
-
-Neither suite sleeps through a navigation any more either. A `Runtime.evaluate`
-sent while the previous document is being torn down is dropped, and the reply
-never arrives - so the run hangs rather than failing, which is a far worse way
-to be wrong. They wait for the load event and then for the app to boot.
-
-## Hacking
-
-- `js/core/` - engine, no DOM: document model (`doc.js`), snapshot undo
-  (`store.js`), the harmonics/arp renderer (`harmonics.js`), the single flatten pipeline
-  (`flatten.js`, shared by playback/wav/h/ghosts), Web Audio engine, MIDI
-  parser, exporters.
-- `js/ui/` - screens, canvas piano roll, panels. UI talks to core only via
-  the store; core never touches the DOM.
-- `js/ui/tools/` - one file per sidebar tool, each exporting `mount(host, ctx)`,
-  plus `manifest.js` which declares them. Adding a tool means adding a file and
-  a manifest entry - nothing else in the app has to know it exists.
-- Theme: edit the custom properties in `css/base.css` - the canvases read
-  them too. The app icons are drawn from the same two colours by
-  `tools/gen-icons.mjs` (a PNG is a signature, three chunks and a CRC, and Node
-  ships the deflate) - change the mark, re-run it, commit the PNGs.
-- `sw.js` + `manifest.webmanifest` make it installable and offline-capable;
-  the precache list inside `sw.js` is generated by `tools/gen-precache.mjs`
-  and held current by a unit test. Adding a module needs nothing from you -
-  regenerate and the test passes.
-- Console handle: `window.__chipseq` exposes `{store, uiStore, engine}`, plus
-  `offline` for the service worker (`update()`, `activate()`, `unregister()`).
+No build step, no dependencies: plain HTML, CSS and JavaScript with native ES
+modules. MIT licensed.

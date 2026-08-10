@@ -34,6 +34,22 @@ export function visiblePitchRange(ui, heightPx) {
   return { top, bottom };
 }
 
+// Where the view wants to sit so the playhead is anchored a third of the way
+// across. Pure, and deliberately UNclamped: every phase of following comes from
+// pairing it with clampScroll, so this must be free to return a position off
+// either end.
+//
+//   before the anchor  a negative result, which the clamp pins to 0, so the
+//                      playhead travels across an unmoving grid
+//   after it           the grid scrolls and the playhead holds still
+//   past the last page the clamp pins the scroll, so the playhead travels on
+//
+export const FOLLOW_ANCHOR = 1 / 3;
+
+export function followScroll(ui, playheadTick, widthPx) {
+  return playheadTick - (widthPx * FOLLOW_ANCHOR) / ui.pxPerTick;
+}
+
 export function clampScroll(ui, widthPx, heightPx, songEnd) {
   const maxTick = Math.max(songEnd + 4 * 96 * 4, widthPx / ui.pxPerTick + 96 * 16);
   ui.scrollTick = Math.max(0, Math.min(ui.scrollTick, maxTick - widthPx / ui.pxPerTick));

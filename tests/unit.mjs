@@ -3401,6 +3401,66 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   }
 }
 
+// ---- playhead following ----
+//
+// The three phases are asserted as properties of one calculation rather than as
+// three branches, because that is how they are implemented: anchor the playhead
+// a third across and clamp. Zoomed so the viewport shows more than 2304 ticks,
+// which is the point past which the tail of the song is shorter than the space
+// behind the anchor and the playhead has to move again to reach the end.
+{
+  const { followScroll, clampScroll, FOLLOW_ANCHOR } = await import('../js/ui/piano-roll/coords.js');
+  const W = 900, H = 400;
+  const songEnd = 96 * 4 * 64; // 64 bars
+  const anchorX = W * FOLLOW_ANCHOR;
+
+  const at = (tick) => {
+    const ui = { scrollTick: 0, pxPerTick: 0.3, scrollPitch: 84, rowHeight: 10 };
+    ui.scrollTick = followScroll(ui, tick, W);
+    clampScroll(ui, W, H, songEnd);
+    return { scroll: ui.scrollTick, x: (tick - ui.scrollTick) * ui.pxPerTick };
+  };
+
+  // phase 1: the grid does not move and the playhead crosses it
+  eq([at(0).scroll, at(0).x], [0, 0], 'at the start the grid is still and the playhead is at the left edge');
+  eq([at(500).scroll, at(500).x], [0, 150], 'before the anchor the playhead moves and the grid does not');
+  eq([at(1000).scroll, Math.round(at(1000).x)], [0, anchorX], 'the playhead reaches the anchor with the grid still unmoved');
+
+  // phase 2: the playhead holds still and the grid moves under it
+  for (const tick of [1001, 5000, 12000, 24000]) {
+    assert(Math.abs(at(tick).x - anchorX) < 1e-9, `past the anchor the playhead holds at 1/3 (tick ${tick})`);
+  }
+  assert(at(5000).scroll > 0 && at(12000).scroll > at(5000).scroll, 'and the grid scrolls instead');
+
+  // phase 3: the grid runs out, so the playhead moves again to reach the end
+  const end = at(songEnd);
+  const justBefore = at(songEnd - 1);
+  assert(end.scroll === justBefore.scroll, 'at the end of the grid scrolling stops');
+  assert(end.x > anchorX + 1, 'and the playhead moves on past the anchor');
+  assert(end.x < W, 'without ever leaving the viewport');
+
+  // Whatever phase it is in, neither ever goes backwards. A scroll that
+  // stuttered would be visible as the grid twitching under a moving playhead.
+  let lastScroll = -Infinity, lastX = -Infinity, monotonic = true;
+  for (let tick = 0; tick <= songEnd; tick += 97) {
+    const s = at(tick);
+    if (s.scroll < lastScroll - 1e-9 || s.x < lastX - 1e-9) monotonic = false;
+    lastScroll = s.scroll;
+    lastX = s.x;
+  }
+  assert(monotonic, 'neither the scroll nor the playhead ever moves backwards');
+
+  // Zoomed in far enough that the song outruns the viewport, the playhead stays
+  // anchored all the way to the end - there is no tail to reveal.
+  const tight = (tick) => {
+    const ui = { scrollTick: 0, pxPerTick: 2, scrollPitch: 84, rowHeight: 10 };
+    ui.scrollTick = followScroll(ui, tick, W);
+    clampScroll(ui, W, H, songEnd);
+    return (tick - ui.scrollTick) * ui.pxPerTick;
+  };
+  assert(Math.abs(tight(songEnd) - anchorX) < 1e-9, 'zoomed in, the playhead stays anchored to the last tick');
+}
+
 // ---- offline precache list ----
 //
 // The service worker's file list is generated from the real import graph. These

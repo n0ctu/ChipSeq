@@ -3064,6 +3064,52 @@ await check('the status bar says it is not saving', `(async () => {
 })()`);
 
 // ---- console errors ----
+// ---- the grid scrolls under the playhead ----
+//
+// tests/unit.mjs pins the arithmetic; this pins the WIRING, by feeding the roll
+// a playhead directly instead of waiting on real-time audio. Faking the engine
+// makes it deterministic and quick - a real playback test would have to sit
+// through several seconds of song to get past the anchor.
+await check('the roll anchors the playhead a third across and scrolls the grid', `(async () => {
+  const { uiStore, engine } = window.__chipseq;
+  const ui = uiStore.state;
+  const W = document.getElementById('overlay-canvas').clientWidth;
+  const anchor = W / 3;
+  const realPlaying = engine.isPlaying, realTick = engine.getPlayheadTick;
+  const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const at = async (tick) => {
+    engine.getPlayheadTick = () => tick;
+    await frame();
+    return { scroll: ui.scrollTick, x: (tick - ui.scrollTick) * ui.pxPerTick };
+  };
+  try {
+    ui.pxPerTick = 0.5;
+    engine.isPlaying = () => true;
+    const anchorTicks = anchor / ui.pxPerTick;
+
+    // Phase 3 first, to find where the grid actually ends. Hardcoding a tick
+    // here is how the first version of this test failed: it picked one past the
+    // end of a short song and read a pinned scroll as a broken anchor.
+    const far = await at(1e9);
+    const maxScroll = far.scroll;
+    if (!(maxScroll > 0)) return 'no scrollable grid to test with';
+
+    const early = await at(200);
+    const mid = await at(Math.floor(maxScroll / 2) + anchorTicks);
+
+    if (early.scroll !== 0) return 'grid moved before the anchor: ' + JSON.stringify(early);
+    if (Math.abs(early.x - 100) > 0.5) return 'playhead not tracking before the anchor: ' + JSON.stringify(early);
+    if (!(mid.scroll > 0)) return 'grid did not scroll: ' + JSON.stringify(mid);
+    if (Math.abs(mid.x - anchor) > 0.5) return 'playhead not anchored: ' + JSON.stringify({ mid, anchor });
+    if (far.x <= anchor) return 'playhead did not move on at the end: ' + JSON.stringify({ far, anchor });
+    return true;
+  } finally {
+    engine.isPlaying = realPlaying;
+    engine.getPlayheadTick = realTick;
+    uiStore.update('view', (v) => { v.scrollTick = 0; });
+  }
+})()`);
+
 if (consoleErrors.length) {
   fail++;
   console.log('FAIL console errors:\n  ' + consoleErrors.join('\n  '));

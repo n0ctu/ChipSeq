@@ -2,7 +2,7 @@
 // scroll/zoom, scrollbars. Mouse handling lives in interactions.js.
 
 import { readTheme, drawGrid, drawNotes, drawOverlay, drawRuler, drawKeys, drawChordLane } from './render.js';
-import { clampScroll, effectiveSnap, tickToX, PITCH_MIN, PITCH_MAX } from './coords.js';
+import { clampScroll, effectiveSnap, followScroll, tickToX, PITCH_MIN, PITCH_MAX } from './coords.js';
 import { flattenNote, buildChordEvents } from '../../core/flatten.js';
 import { songEndTick, soloActive } from '../../core/doc.js';
 import { chordName } from '../../core/music.js';
@@ -45,6 +45,32 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
   }
   function markAll() {
     markDirty('grid', 'notes', 'overlay', 'ruler', 'keys', 'chords', 'auto');
+  }
+
+  // ---- following the playhead ----
+  //
+  // The playhead is anchored a third of the way across the viewport and the
+  // grid scrolls under it. The three phases that implies are NOT three cases in
+  // the code: put the anchor where it belongs and clamp, and they fall out.
+  //
+  //   at the start   the ideal scroll is negative, so the clamp holds it at 0
+  //                  and the playhead travels across to the anchor
+  //   in the middle  the scroll tracks the playhead, which stays put
+  //   at the end     the ideal scroll exceeds the last page, so the clamp
+  //                  holds it there and the playhead travels on to the end
+  //
+  // Written as three branches this would need to know which phase it is in, and
+  // the boundaries would be two more numbers to get wrong. followScroll() is
+  // pure and lives in coords.js, so tests/unit.mjs can pin all three.
+  let follow = true;
+  let wasPlaying = false;
+
+  // Scrolling by hand during playback means you want to look somewhere else, so
+  // following stands down rather than yanking the view back a frame later.
+  // Starting playback again re-engages it, which is the only way back - and the
+  // only one worth having, since it needs no control of its own.
+  function stopFollowing() {
+    follow = false;
   }
 
   function sizeCanvas(canvas, ctx) {
@@ -118,13 +144,18 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
       dirty.overlay = true;
       dirty.ruler = true;
       dirty.auto = true;
-      // follow the playhead
-      const x = tickToX(ui, playheadTick);
-      if (x > W - 60 || x < 0) {
-        ui.scrollTick = Math.max(0, playheadTick - 60 / ui.pxPerTick);
-        markAll();
+      if (!wasPlaying) follow = true; // a fresh start always re-engages
+      if (follow) {
+        const before = ui.scrollTick;
+        ui.scrollTick = followScroll(ui, playheadTick, W);
+        clampScroll(ui, W, H, songEndTick(doc));
+        // While the clamp is holding the scroll still - the first third, and
+        // the last page - nothing behind the playhead moved, so only the
+        // overlay needs repainting.
+        if (ui.scrollTick !== before) markAll();
       }
     }
+    wasPlaying = playing;
 
     if (dirty.grid) {
       drawGrid(ctxs.grid, ui, doc, W, H, theme, effectiveSnap(ui));
@@ -200,6 +231,7 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
       const rect = bar.getBoundingClientRect();
       const move = (ev) => {
         if (horizontal) {
+          stopFollowing();
           const total = Math.max(songEndTick(doc) + 16 * doc.ppq, W / ui.pxPerTick + 1);
           const frac = (ev.clientX - rect.left) / rect.width;
           uiStore.update('view', (s) => {
@@ -252,7 +284,10 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
           clampScroll(s, W, H, songEndTick(doc));
         });
       } else {
-        // plain wheel: horizontal (time axis)
+        // plain wheel: horizontal (time axis). Zoom above deliberately does not
+        // stand following down - it changes how much you see, not where you
+        // are looking, and it re-anchors on the next frame anyway.
+        stopFollowing();
         uiStore.update('view', (s) => {
           s.scrollTick += ((e.deltaY + e.deltaX) * 1.2) / s.pxPerTick / 2;
           clampScroll(s, W, H, songEndTick(doc));
@@ -271,6 +306,7 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
     let lastX = e.clientX;
     let lastY = e.clientY;
     const move = (ev) => {
+      stopFollowing();
       uiStore.update('view', (s) => {
         s.scrollTick -= (ev.clientX - lastX) / s.pxPerTick;
         s.scrollPitch += Math.round((ev.clientY - lastY) / s.rowHeight);

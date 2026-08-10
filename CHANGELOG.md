@@ -11,6 +11,15 @@ tagged.
 
 ### Added
 
+- **The grid scrolls with playback.** The playhead travels until it reaches a
+  third of the way across the viewport, then holds there while the grid scrolls
+  under it, and once the grid runs out it moves on again to reach the end. It
+  replaces a jump that shunted the view a page at a time whenever the playhead
+  fell off the right edge. The three phases are not three cases in the code:
+  anchoring the playhead and clamping the result produces all of them, so there
+  is no mode to track and no boundary to get wrong. Scrolling by hand during
+  playback stands the following down, and pressing play again re-engages it.
+
 - **A second deployment target: chipseq.app on cyon**, published over FTPS by
   `.github/workflows/cyon.yml` on the same tag that publishes to Pages. Both
   hosts run in parallel until the domain is proven; dropping Pages later is one
@@ -20,13 +29,13 @@ tagged.
   `application/octet-stream`, the browser ignores it, and the app stops being
   installable with nothing in the console to explain why. cyon runs LiteSpeed,
   which reads `.htaccess` but ignores directives it does not recognise
-  *silently* — so the deploy asserts the headers this file should produce
+  *silently* - so the deploy asserts the headers this file should produce
   rather than assuming that shipping it was the same as it working.
 
 ### Fixed
 
 - **`tests/live-check.mjs` had the same fixed-debugging-port flaw as
-  `tests/smoke.mjs`** — it hardcoded 9339, so it could silently attach to a
+  `tests/smoke.mjs`** - it hardcoded 9339, so it could silently attach to a
   leaked browser and check a stale profile while reporting a pass. It now takes
   a random port, reads the one Chrome chose from `DevToolsActivePort`, waits for
   Chrome to exit and removes its profile. It had also left 48 profile
@@ -34,9 +43,18 @@ tagged.
 - **`tests/live-check.mjs` slept three seconds through its navigation.** A
   `Runtime.evaluate` sent while the previous document is being torn down is
   dropped and its reply never arrives, so the run hangs instead of failing. It
-  now waits for the load event and then for the app to boot — and three seconds
+  now waits for the load event and then for the app to boot - and three seconds
   was a guess about someone else's network besides.
 - `tests/live-check.mjs` now defaults to `https://chipseq.app/`.
+
+### Changed
+
+- **The README is now something a user can read in full.** Everything that only
+  matters to someone changing the code moved to
+  [DEVELOPMENT.md](DEVELOPMENT.md): architecture, the file format rules, audio
+  internals, the service worker, testing, releasing and deployment. The README
+  went from 878 lines to about 320 and links onward rather than explaining
+  itself.
 
 ### Notes on the deploy
 
@@ -47,7 +65,7 @@ tagged.
   but can use FTPS, so the transfer is still TLS end to end.
 - `lftp` does the mirroring rather than a marketplace action, which would
   receive the FTP password on every run.
-- `.git` is deleted before the mirror rather than merely excluded — uploading
+- `.git` is deleted before the mirror rather than merely excluded - uploading
   it would republish the entire history over HTTP.
 - **A preflight refuses to run if the FTP account is not actually scoped.**
   `mirror --delete` is safe only because the account cannot reach past this one
@@ -56,7 +74,7 @@ tagged.
   anything rather than after.
 - **`sw.js` uploads last, alone, and the ordering is load-bearing.** An FTP
   mirror is not atomic, and the service worker reinstalls when `sw.js` changes
-  — so if the new worker landed first, a visitor in that window would precache
+  - so if the new worker landed first, a visitor in that window would precache
   a mixture of two builds and cache it as coherent, since every file still
   returns 200.
 
@@ -66,29 +84,29 @@ tagged.
 
 - **ChipSeq installs as an app and works with no internet.** Your browser will
   offer to install it; once installed it opens from the dock and keeps working
-  on a machine that rebooted somewhere with no signal — editing, playback,
+  on a machine that rebooted somewhere with no signal - editing, playback,
   rendering, `.h`/`.fmf`/`.wav`/`.cbt` export, MIDI import and the demos, all
   from a local copy. Nothing in the app had to change for this: it has no CDN,
   no fonts and no API, and projects were already in `localStorage`. The only
   thing missing was the browser having the files. Badge features still need the
   relay, and say so.
 - `sw.js` and `manifest.webmanifest`, plus app icons drawn by
-  `tools/gen-icons.mjs` — a square wave, on a 32×32 grid, written as PNG with
+  `tools/gen-icons.mjs` - a square wave, on a 32×32 grid, written as PNG with
   the CRC-32 the badge format already had and the deflate Node already ships.
   No image library, in keeping with the rest of the repository.
 
 ### Changed
 
 - **The precache list is derived, not maintained.** `tools/gen-precache.mjs`
-  walks `index.html` and the real import graph — including the tool cards'
-  dynamic imports and the demos named by `demos/index.json` — and rewrites a
+  walks `index.html` and the real import graph - including the tool cards'
+  dynamic imports and the demos named by `demos/index.json` - and rewrites a
   marked block in `sw.js`; a unit test fails if the committed block is stale.
   A file left out of that list would work perfectly until the one moment
   offline support is the point, which is too late to find out.
 - **An update installs in the background and then waits.** The status bar
   offers `↻ update ready`; nothing switches until it is clicked. Activating
   unasked would reload away unsaved work, and would let a running page
-  dynamic-import a tool card — they carry `?v=APP_VERSION` — out of a
+  dynamic-import a tool card - they carry `?v=APP_VERSION` - out of a
   different build's cache.
 - **A release re-downloads only what changed.** Entries carry a content hash,
   so installing copies untouched files across from the previous cache. The app
@@ -101,7 +119,7 @@ tagged.
 
 - **`tests/smoke.mjs` had been driving a stale browser.** It asked for a fixed
   debugging port, which silently attaches to whatever Chromium already holds
-  it — a leaked instance had kept one profile alive since 5 August, along with
+  it - a leaked instance had kept one profile alive since 5 August, along with
   236 abandoned profile directories. It now takes a random port and reads the
   one Chrome actually chose from `DevToolsActivePort`, and removes its profile
   afterwards. This was invisible until service workers, which persist: an
@@ -115,7 +133,7 @@ tagged.
   never arrives.
 - **The smoke server sends `Cache-Control: no-store`.** With no header Chrome
   cached heuristically, and the offline test passed on the HTTP cache while
-  the service worker did nothing — confirmed by disabling the worker's cache
+  the service worker did nothing - confirmed by disabling the worker's cache
   lookup entirely and watching every test still pass.
 - `.webmanifest` is served as `application/manifest+json` by both
   `dev-server.mjs` and `server/index.mjs`. With the wrong type the manifest is
@@ -130,7 +148,7 @@ tagged.
   document.** The Badges card kept saying "no badges" after one was adopted:
   the panel repaints on document and UI-store changes, and badge state is
   neither, so nothing it watched changed when the roster did. Not specific to
-  that label — connecting, mapping and going offline were all stale the same
+  that label - connecting, mapping and going offline were all stale the same
   way, and the card body was correct throughout, which is why it read as a
   wrong label rather than a missing repaint. A tool now declares such a
   dependency in the manifest with an optional `subscribe(fn)`, and the panel
@@ -141,7 +159,7 @@ tagged.
 ### Added
 
 - **Badges announce their own names.** `hello` now carries an optional `name`,
-  and the sequencer lists the badge under it instead of `Badge 1`, `Badge 2` —
+  and the sequencer lists the badge under it instead of `Badge 1`, `Badge 2` -
   which is a guessing game once eight of them are on a table. The name follows
   the device: change it on the badge, reconnect, and the list follows. A name
   typed into the sequencer wins and stays, because typing one is a more
@@ -153,7 +171,7 @@ tagged.
   served verbatim as the Pages site, so anything in it is public, and those
   documents are for the firmware team rather than for the world. They are
   distributed to that team directly and `docs/` is now ignored. Code comments
-  still cite them by section — they remain the contract this server and
+  still cite them by section - they remain the contract this server and
   `tools/fake-badge.mjs` are built against, and the fake badge is the
   executable version of the same thing. Note this stops future publication
   only: earlier tags and the git history still contain them.
@@ -164,14 +182,14 @@ tagged.
 
 - **A badge can end its own adoption.** Adoption used to be a one-way door:
   only the controller that made it could end it, and a controller loses its
-  session routinely — a closed browser, cleared storage, a different laptop.
+  session routinely - a closed browser, cleared storage, a different laptop.
   A badge in that state reconnected as `known`, was offered no pairing code,
   and could be adopted by nobody; restarting the server was the only way out.
   `{t:"release"}` now frees it, on the badge's own authority, and a fresh
   pairing code comes straight back on the same socket. `docs/badge-unadopt.md`
   is the handover for the firmware side.
 - **Auditioning plays on the badges.** A note played by hand in the piano roll
-  now sounds on every connected badge, mapped or not — clicking a note is "let
+  now sounds on every connected badge, mapped or not - clicking a note is "let
   me hear this", and it doubles as a check that the whole rig is alive. Hooked
   to the engine, so the ten audition call sites across the roll, the keymap and
   three tool cards are all covered. Suppressed while the transport runs,
@@ -182,19 +200,19 @@ tagged.
 
 - **`sched` chunks arrived with no lead time.** The badge team measured 30 of
   96 notes dropped over the Funnel, with chunks due on arrival where §5.2
-  promises 2–4 seconds. Three causes: the steady-state lead was
+  promises 2-4 seconds. Three causes: the steady-state lead was
   `CHUNK_MS - REFRESH_MS` = 1500 ms, under our own documented window; the
   badges were anchored to *now* while the engine starts its audio 60 ms later,
   so they ran ahead of the speakers by about the length of the relay hop; and
   an edit while playing restarted the engine, which flushed every badge's queue
   and re-anchored with zero lead. Measured before: first chunk 0 ms, steady
-  1500–2350 ms. After: 60 ms and 2623–3913 ms. Notes already past due are no
-  longer sent at all — they cannot arrive in time, and sending them moves the
+  1500-2350 ms. After: 60 ms and 2623-3913 ms. Notes already past due are no
+  longer sent at all - they cannot arrive in time, and sending them moves the
   decision somewhere we cannot see it.
 - **A badge that un-adopted on the device stayed in the sequencer.** A factory
   reset, a reflash, or "forget pairing" from the badge's own menu while offline
   left the server insisting it was still adopted, so it sat in the list
-  unusable. `hello` now carries an optional `adopted`, and `false` frees it —
+  unusable. `hello` now carries an optional `adopted`, and `false` frees it -
   the badge is the authority on its own pairing. Absent still means *no claim*,
   so adoption survives an ordinary reconnect.
 - The Badges card never re-read a badge's library after it was released and
