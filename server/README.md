@@ -69,6 +69,54 @@ poor for live note-by-note. If badges and server share a WiFi network, point
 the badges at the LAN address instead: the protocol requires the address to be
 configurable precisely so that choice stays open.
 
+## Running it in Docker
+
+`server/Dockerfile` and `server/compose.yaml` are built for a box where Caddy
+runs in its own container, every service lives at `/srv/docker/<name>`, and a
+shared network called `edge` joins them.
+
+```sh
+mkdir -p /srv/docker/chipseq && cd /srv/docker/chipseq
+git clone https://github.com/n0ctu/ChipSeq.git app
+cp app/server/compose.yaml .
+cp app/server/.env.example .env      # defaults already match: edge, chipseq-relay, ./app
+docker compose up -d --build
+```
+
+Then one site file in the central Caddy config:
+
+```
+ws.chipseq.app {
+    reverse_proxy chipseq-relay:8080
+}
+```
+
+The DNS record has to exist first, or Caddy cannot get a certificate for the
+name. Updating later is `git -C app pull && docker compose up -d --build`.
+
+**The service publishes no ports.** Caddy is on the same network and reaches it
+by container name, so there is no host binding at all, which is a stronger
+version of "bind local ports to 127.0.0.1" than binding them: there is nothing
+to bind to the wrong interface. It matters here specifically because
+`index.mjs` calls `listen(port)` with no host and therefore binds `0.0.0.0`, so
+on bare metal only the firewall keeps the plaintext socket off the internet. It
+also sidesteps Docker publishing ports into iptables ahead of ufw, where a
+`-p 8080:8080` is reachable from outside while ufw reports it denied.
+
+The image has no install step, because the relay imports only `node:` builtins.
+It runs as `node` on a read-only root filesystem with `cap_drop: ALL`, and
+carries no volumes, since hub state is in memory by design.
+
+`--root` points at an empty directory so the relay answers `/ws` and `/health`
+and nothing else; the app itself is served from chipseq.app. To make it host
+the app too, as a venue fallback, copy the repository into the image and drop
+the `--root` argument.
+
+The whole arrangement was verified locally before it went anywhere: a Caddy
+container proxying to the relay over `edge`, `/health` answering through it,
+and `tools/fake-badge.mjs` completing a handshake and clock sync through the
+proxy, which is the part a careless `reverse_proxy` would break.
+
 ### systemd
 
 ```ini

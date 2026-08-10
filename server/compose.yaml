@@ -1,0 +1,78 @@
+# ChipSeq badge relay, for a box where Caddy runs in its own container and
+# every service lives at /srv/docker/<name>.
+#
+# Copy this and .env.example to /srv/docker/chipseq/ as compose.yaml and .env,
+# put the repository beside them (see APP_DIR in .env), then:
+#
+#   docker compose up -d --build
+#
+# The relay publishes NO ports. Caddy reaches it by container name over the
+# shared `edge` network, so the plaintext socket does not exist on the host at
+# all. That matters more than it looks: server/index.mjs calls listen(port)
+# with no host, which binds 0.0.0.0, so on bare metal the only thing keeping
+# port 8080 off the public internet is the firewall. Here it is not reachable
+# to begin with, which is a guarantee rather than a setting.
+
+name: chipseq
+
+services:
+  relay:
+    build:
+      context: ${APP_DIR:-./app}
+      dockerfile: server/Dockerfile
+    container_name: ${CONTAINER_NAME:-chipseq-relay}
+    restart: unless-stopped
+
+    networks: [edge]
+
+    # No `ports:` on purpose. Caddy is a container on the same network and
+    # reaches this one by name, so the relay needs no host binding at all -
+    # which is the strongest form of "local ports on 127.0.0.1 only": there is
+    # no host port to bind to the wrong interface in the first place. It also
+    # sidesteps Docker's habit of writing published ports into iptables ahead
+    # of ufw, where a `-p 8080:8080` is reachable from the internet even while
+    # ufw reports the port as denied.
+    #
+    # Uncomment only if you want to curl /health from the host while debugging,
+    # and keep the 127.0.0.1 prefix - without it Docker binds every interface.
+    # ports:
+    #   - "127.0.0.1:8080:8080"
+
+    # State is in memory by design: at eight badges there is nothing worth
+    # persisting, and a restart costs one re-pair. Hence no volumes, and hence
+    # a read-only root filesystem with a tmpfs for anything Node wants to
+    # scribble.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    healthcheck:
+      # /health reports the protocol version and hub stats. wget is busybox's,
+      # already in the alpine base, so this adds nothing to the image.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+    # The relay logs one JSON line per event. Without a cap that fills a disk
+    # shared with every other service on the box.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    mem_limit: 256m
+
+networks:
+  edge:
+    # Created by the Caddy stack, not by this one. `external` means compose
+    # will fail loudly if it is missing rather than quietly making a second
+    # network that Caddy cannot see.
+    external: true
+    name: ${PROXY_NETWORK:-edge}
