@@ -41,6 +41,31 @@ done
 
 log() { echo "$(date -Is) $*"; }
 
+# ---- one deploy at a time ----
+#
+# systemd will not run two copies of a oneshot service, so the timer cannot
+# overlap itself. A manual run alongside a timer-fired one can, and both write
+# .env - which is not merely untidy, because .env is what the rollback path
+# trusts. Interleave the three writes in deploy() and you can end up with
+# RELAY_IMAGE naming one image, the container running another, and
+# RELAY_IMAGE_PREVIOUS pointing at something that was never live. A rollback
+# reading that would restore the wrong thing, at the moment it is least wanted.
+#
+# The lock is held on a file descriptor, not by the file existing, so it is
+# released even if this script is killed - there is no stale lock to clear.
+LOCK_WAIT_S="${CHIPSEQ_LOCK_WAIT_S:-600}"
+if command -v flock >/dev/null 2>&1; then
+  exec 9>"$DIR/.deploy.lock"
+  if ! flock -w "$LOCK_WAIT_S" 9; then
+    log "another deploy has held the lock for ${LOCK_WAIT_S}s - something is stuck"
+    exit 1
+  fi
+else
+  # Not fatal: a box without util-linux still deploys, it just loses the
+  # guarantee. Say so rather than pretending the lock was taken.
+  log "warning: flock not found, running without a lock"
+fi
+
 # .env is the source of truth for what is running, because compose reads it and
 # because a rollback must not need a registry lookup at the one moment lookups
 # are least welcome.

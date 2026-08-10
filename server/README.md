@@ -108,6 +108,15 @@ cp app/server/deploy-chipseq /srv/docker/chipseq/ && chmod +x /srv/docker/chipse
 sudo systemctl enable --now chipseq-deploy.timer
 ```
 
+Only one deploy runs at a time. systemd will not overlap a oneshot service
+with itself, but a manual run alongside a timer-fired one would, and both write
+`.env` - which is what the rollback path reads. Interleaving those writes could
+leave `RELAY_IMAGE` naming one image, the container running another, and
+`RELAY_IMAGE_PREVIOUS` pointing at something that was never live, so a later
+rollback would restore the wrong thing. A `flock` on `.deploy.lock` serialises
+them; a second deploy waits, and gives up after ten minutes on the assumption
+that a deploy holding the lock that long is stuck rather than busy.
+
 By hand, when you do not want to wait for the timer:
 
 ```sh
