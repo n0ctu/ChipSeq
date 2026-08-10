@@ -3070,16 +3070,35 @@ await check('the status bar says it is not saving', `(async () => {
 // a playhead directly instead of waiting on real-time audio. Faking the engine
 // makes it deterministic and quick - a real playback test would have to sit
 // through several seconds of song to get past the anchor.
-await check('the roll anchors the playhead a third across and scrolls the grid', `(async () => {
+// ---- the grid scrolls under the playhead ----
+//
+// tests/unit.mjs pins the arithmetic; these pin the WIRING, by feeding the roll
+// a playhead directly instead of waiting on real-time audio.
+const ROLL_RIG = `
   const { uiStore, engine } = window.__chipseq;
   const ui = uiStore.state;
   const W = document.getElementById('overlay-canvas').clientWidth;
   const anchor = W / 3;
   const realPlaying = engine.isPlaying, realTick = engine.getPlayheadTick;
   const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  // The view eases into place, so a fixed number of frames would be reading it
+  // mid-glide. Wait for it to stop moving instead.
+  const settle = async (budget = 120) => {
+    let last = NaN;
+    for (let i = 0; i < budget; i++) {
+      await frame();
+      if (ui.scrollTick === last) return true;
+      last = ui.scrollTick;
+    }
+    return false;
+  };
+`;
+
+await check('the roll anchors the playhead a third across and scrolls the grid', `(async () => {
+  ${ROLL_RIG}
   const at = async (tick) => {
     engine.getPlayheadTick = () => tick;
-    await frame();
+    await settle();
     return { scroll: ui.scrollTick, x: (tick - ui.scrollTick) * ui.pxPerTick };
   };
   try {
@@ -3107,6 +3126,123 @@ await check('the roll anchors the playhead a third across and scrolls the grid',
     engine.isPlaying = realPlaying;
     engine.getPlayheadTick = realTick;
     uiStore.update('view', (v) => { v.scrollTick = 0; });
+  }
+})()`);
+
+await check('starting mid-song eases the view over rather than jumping', `(async () => {
+  ${ROLL_RIG}
+  try {
+    ui.pxPerTick = 0.5;
+    const anchorTicks = anchor / ui.pxPerTick;
+
+    // Find where the grid ends and pick a tick comfortably inside the stretch
+    // where the view actually scrolls. Hardcoding one put the first version of
+    // this test past the end of a short song, where the scroll is pinned and
+    // the playhead is meant to leave the anchor.
+    engine.isPlaying = () => true;
+    engine.getPlayheadTick = () => 1e9;
+    await settle();
+    const maxScroll = ui.scrollTick;
+    if (!(maxScroll > 0)) return 'no scrollable grid to test with';
+    const tick = Math.floor(maxScroll / 2) + anchorTicks;
+
+    // Start from the top of the song with the transport stopped, then begin
+    // playing from well inside it: the view has a long way to travel.
+    engine.isPlaying = () => false;
+    engine.getPlayheadTick = () => tick;
+    uiStore.update('view', (v) => { v.scrollTick = 0; });
+    await frame();
+
+    engine.isPlaying = () => true;
+    await frame();
+    const afterOne = ui.scrollTick;
+    await settle();
+    const settled = ui.scrollTick;
+
+    if (!(settled > 0)) return 'never reached the anchor: ' + settled;
+    if (Math.abs((tick - settled) * ui.pxPerTick - anchor) > 0.5) {
+      return 'did not settle on the anchor: ' + JSON.stringify({ settled, anchor });
+    }
+    // The whole point: one frame must not get there. Allow generous slack for a
+    // slow first frame, but landing within a pixel of the target immediately is
+    // a jump, not a glide.
+    if (Math.abs(afterOne - settled) * ui.pxPerTick < 1) {
+      return 'jumped to the anchor in a single frame: ' + JSON.stringify({ afterOne, settled });
+    }
+    if (afterOne < 0) return 'glided the wrong way: ' + afterOne;
+    return true;
+  } finally {
+    engine.isPlaying = realPlaying;
+    engine.getPlayheadTick = realTick;
+    uiStore.update('view', (v) => { v.scrollTick = 0; });
+  }
+})()`);
+
+await check('the playhead is the same one pixel wide running or stopped', `(async () => {
+  ${ROLL_RIG}
+  const canvas = document.getElementById('overlay-canvas');
+  const ctx2 = canvas.getContext('2d');
+  // Count the columns painted in the playhead colour (--playhead, #f5a623).
+  const widthAt = () => {
+    const row = Math.floor(canvas.height / 2);
+    const d = ctx2.getImageData(0, row, canvas.width, 1).data;
+    let n = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] > 200 && d[i + 1] > 120 && d[i + 1] < 210 && d[i + 2] < 90) n++;
+    }
+    return n;
+  };
+  try {
+    ui.pxPerTick = 0.5;
+    engine.getPlayheadTick = () => 400;
+    engine.isPlaying = () => true;
+    await settle();
+    const running = widthAt();
+    engine.isPlaying = () => false;
+    window.__chipseq.store.session.cursorTick = 400;
+    await frame();
+    const stopped = widthAt();
+    const dpr = Math.round(window.devicePixelRatio || 1);
+    if (running !== stopped) return 'width changes with the transport: ' + JSON.stringify({ running, stopped });
+    if (running !== dpr) return 'not one CSS pixel: ' + JSON.stringify({ running, dpr });
+    return true;
+  } finally {
+    engine.isPlaying = realPlaying;
+    engine.getPlayheadTick = realTick;
+    uiStore.update('view', (v) => { v.scrollTick = 0; });
+  }
+})()`);
+
+await check('the automation lanes repaint their playhead when the cursor moves', `(async () => {
+  ${ROLL_RIG}
+  const auto = document.getElementById('auto-canvas');
+  const snapshot = () => auto.getContext('2d').getImageData(0, 0, auto.width, auto.height).data.join(',');
+  const wasMode = window.__chipseq.store.getDoc().mode;
+  try {
+    if (wasMode !== 'poly') {
+      document.querySelector('#seg-mode .seg-btn[data-mode=poly]').click();
+      await frame();
+    }
+    if (window.__chipseq.store.getDoc().mode !== 'poly') return 'could not switch to poly mode';
+    if (auto.height <= 0) return 'automation canvas has no height';
+    ui.pxPerTick = 0.5;
+    engine.isPlaying = () => false;
+    // Stopped, the lanes follow the placed cursor. Before this was fixed they
+    // drew a playhead only while playing, so they kept whatever was last
+    // painted and moving the cursor changed nothing at all.
+    window.__chipseq.store.session.cursorTick = 200;
+    await frame();
+    const a = snapshot();
+    window.__chipseq.store.session.cursorTick = 1200;
+    await frame();
+    const b = snapshot();
+    return a !== b || 'the lanes did not repaint when the cursor moved';
+  } finally {
+    engine.isPlaying = realPlaying;
+    engine.getPlayheadTick = realTick;
+    if (wasMode !== 'poly') {
+      document.querySelector('#seg-mode .seg-btn[data-mode=' + wasMode + ']').click();
+    }
   }
 })()`);
 

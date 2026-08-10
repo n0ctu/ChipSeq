@@ -142,7 +142,7 @@ export function initAutomationLane({ store, uiStore, canvas }) {
     return Math.max(min, Math.min(max, min + t * (max - min)));
   };
 
-  function draw(ctx, w, h, theme, playheadTick, playing) {
+  function draw(ctx, w, h, theme, playheadTick) {
     ctx.clearRect(0, 0, w, h);
     const doc = store.getDoc();
     const { lanes, track } = layout();
@@ -273,13 +273,15 @@ export function initAutomationLane({ store, uiStore, canvas }) {
       ctx.restore();
     }
 
-    // playhead across all lanes
-    if (playing) {
-      const phX = tickToX(ui, playheadTick);
-      if (phX >= -1 && phX <= w + 1) {
-        ctx.fillStyle = theme.playhead;
-        ctx.fillRect(phX, MASTER_H, 2, h - MASTER_H);
-      }
+    // Playhead across all lanes, drawn whether or not the transport is running
+    // and at the same one-pixel weight as the roll's. Drawing it only while
+    // playing left the last painted position sitting there after a stop, so the
+    // lanes showed where playback ended while the roll showed the cursor back
+    // where it began - two cursors disagreeing about the same number.
+    const phX = tickToX(ui, playheadTick);
+    if (phX >= -1 && phX <= w + 1) {
+      ctx.fillStyle = theme.playhead;
+      ctx.fillRect(phX, MASTER_H, 1, h - MASTER_H);
     }
   }
 

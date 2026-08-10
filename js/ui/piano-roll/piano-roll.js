@@ -64,6 +64,32 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
   // pure and lives in coords.js, so tests/unit.mjs can pin all three.
   let follow = true;
   let wasPlaying = false;
+  let lastPlayheadTick = null;
+
+  // Pressing play in the middle of a song asks the view to move somewhere
+  // else, and arriving there in one frame reads as a glitch rather than as a
+  // scroll. So the DIFFERENCE between where the view is and where it belongs is
+  // carried as an offset and decayed to nothing over about a third of a second.
+  //
+  // Decaying the error rather than smoothing the position is what keeps the
+  // anchor exact: once the offset reaches zero the scroll IS the anchored
+  // position, with no steady-state lag trailing behind a moving target.
+  const GLIDE_TAU = 0.11; // seconds to decay to ~1/e
+  const GLIDE_SETTLED_PX = 0.5;
+  let glide = 0;
+  let armGlide = false;
+  let lastFrameAt = 0;
+  const scratch = { scrollTick: 0, pxPerTick: 1, scrollPitch: 0, rowHeight: 1 };
+
+  // Seeking WHILE playing is the same abruptness, and the transport already
+  // announces it - so there is no need to guess at one from a jump in the
+  // playhead. `restarting` is an edit-while-playing re-flatten, which does not
+  // move the position and must not re-arm anything.
+  engine.on('playstate', ({ playing, restarting }) => {
+    if (!playing || restarting) return;
+    follow = true;
+    armGlide = true;
+  });
 
   // Scrolling by hand during playback means you want to look somewhere else, so
   // following stands down rather than yanking the view back a frame later.
@@ -135,6 +161,11 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
   // ---- rAF loop ----
   function frame() {
     applyPendingCenter();
+    // Capped: coming back to a backgrounded tab must not hand the glide a
+    // multi-second step, which would finish it instantly and defeat the point.
+    const now = performance.now();
+    const dt = Math.min(0.1, lastFrameAt ? (now - lastFrameAt) / 1000 : 0.016);
+    lastFrameAt = now;
     const doc = store.getDoc();
     const ui = uiStore.state;
     const playing = engine.isPlaying();
@@ -144,10 +175,29 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
       dirty.overlay = true;
       dirty.ruler = true;
       dirty.auto = true;
-      if (!wasPlaying) follow = true; // a fresh start always re-engages
+      if (!wasPlaying) {
+        follow = true; // a fresh start always re-engages
+        armGlide = true;
+      }
       if (follow) {
         const before = ui.scrollTick;
-        ui.scrollTick = followScroll(ui, playheadTick, W);
+
+        // Where the view belongs, worked out without disturbing the real one.
+        scratch.scrollTick = followScroll(ui, playheadTick, W);
+        scratch.pxPerTick = ui.pxPerTick;
+        scratch.scrollPitch = ui.scrollPitch;
+        scratch.rowHeight = ui.rowHeight;
+        clampScroll(scratch, W, H, songEndTick(doc));
+        const anchored = scratch.scrollTick;
+
+        if (armGlide) {
+          glide = ui.scrollTick - anchored;
+          armGlide = false;
+        }
+        glide *= Math.exp(-dt / GLIDE_TAU);
+        if (Math.abs(glide) * ui.pxPerTick < GLIDE_SETTLED_PX) glide = 0;
+
+        ui.scrollTick = anchored + glide;
         clampScroll(ui, W, H, songEndTick(doc));
         // While the clamp is holding the scroll still - the first third, and
         // the last page - nothing behind the playhead moved, so only the
@@ -156,6 +206,16 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
       }
     }
     wasPlaying = playing;
+
+    // Anything that draws the playhead is stale the moment it moves, and the
+    // transport is not the only thing that moves it. Comparing the number is
+    // cheaper than working out which of the cursor, the transport or a seek was
+    // responsible - and it cannot miss one, which is how the automation lanes
+    // came to keep painting a playhead at the position where playback stopped.
+    if (playheadTick !== lastPlayheadTick) {
+      markDirty('overlay', 'ruler', 'auto');
+      lastPlayheadTick = playheadTick;
+    }
 
     if (dirty.grid) {
       drawGrid(ctxs.grid, ui, doc, W, H, theme, effectiveSnap(ui));
@@ -196,7 +256,7 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
       dirty.chords = false;
     }
     if (dirty.auto) {
-      autoLane.draw(ctxs.auto, canvases.auto.clientWidth, canvases.auto.clientHeight, theme, playheadTick, playing);
+      autoLane.draw(ctxs.auto, canvases.auto.clientWidth, canvases.auto.clientHeight, theme, playheadTick);
       dirty.auto = false;
     }
     updateScrollbars();

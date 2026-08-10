@@ -41,12 +41,6 @@ to sweep-erase. `Alt+drag` duplicates. The wheel scrolls through time,
 
 The panels are resizable by dragging their inner edge; double-click resets.
 
-During playback the view follows along. The playhead travels until it reaches a
-third of the way across, then holds there while the grid scrolls underneath it,
-and when the grid runs out it moves on again to the end. Scrolling by hand
-while playing stands the following down so you can look elsewhere; pressing
-play again re-engages it.
-
 ## Arpeggios
 
 Select a note and use the right panel. The arpeggio is stored **on** the note,
@@ -74,10 +68,9 @@ arbitrary ones. Track sources stay live, so editing the track updates the arps.
 
 ## Tracks
 
-Drag a row from anywhere to reorder it. A plain click still selects and a
-double-click still opens the Track dialog, where name and colour are set
-together. Track colour is either a palette index that follows the theme, or a
-literal hex value you type in.
+Double-clicking a track opens the Track dialog, where name and colour are set
+together. Colour is either a palette index that follows the theme, or a literal
+hex value you type in.
 
 Use the **M** and **C** buttons in the track list to mark the melody and chords
 tracks. The M marker is independent of which row is highlighted: clicking a row
@@ -137,9 +130,8 @@ not from a sustain level it never reached.
 
 Below the piano roll, every control of the active track's instrument gets an
 expandable lane: Gain, Attack, Decay, Sustain, Release, plus Duty for PWM
-instruments. Gain starts expanded; the rest sit collapsed as slim read-only
-previews and expand on click, so clicking a collapsed lane never edits
-anything.
+instruments. A collapsed lane is a read-only preview, so clicking one to open
+it never edits anything.
 
 In an expanded lane, click adds a keyframe, drag moves it, double-click cycles
 the curve (step, linear, ease) and right-click deletes. Levels read as

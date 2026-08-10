@@ -274,7 +274,10 @@ export function drawOverlay(ctx, ui, doc, w, h, theme, o) {
   const phX = tickToX(ui, o.playheadTick);
   if (phX >= -1 && phX <= w + 1) {
     ctx.fillStyle = theme.playhead;
-    ctx.fillRect(phX, 0, o.playing ? 2 : 1, h);
+    // Always one pixel. Thickening it while playing made the line visibly
+    // change weight on every start and stop, which is most obvious now that it
+    // holds still at the anchor instead of sweeping past.
+    ctx.fillRect(phX, 0, 1, h);
   }
 }
 

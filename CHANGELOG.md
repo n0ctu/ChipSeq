@@ -19,6 +19,29 @@ tagged.
   anchoring the playhead and clamping the result produces all of them, so there
   is no mode to track and no boundary to get wrong. Scrolling by hand during
   playback stands the following down, and pressing play again re-engages it.
+- **The view eases into place instead of snapping.** Starting playback part-way
+  through a song asks the view to move somewhere else, and arriving in one
+  frame reads as a glitch rather than a scroll. The difference between where
+  the view is and where it belongs is carried as an offset and decayed over
+  about a third of a second. Decaying the error rather than smoothing the
+  position is what keeps the anchor exact: once the offset reaches zero the
+  scroll *is* the anchored position, with no lag trailing a moving target.
+  Seeking while playing eases the same way, and the transport already announces
+  it, so nothing has to guess at it from a jump in the playhead.
+
+### Fixed
+
+- **The automation lanes kept a playhead where playback stopped.** They drew
+  one only while the transport was running, so the last painted position stayed
+  put while the roll's cursor went back to where playback began: two cursors
+  disagreeing about the same number. The lanes now draw the cursor whether or
+  not anything is playing, and the roll repaints everything that draws a
+  playhead whenever the playhead moves, rather than only while playing. The
+  invalidation compares the number instead of working out which of the cursor,
+  the transport or a seek was responsible, so it cannot miss one.
+- **The playhead was 2px wide while playing and 1px while stopped**, so the
+  line visibly changed weight on every start and stop. It is always 1px now, in
+  the roll and in the automation lanes.
 
 - **A second deployment target: chipseq.app on cyon**, published over FTPS by
   `.github/workflows/cyon.yml` on the same tag that publishes to Pages. Both
