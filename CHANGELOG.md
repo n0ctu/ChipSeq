@@ -23,6 +23,21 @@ tagged.
   *silently* — so the deploy asserts the headers this file should produce
   rather than assuming that shipping it was the same as it working.
 
+### Fixed
+
+- **`tests/live-check.mjs` had the same fixed-debugging-port flaw as
+  `tests/smoke.mjs`** — it hardcoded 9339, so it could silently attach to a
+  leaked browser and check a stale profile while reporting a pass. It now takes
+  a random port, reads the one Chrome chose from `DevToolsActivePort`, waits for
+  Chrome to exit and removes its profile. It had also left 48 profile
+  directories in `/tmp`.
+- **`tests/live-check.mjs` slept three seconds through its navigation.** A
+  `Runtime.evaluate` sent while the previous document is being torn down is
+  dropped and its reply never arrives, so the run hangs instead of failing. It
+  now waits for the load event and then for the app to boot — and three seconds
+  was a guess about someone else's network besides.
+- `tests/live-check.mjs` now defaults to `https://chipseq.app/`.
+
 ### Notes on the deploy
 
 - **FTPS rather than SSH, and that is the host's constraint.** cyon's SSH is

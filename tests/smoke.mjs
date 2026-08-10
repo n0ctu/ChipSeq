@@ -3165,6 +3165,25 @@ await check('a lazily loaded tool module resolves despite its ?v= query', `(asyn
 labBadge.close();
 badgeHub.httpServer.close();
 
+// Chrome's children can outlive the parent by a moment and keep the profile
+// directory busy, so a single attempt loses the race and - when the failure was
+// swallowed - left the directory behind. Retry briefly, and SAY SO if it still
+// fails: silently ignoring this is what let 236 profiles pile up unnoticed.
+async function removeProfile(dir) {
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (err) {
+      if (attempt === 10) {
+        console.log(`WARN could not remove ${dir}: ${err.code || err.message}`);
+        return;
+      }
+      await sleep(200);
+    }
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 
 // Wait for Chrome to actually be gone before exiting. kill() followed straight
@@ -3178,6 +3197,5 @@ await new Promise((resolve) => {
 });
 // The offline test closes it; this is here for the paths that never reach that.
 if (server.listening) server.close();
-// Leaving these behind is what filled /tmp with 236 profiles.
-try { rmSync(PROFILE, { recursive: true, force: true }); } catch {}
+await removeProfile(PROFILE);
 process.exit(fail ? 1 : 0);

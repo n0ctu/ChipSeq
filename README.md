@@ -8,6 +8,15 @@ it exports to Arduino-style `.h` note arrays, Flipper Zero `.fmf` files, and
 `.wav`. No build step, no dependencies - plain HTML/CSS/JS with native ES
 modules.
 
+### ▶ [chipseq.app](https://chipseq.app/)
+
+The production instance. It **installs as an app** — your browser will offer
+it — and once installed it works with no network at all: editing, playback,
+rendering and every exporter, from a local copy.
+
+[n0ctu.github.io/ChipSeq](https://n0ctu.github.io/ChipSeq/) mirrors the same
+release and will be retired.
+
 ![ChipSeq editor](assets/screenshot.png)
 
 ## Run it
@@ -799,7 +808,7 @@ node tests/unit.mjs        # core-logic tests (arps, chords, exporters, MIDI, mi
 node tests/check.mjs       # imports every ES module to catch syntax errors
 node tests/golden.mjs      # byte-compares exporter + pipeline output against fixtures
 node tests/smoke.mjs       # browser tests driving the real UI headlessly
-node tests/live-check.mjs  # verifies a deployed instance (defaults to the GitHub Pages URL)
+node tests/live-check.mjs  # verifies a deployed instance (defaults to https://chipseq.app/)
 ```
 
 The browser suites need a Chromium binary - they auto-detect Playwright's
@@ -833,12 +842,18 @@ hard way:
   with the worker doing nothing - verified by disabling the worker's cache
   lookup entirely and watching every test still pass.
 
-The harness also takes a **random debugging port** and reads the one Chrome
-actually chose from `DevToolsActivePort`. A fixed port silently attaches to
-whatever browser already holds it: a leaked Chrome kept a profile alive for
-days, so runs were driving a stale browser. Harmless until service workers,
-which persist - an edited `sw.js` installed as `waiting` while the old one kept
-serving, and a deliberately broken worker passed every test.
+Both browser suites take a **random debugging port** and read the one Chrome
+actually chose from `DevToolsActivePort`, then wait for Chrome to exit before
+deleting their profile. A fixed port silently attaches to whatever browser
+already holds it: a leaked Chrome kept a profile alive for days, so runs were
+driving a stale browser. Harmless until service workers, which persist - an
+edited `sw.js` installed as `waiting` while the old one kept serving, and a
+deliberately broken worker passed every test.
+
+Neither suite sleeps through a navigation any more either. A `Runtime.evaluate`
+sent while the previous document is being torn down is dropped, and the reply
+never arrives - so the run hangs rather than failing, which is a far worse way
+to be wrong. They wait for the load event and then for the app to boot.
 
 ## Hacking
 
