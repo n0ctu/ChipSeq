@@ -7,7 +7,7 @@ must agree - the release workflow fails if they do not.
 Dates are release dates. Unreleased work sits under **Unreleased** until it is
 tagged.
 
-## [Unreleased]
+## [0.7.3] - 2026-08-10
 
 ### Added
 
@@ -31,6 +31,21 @@ tagged.
 
 ### Fixed
 
+- **A release could hang for hours instead of failing.** The FTPS scope
+  preflight omitted the `net:max-retries` and `net:timeout` settings the mirror
+  beside it already had, and lftp defaults to retrying forever - so a run sat
+  reconnecting for over an hour after cyon's edge started refusing a runner
+  that had been hammering it. Both lftp calls now agree, and every job in all
+  three workflows has a `timeout-minutes` ceiling, because the default is six
+  hours.
+- **Two deploys could interleave their writes to `.env`.** systemd will not
+  overlap a oneshot service with itself, so the timer alone was safe, but a
+  manual run alongside a timer-fired one was not. It matters because `.env` is
+  what the rollback path reads: interleaved writes could leave `RELAY_IMAGE`
+  naming one image, the container running another, and `RELAY_IMAGE_PREVIOUS`
+  pointing at something never live, so a later rollback would restore the wrong
+  thing. A `flock` serialises them, and a waiter gives up after ten minutes
+  rather than hanging.
 - **The relay image was missing a source file it needed.** `server/Dockerfile`
   lists its files explicitly and a new one was not added, so the container
   crash-looped on `ERR_MODULE_NOT_FOUND`. The workflow's image check could not
