@@ -43,6 +43,10 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # The suites take about thirty seconds. Anything approaching this is stuck,
+    # and the default ceiling is six hours - long enough that a hang is noticed
+    # by someone wondering why the tab is still spinning.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -71,6 +75,10 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
+    # Mirroring 3.5 MB over FTPS plus the verification takes a couple of
+    # minutes. This is the backstop for the case where a network call finds a
+    # way to wait forever anyway.
+    timeout-minutes: 15
     environment:
       name: chipseq-app
       url: https://chipseq.app/
@@ -108,9 +116,18 @@ jobs:
           # SITE at its root, while one left unscoped sees public_html itself.
           # If public_html is visible, the account is too broad - stop before
           # deleting anything rather than after.
+          # These two settings are not optional decoration. lftp defaults
+          # net:max-retries to 0, which means retry FOREVER - so a host that
+          # refuses or throttles the login leaves this reconnecting until the
+          # job's six-hour ceiling. That is exactly what happened: this
+          # preflight was written without them while the mirror below had them,
+          # and one run sat here for over an hour after cyon's edge started
+          # refusing a runner that had been hammering it.
           listing=$(lftp -u "$USER,$PASS" "$HOST" -e "
             set ftp:ssl-force true;
             set ssl:verify-certificate true;
+            set net:max-retries 3;
+            set net:timeout 20;
             set cmd:fail-exit true;
             cls -1 '$DIR';
             bye
