@@ -2,8 +2,10 @@
 Description=Check for a newer ChipSeq relay image
 
 [Timer]
-# Every ten minutes. A release is not urgent, and the idle guard means a busy
-# relay simply defers to the next tick rather than queueing anything up.
+# Every ten minutes. A release is not urgent. Note there is no idle guard: a
+# newer tag deploys on the next tick even while badges are connected -
+# adoptions survive it, live playback is cut for a few seconds. Stop this
+# timer for a set that matters.
 OnBootSec=5min
 OnUnitActiveSec=10min
 RandomizedDelaySec=60

@@ -3,8 +3,12 @@
 #   sudo cp /srv/docker/chipseq/app/server/chipseq-deploy.{service,timer} /etc/systemd/system/
 #   sudo systemctl enable --now chipseq-deploy.timer
 #
-# Stop the timer before a set that matters. The script defers while badges are
-# online, but a guard is a guard, not a promise.
+# STOP THE TIMER BEFORE A SET THAT MATTERS - it is the only protection. The
+# script deploys whenever a newer tag exists; it does NOT wait for badges to
+# disconnect (an idle guard used to exist and turned "wait" into "never", so it
+# was removed). Adoptions survive a deploy, but the restart still cuts live
+# playback for a few seconds:
+#   sudo systemctl stop chipseq-deploy.timer
 [Unit]
 Description=Deploy the newest ChipSeq relay image
 After=docker.service
