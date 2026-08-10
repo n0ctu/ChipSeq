@@ -7,6 +7,44 @@ must agree - the release workflow fails if they do not.
 Dates are release dates. Unreleased work sits under **Unreleased** until it is
 tagged.
 
+## [Unreleased]
+
+### Added
+
+- **A second deployment target: chipseq.app on cyon**, published over FTPS by
+  `.github/workflows/cyon.yml` on the same tag that publishes to Pages. Both
+  hosts run in parallel until the domain is proven; dropping Pages later is one
+  file deleted.
+- `.htaccess`, carrying the one thing a default server gets wrong: without
+  `AddType application/manifest+json .webmanifest` the manifest is served as
+  `application/octet-stream`, the browser ignores it, and the app stops being
+  installable with nothing in the console to explain why. cyon runs LiteSpeed,
+  which reads `.htaccess` but ignores directives it does not recognise
+  *silently* — so the deploy asserts the headers this file should produce
+  rather than assuming that shipping it was the same as it working.
+
+### Notes on the deploy
+
+- **FTPS rather than SSH, and that is the host's constraint.** cyon's SSH is
+  main-user only and additional FTP users get none, so a key in CI would reach
+  every other site on the account. A scoped FTP account is confined to
+  `public_html/chipseq.app`; such accounts cannot use SFTP (it rides on SSH)
+  but can use FTPS, so the transfer is still TLS end to end.
+- `lftp` does the mirroring rather than a marketplace action, which would
+  receive the FTP password on every run.
+- `.git` is deleted before the mirror rather than merely excluded — uploading
+  it would republish the entire history over HTTP.
+- **A preflight refuses to run if the FTP account is not actually scoped.**
+  `mirror --delete` is safe only because the account cannot reach past this one
+  site, and that is a setting in my.cyon that nothing here can enforce; if
+  `public_html` is visible at the FTP root the deploy stops before deleting
+  anything rather than after.
+- **`sw.js` uploads last, alone, and the ordering is load-bearing.** An FTP
+  mirror is not atomic, and the service worker reinstalls when `sw.js` changes
+  — so if the new worker landed first, a visitor in that window would precache
+  a mixture of two builds and cache it as coherent, since every file still
+  returns 200.
+
 ## [0.6.0] - 2026-08-10
 
 ### Added

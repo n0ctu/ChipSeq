@@ -86,6 +86,51 @@ Before tagging, bump `APP_VERSION` in `js/core/version.js` and add the matching
 fails the release if they do not - a site that announces a version nobody can
 find in the history is worse than a late release.
 
+### chipseq.app (cyon)
+
+A release also publishes to **chipseq.app**, hosted on cyon, via
+`.github/workflows/cyon.yml`. It is a separate workflow from the Pages one on
+purpose: both hosts run in parallel while the domain is proven, and dropping
+Pages later is one file deleted.
+
+The deploy is **FTPS**, not SSH, and that is a constraint of the host rather
+than a preference. cyon's SSH is main-user only and additional FTP users get no
+SSH at all, so an SSH key in CI would hand the workflow every other site on the
+hosting account. An additional FTP account *can* be confined to a single
+directory (my.cyon → Webhosting → FTP), with system data and mail invisible to
+it. Those accounts cannot use SFTP — that rides on SSH — but they can use FTPS,
+so the transfer is still TLS end to end. Scoped and encrypted, not one or the
+other.
+
+`lftp` does the mirroring rather than a marketplace action, which would receive
+the FTP password on every run. `--delete` prunes files that no longer exist,
+which is safe precisely because the account cannot reach beyond this one site.
+`.git` is removed before the mirror rather than merely excluded — uploading it
+would republish the entire history over HTTP.
+
+Setup, once:
+
+| where | what |
+|---|---|
+| my.cyon → Webhosting → FTP | an FTP account whose directory is `public_html/chipseq.app` |
+| repo secrets | `CYON_FTP_HOST`, `CYON_FTP_USER`, `CYON_FTP_PASSWORD` |
+| repo variable (optional) | `CYON_FTP_DIR`, default `/` — already the scoped account's root |
+
+Put the secrets on the `chipseq-app` **environment** rather than the repository
+if you want only this workflow's deploy job to be able to read them.
+
+`.htaccess` carries the one thing a default Apache gets wrong: without
+`AddType application/manifest+json .webmanifest` the manifest is served as
+`application/octet-stream`, the browser ignores it, and the app stops being
+installable with nothing in the console to explain why. The deploy asserts the
+served content type afterwards rather than assuming it.
+
+`.app` is HSTS-preloaded at the TLD, so browsers refuse plain HTTP before a
+request is made — the service worker's secure-context requirement is satisfied
+by construction, with none of the caveats that apply to the venue server.
+
+### The Pages workflow
+
 `.github/workflows/pages.yml` runs the unit, module-import and golden suites,
 checks the tag against `APP_VERSION` and the changelog, and then deploys. Branch-based publishing was dropped because Pages runs one deployment
 at a time per repository: a burst of pushes queues up, and each deploy step

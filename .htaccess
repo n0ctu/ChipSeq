@@ -1,0 +1,45 @@
+# Server config for chipseq.app. cyon runs LiteSpeed, which reads .htaccess and
+# implements mod_headers, so this is the ordinary Apache syntax. GitHub Pages
+# ignores the file entirely.
+#
+# Only the things a default server gets wrong for this app. Everything else is
+# deliberately left alone - the service worker owns caching once installed, so
+# there is very little for HTTP to decide.
+#
+# One LiteSpeed behaviour shapes how this is verified: it ignores directives it
+# does not recognise SILENTLY, where Apache would refuse to start. A typo here
+# therefore produces no error and no effect. That is why the deploy workflow
+# asserts the headers this file is supposed to produce, instead of assuming
+# that shipping the file was the same as it working.
+
+# Without this the manifest is served as application/octet-stream, the browser
+# ignores it, and the app is simply not installable - with nothing in the
+# console to say why. This is the single most important line in the file.
+AddType application/manifest+json .webmanifest
+
+# Belt and braces: Apache knows these, but a mis-typed .js is a blank page.
+AddType text/javascript .js
+AddType image/svg+xml .svg
+
+# The whole repository is mirrored here, so without this Apache would offer
+# browsable listings of tests/, server/ and demos/. The source is public
+# anyway; a directory index is still an invitation nobody asked to send.
+Options -Indexes
+
+<IfModule mod_headers.c>
+  # The worker script decides when a new version is even noticed. It is fetched
+  # with updateViaCache:'none', which already bypasses the HTTP cache, but a
+  # proxy in between has no idea about that - so say it out loud.
+  <Files "sw.js">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </Files>
+  # Same reasoning for the entry point: everything else is reached through it,
+  # and it is the one file that must never be a stale copy.
+  <Files "index.html">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </Files>
+</IfModule>
+
+# .app is HSTS-preloaded at the TLD, so browsers refuse plain HTTP before a
+# request is ever made. No redirect needed, and the service worker's
+# secure-context requirement is satisfied by construction.

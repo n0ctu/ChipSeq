@@ -1,0 +1,203 @@
+# Publishes the site to chipseq.app on cyon, over FTPS.
+#
+# Deliberately a SEPARATE workflow from pages.yml rather than another job in
+# it. The two hosts run in parallel while chipseq.app is proven, and when Pages
+# is dropped that is one file deleted and nothing else touched. The cost is
+# running the test gate twice; it takes about thirty seconds.
+#
+# ---- why FTPS and not SSH ----
+#
+# cyon's SSH is main-user only, and additional FTP users have no SSH access at
+# all - so an SSH key here would hand this workflow every other site on the
+# hosting account. An additional FTP account can be confined to one directory
+# (my.cyon > Webhosting > FTP), with system data and mail invisible to it, so
+# the credential in these secrets reaches public_html/chipseq.app and nothing
+# else. Those accounts cannot use SFTP - that rides on SSH - but they can use
+# FTPS, so this is still TLS the whole way. Scoped and encrypted, not one or
+# the other.
+#
+# ---- why lftp and not a deploy action ----
+#
+# A marketplace action would receive the FTP password on every run. lftp is one
+# apt package and `mirror --reverse` is the whole job, so the credential never
+# leaves the runner.
+#
+# Secrets: CYON_FTP_HOST, CYON_FTP_USER, CYON_FTP_PASSWORD
+# Variable (optional): CYON_FTP_DIR - defaults to /, which is already the
+# scoped account's root.
+
+name: Release to chipseq.app
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cyon
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # No install step: the app and its tests have no dependencies.
+      - run: node tests/unit.mjs
+      - run: node tests/check.mjs
+      - run: node tests/golden.mjs
+
+      - name: Tag matches APP_VERSION and CHANGELOG
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          app=$(node -e "import('./js/core/version.js').then((m) => console.log(m.APP_VERSION))")
+          echo "tag=$tag APP_VERSION=$app"
+          if [ "$tag" != "$app" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match APP_VERSION $app"
+            exit 1
+          fi
+          if ! grep -qE "^## \[$tag\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [$tag]' section for this release"
+            exit 1
+          fi
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: chipseq-app
+      url: https://chipseq.app/
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install lftp
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+
+      # The checkout carries the full history, and this mirror publishes the
+      # working directory verbatim. Removing it is not paranoia: uploading .git
+      # would republish every commit over HTTP, including the ones the history
+      # rewrite existed to remove.
+      - name: Drop .git before anything can upload it
+        run: rm -rf .git
+
+      - name: Mirror to chipseq.app over FTPS
+        env:
+          HOST: ${{ secrets.CYON_FTP_HOST }}
+          USER: ${{ secrets.CYON_FTP_USER }}
+          PASS: ${{ secrets.CYON_FTP_PASSWORD }}
+          DIR: ${{ vars.CYON_FTP_DIR || '/' }}
+        run: |
+          set -euo pipefail
+          : "${HOST:?CYON_FTP_HOST secret is not set}"
+          : "${USER:?CYON_FTP_USER secret is not set}"
+          : "${PASS:?CYON_FTP_PASSWORD secret is not set}"
+
+          # ---- preflight: is this account actually scoped? ----
+          #
+          # mirror --delete is the one irreversible thing here. It is safe only
+          # because the FTP account cannot reach past this one site, and that is
+          # a setting in my.cyon which nothing in this repository can enforce.
+          # So check it: an account confined to public_html/chipseq.app sees the
+          # SITE at its root, while one left unscoped sees public_html itself.
+          # If public_html is visible, the account is too broad - stop before
+          # deleting anything rather than after.
+          listing=$(lftp -u "$USER,$PASS" "$HOST" -e "
+            set ftp:ssl-force true;
+            set ssl:verify-certificate true;
+            set cmd:fail-exit true;
+            cls -1 '$DIR';
+            bye
+          ")
+          echo "remote root contains:"; echo "$listing" | sed 's/^/  /'
+          if echo "$listing" | grep -qiE '^public_html/?$'; then
+            echo "::error::This FTP account can see public_html, so it is NOT confined to chipseq.app. Refusing to mirror with --delete."
+            exit 1
+          fi
+
+          # Credentials go through -u, never inside the script string: lftp does
+          # no shell quoting of its own, so a password containing a quote would
+          # otherwise split the command apart. lftp splits -u on the FIRST
+          # comma, so a comma in the password is fine too.
+          #
+          # ssl-force refuses to fall back to plaintext: a server that stops
+          # offering TLS should fail the deploy, not quietly send the password
+          # in the clear.
+          lftp -u "$USER,$PASS" "$HOST" -e "
+            set ftp:ssl-force true;
+            set ftp:ssl-protect-data true;
+            set ssl:verify-certificate true;
+            set net:max-retries 3;
+            set net:timeout 20;
+            set cmd:fail-exit true;
+            mirror --reverse --delete --parallel=4 --verbose=1 \
+              --exclude '^\.git/' \
+              --exclude '^docs/' \
+              --exclude '^sw\.js$' \
+              ./ '$DIR';
+            put -O '$DIR' sw.js;
+            bye
+          "
+        # sw.js goes LAST, on its own, and that ordering is load-bearing. An FTP
+        # mirror is not atomic: for a few seconds the site is part new, part
+        # old. The service worker reinstalls when sw.js CHANGES, so if the new
+        # sw.js landed first, a visitor arriving in that window would precache a
+        # mixture of two builds and cache it as though it were coherent -
+        # every file returns 200, so nothing detects it. Uploading it last means
+        # a visitor either sees the old worker (no reinstall) or the new one
+        # with every file it names already in place.
+        #
+        # --delete keeps the server from accumulating files that no longer
+        # exist. It is safe here precisely because the account is confined to
+        # one directory - the worst it can reach is this site.
+        #
+        # docs/ is gitignored so a CI checkout never has it. Excluded anyway:
+        # it is the firmware handover, it must not be published, and a rule
+        # that only holds because of another file's contents is not a rule.
+
+      - name: Verify what is actually live
+        run: |
+          set -euo pipefail
+          want=$(node -e "import('./js/core/version.js').then((m) => console.log(m.APP_VERSION))")
+
+          live=$(curl -fsSL https://chipseq.app/js/core/version.js \
+                 | sed -n "s/.*APP_VERSION = '\([^']*\)'.*/\1/p")
+          echo "expected=$want live=$live"
+          if [ "$live" != "$want" ]; then
+            echo "::error::chipseq.app serves $live, expected $want"
+            exit 1
+          fi
+
+          # The manifest's content type decides whether the app is installable
+          # at all, and gets it wrong silently. Assert it rather than trust it.
+          ctype=$(curl -fsSI https://chipseq.app/manifest.webmanifest \
+                  | tr -d '\r' | sed -n 's/^[Cc]ontent-[Tt]ype: *//p')
+          echo "manifest content-type: $ctype"
+          case "$ctype" in
+            application/manifest+json*) ;;
+            *) echo "::error::manifest served as '$ctype' - check .htaccess"; exit 1 ;;
+          esac
+
+          # The worker has to be reachable, or the site is online-only.
+          curl -fsS -o /dev/null https://chipseq.app/sw.js
+          curl -fsS -o /dev/null https://chipseq.app/
+
+          # LiteSpeed ignores directives it does not understand silently, so a
+          # broken .htaccess looks exactly like a working one. Check that the
+          # header it is supposed to set actually arrives - otherwise the only
+          # symptom would be users stuck on an old build with no way to tell.
+          cc=$(curl -fsSI https://chipseq.app/sw.js \
+               | tr -d '\r' | sed -n 's/^[Cc]ache-[Cc]ontrol: *//p')
+          echo "sw.js cache-control: ${cc:-<none>}"
+          case "$cc" in
+            *no-cache*) ;;
+            *) echo "::error::sw.js Cache-Control is '${cc:-<none>}' - .htaccess is not taking effect"; exit 1 ;;
+          esac
+
+          echo "chipseq.app is live on $want"
