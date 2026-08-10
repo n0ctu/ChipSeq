@@ -1,0 +1,18 @@
+# Deploys the newest released relay image. Paired with chipseq-deploy.timer.
+#
+#   sudo cp /srv/docker/chipseq/app/server/chipseq-deploy.{service,timer} /etc/systemd/system/
+#   sudo systemctl enable --now chipseq-deploy.timer
+#
+# Stop the timer before a set that matters. The script defers while badges are
+# online, but a guard is a guard, not a promise.
+[Unit]
+Description=Deploy the newest ChipSeq relay image
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/srv/docker/chipseq/deploy-chipseq
+# The script decides what "failed" means and rolls back itself, so a non-zero
+# exit here is a rollback that already happened, not something to retry.
+SuccessExitStatus=0

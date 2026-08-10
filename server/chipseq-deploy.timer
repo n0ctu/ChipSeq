@@ -1,0 +1,12 @@
+[Unit]
+Description=Check for a newer ChipSeq relay image
+
+[Timer]
+# Every ten minutes. A release is not urgent, and the idle guard means a busy
+# relay simply defers to the next tick rather than queueing anything up.
+OnBootSec=5min
+OnUnitActiveSec=10min
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

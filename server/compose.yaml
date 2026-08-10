@@ -2,9 +2,15 @@
 # every service lives at /srv/docker/<name>.
 #
 # Copy this and .env.example to /srv/docker/chipseq/ as compose.yaml and .env,
-# put the repository beside them (see APP_DIR in .env), then:
+# set RELAY_IMAGE in .env, then:
 #
-#   docker compose up -d --build
+#   docker compose up -d
+#
+# Runs a PINNED IMAGE rather than building from a checkout, because deploys are
+# automatic: pushing a v* tag builds the image in CI, and the box pulls it,
+# health-checks it and puts the previous tag back if it fails. Rolling back a
+# build means finding a commit and rebuilding on a live box; rolling back a tag
+# is one line in .env. Building locally is still one command - .env says how.
 #
 # The relay publishes NO ports. Caddy reaches it by container name over the
 # shared `edge` network, so the plaintext socket does not exist on the host at
@@ -17,9 +23,10 @@ name: chipseq
 
 services:
   relay:
-    build:
-      context: ${APP_DIR:-./app}
-      dockerfile: server/Dockerfile
+    # Set by deploy-chipseq in .env. The fallback is a moving tag so a fresh
+    # copy of this file runs without editing anything; a deployed box always
+    # has a version pinned there, because `latest` cannot be rolled back to.
+    image: ${RELAY_IMAGE:-ghcr.io/n0ctu/chipseq-relay:latest}
     container_name: ${CONTAINER_NAME:-chipseq-relay}
     restart: unless-stopped
 
@@ -53,6 +60,9 @@ services:
     healthcheck:
       # /health reports the protocol version and hub stats. wget is busybox's,
       # already in the alpine base, so this adds nothing to the image.
+      #
+      # This is the deploy gate, not just a status light: deploy-chipseq waits
+      # for `healthy` and rolls back to the previous tag if it never arrives.
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 30s
       timeout: 5s

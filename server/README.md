@@ -77,10 +77,9 @@ shared network called `edge` joins them.
 
 ```sh
 mkdir -p /srv/docker/chipseq && cd /srv/docker/chipseq
-git clone https://github.com/n0ctu/ChipSeq.git app
-cp app/server/compose.yaml .
-cp app/server/.env.example .env      # defaults already match: edge, chipseq-relay, ./app
-docker compose up -d --build
+cp <repo>/server/compose.yaml .
+cp <repo>/server/.env.example .env   # defaults already match: edge, chipseq-relay
+docker compose up -d
 ```
 
 Then one site file in the central Caddy config:
@@ -92,7 +91,63 @@ ws.chipseq.app {
 ```
 
 The DNS record has to exist first, or Caddy cannot get a certificate for the
-name. Updating later is `git -C app pull && docker compose up -d --build`.
+name.
+
+### Releasing
+
+Pushing a `v*` tag is the whole release. `.github/workflows/ghcr.yml` runs the
+test gate, builds this Dockerfile and pushes
+`ghcr.io/n0ctu/chipseq-relay:<tag>`; `server/deploy-chipseq`, run from
+`chipseq-deploy.timer` every ten minutes, notices the newer tag and deploys it.
+
+Install those once, from the checkout on the box:
+
+```sh
+sudo cp app/server/chipseq-deploy.{service,timer} /etc/systemd/system/
+cp app/server/deploy-chipseq /srv/docker/chipseq/ && chmod +x /srv/docker/chipseq/deploy-chipseq
+sudo systemctl enable --now chipseq-deploy.timer
+```
+
+By hand, when you do not want to wait for the timer:
+
+```sh
+./deploy-chipseq                      # newest released tag, if the relay is idle
+./deploy-chipseq --force              # ignore the idle guard
+./deploy-chipseq --image ghcr.io/n0ctu/chipseq-relay:v0.7.1
+./deploy-chipseq --rollback           # back to RELAY_IMAGE_PREVIOUS, now
+```
+
+Deploys are **health-gated**: a new image has to report healthy and answer
+`/health` through the proxy inside two minutes, or the previous tag is put back
+automatically. That is why `.env` carries the running tag and the one before it,
+and why nothing here deploys `latest` - a moving tag stops pointing at the thing
+you would want to return to, so it cannot be rolled back to.
+
+Deploys also **defer while adopted badges are connected**. State is in memory by
+design, so any deploy costs every paired badge a re-pair; an unattended one
+waits for `online` to fall to zero rather than interrupting a set.
+
+`online` counts adopted badges holding an open socket, which means a badge in
+the middle of pairing does not hold a deploy off - it is not adopted yet, so it
+is not counted. That was measured, not assumed: a connected but unadopted badge
+reports `online:0` while `offers:1`, and a deploy went ahead over the top of it.
+The cost is one re-pair for someone who was already pairing, which is why the
+guard reads `online` anyway rather than `offers`, a field that never falls again
+once it rises. For a set that matters, stop the timer rather than trusting the
+guard.
+
+One thing CI cannot do for you: GHCR creates a package **private even when the
+repository is public**, and the box pulls anonymously. Set it public once, after
+the first tagged build. The workflow's last step asserts an anonymous pull works,
+so this fails the build rather than silently producing a release nothing deploys.
+
+Building locally is still one command, and is the right answer at a venue with
+no internet:
+
+```sh
+docker build -f server/Dockerfile -t chipseq-relay:local .
+RELAY_IMAGE=chipseq-relay:local docker compose up -d
+```
 
 **The service publishes no ports.** Caddy is on the same network and reaches it
 by container name, so there is no host binding at all, which is a stronger
@@ -132,6 +187,39 @@ User=chipseq
 [Install]
 WantedBy=multi-user.target
 ```
+
+---
+
+## What `/health` reports
+
+`{"ok":true,"v":2,"sessions":0,"badges":0,"online":0,"codes":0,"offers":0}`.
+Useful as a liveness probe as it stands - `ok` and `v` are all a healthcheck
+needs. The counters are worth reading before anything automates against them,
+because only one of them falls again on its own.
+
+| field | rises when | falls when |
+|---|---|---|
+| `sessions` | a controller connects without a known session | **never** - nothing deletes from `sessions` |
+| `badges` | a badge is adopted | forgotten or released, *not* when it disconnects |
+| `online` | an adopted badge has an open socket | it disconnects - **computed live, every call** |
+| `codes` | a controller mints a pairing code | swept, on the next `issueCode` |
+| `offers` | a badge is offered a code | swept, on the next `issueCode` |
+
+The sweep is the part that surprises: `sweep()` is called from `issueCode()` and
+nowhere else, and `stats()` reports `codes.size` and `offers.size` without
+filtering by expiry. So a badge that connects once and leaves keeps `offers` at
+1 indefinitely - the entry is expired, and nothing looks at it again until some
+controller happens to mint a code.
+
+That is harmless for a display and wrong for a decision. **`online` is the only
+field safe to gate on**, because it is derived from the live socket state on
+every request rather than accumulated. Anything using `sessions`, `badges`,
+`codes` or `offers` as "is the relay busy" will latch on after the first badge
+of the event and never let go.
+
+Deliberate, and not worth changing: at eight badges none of these grow enough to
+matter, and a sweeper on a timer would be a background task to reason about in a
+process whose whole appeal is that it has none.
 
 ---
 

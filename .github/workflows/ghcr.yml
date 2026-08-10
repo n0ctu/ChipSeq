@@ -1,0 +1,141 @@
+# Publishes the badge relay as a container image to GHCR, on tags only.
+#
+# Same trigger discipline as pages.yml and cyon.yml: pushes to main do not ship,
+# tags do. The box at ws.chipseq.app polls this registry and redeploys itself
+# when a newer version tag appears, so pushing a tag is the whole release:
+#
+#   git tag v0.7.1 && git push origin v0.7.1
+#
+# ---- why an image and not a git pull on the server ----
+#
+# The server used to build from a checkout, which meant a deploy was `git pull`
+# plus a rebuild, and a bad commit was only discoverable after it was already
+# running. An image tagged with the version is an artifact that either exists or
+# does not: the server pulls one, health-checks it, and puts the previous tag
+# back if it fails. Rollback is then a tag, not a git operation on a live box.
+#
+# ---- one thing that is not automatic ----
+#
+# A GHCR package is created PRIVATE even when the repository is public. After
+# the first successful run, set it public once:
+#   github.com/users/n0ctu/packages/container/chipseq-relay/settings
+# Otherwise the server's anonymous pull gets 403 and the deploy timer will say
+# so on every run. The alternative is a read-only PAT stored on the box, which
+# is a credential to rotate in exchange for nothing.
+
+name: Release relay to GHCR
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ghcr
+  cancel-in-progress: true
+
+env:
+  # Lowercase, because GHCR rejects uppercase in a repository name and this
+  # repository is "ChipSeq". Hardcoded rather than derived, so the name the
+  # server pulls is greppable from this file.
+  IMAGE: ghcr.io/n0ctu/chipseq-relay
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # No install step: the relay imports only node: builtins.
+      # server/test.mjs is the gate that matters here - it drives the relay
+      # through tools/fake-badge.mjs and asserts session ownership, which is
+      # the part that would silently regress into a security hole.
+      - run: node server/test.mjs
+
+      # The app's own suite runs too. The relay ships from the same tag as the
+      # site, so a tag that fails the app's tests should not produce an image
+      # either - otherwise the two halves of one version disagree.
+      - run: node tests/unit.mjs
+      - run: node tests/check.mjs
+      - run: node tests/golden.mjs
+
+      - name: Tag matches APP_VERSION and CHANGELOG
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          app=$(node -e "import('./js/core/version.js').then((m) => console.log(m.APP_VERSION))")
+          echo "tag=$tag APP_VERSION=$app"
+          if [ "$tag" != "$app" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match APP_VERSION $app"
+            exit 1
+          fi
+          if ! grep -qE "^## \[$tag\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [$tag]' section for this release"
+            exit 1
+          fi
+
+  build-push:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # GITHUB_TOKEN is enough to push to this repository's own package. No PAT
+      # to mint, store or rotate.
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Produces the version tag (v0.7.1) plus a moving `latest`. The server
+      # deliberately deploys the VERSION tag, never `latest` - a moving tag
+      # cannot be rolled back to, because it stops pointing at the thing you
+      # want to go back to. `latest` exists for humans doing a quick docker run.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          # Context is the repository root and the Dockerfile lives in server/ -
+          # it copies server/*.mjs, so a context of ./server would not see them
+          # at the paths it expects.
+          context: .
+          file: server/Dockerfile
+          # amd64 only: the one box that runs this is amd64, and building arm64
+          # under QEMU would triple the job for an image nothing pulls.
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The tag has to be pullable by an anonymous client, because that is what
+      # the server is. Checking it here turns the private-package gotcha into a
+      # red build with a clear message, instead of a deploy that never happens
+      # and a timer quietly logging 403 on a box nobody is watching.
+      - name: Anonymous pull must work
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io
+          if ! docker pull "$IMAGE:$GITHUB_REF_NAME"; then
+            echo "::error::$IMAGE:$GITHUB_REF_NAME is not anonymously pullable - set the package to Public in its settings, or ws.chipseq.app cannot deploy it"
+            exit 1
+          fi
+          docker run --rm "$IMAGE:$GITHUB_REF_NAME" node --input-type=module -e 'console.log("image runs")'

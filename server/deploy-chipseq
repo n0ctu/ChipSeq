@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+# Deploys the newest released relay image, and puts the old one back if it does
+# not come up. Run from a timer on the box:
+#
+#   /srv/docker/chipseq/deploy-chipseq            # deploy newest, if any
+#   /srv/docker/chipseq/deploy-chipseq --force    # ignore the idle guard
+#   /srv/docker/chipseq/deploy-chipseq --rollback # go back one tag, now
+#   /srv/docker/chipseq/deploy-chipseq --image REF # deploy exactly this one
+#
+# The deploy is a line in .env plus `docker compose up -d`, so rolling back is
+# an edit rather than a rebuild on a live box. That is the whole reason the
+# image is pinned by version and never deployed as `latest`: a moving tag stops
+# pointing at the thing you would want to return to.
+set -euo pipefail
+
+DIR="${CHIPSEQ_DIR:-/srv/docker/chipseq}"
+ENV_FILE="$DIR/.env"
+IMAGE="${CHIPSEQ_IMAGE:-ghcr.io/n0ctu/chipseq-relay}"
+HEALTH_URL="${CHIPSEQ_HEALTH_URL:-https://ws.chipseq.app/health}"
+DEADLINE_S="${CHIPSEQ_DEADLINE_S:-120}"
+
+FORCE=0
+ROLLBACK=0
+PINNED=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --force) FORCE=1 ;;
+    --rollback) ROLLBACK=1 ;;
+    # Deploy a named image instead of whatever the registry says is newest:
+    # rolling forward to a known-good tag, and how the health gate and the
+    # rollback are exercised without waiting for a real bad release.
+    --image) PINNED="${2:?--image needs a reference}"; shift ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+log() { echo "$(date -Is) $*"; }
+
+# .env is the source of truth for what is running, because compose reads it and
+# because a rollback must not need a registry lookup at the one moment lookups
+# are least welcome.
+get_env() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -1; }
+set_env() {
+  local key="$1" value="$2"
+  if grep -qE "^$key=" "$ENV_FILE"; then
+    sed -i "s|^$key=.*|$key=$value|" "$ENV_FILE"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+  fi
+}
+
+compose() { docker compose --project-directory "$DIR" "$@"; }
+
+# Healthy means BOTH the container's own healthcheck has passed and the relay
+# answers through the proxy. The first alone would call a container healthy
+# while Caddy could not reach it; the second alone would accept a stale
+# container still answering while the new one crash-loops behind it.
+wait_healthy() {
+  local name deadline=$(( $(date +%s) + DEADLINE_S ))
+  name="$(get_env CONTAINER_NAME)"
+  name="${name:-chipseq-relay}"
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    local state
+    state="$(docker inspect --format '{{.State.Health.Status}}' "$name" 2>/dev/null || echo missing)"
+    if [ "$state" = "healthy" ] && curl -fsS --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 3
+  done
+  return 1
+}
+
+# `online` is the only counter in /health that falls again on its own: it is
+# derived from live socket state on every request. Gating on `sessions`,
+# `badges`, `codes` or `offers` would latch on after the first badge of an event
+# and never clear, so an idle guard built on them would defer forever. See
+# "What /health reports" in server/README.md.
+badges_online() {
+  curl -fsS --max-time 5 "$HEALTH_URL" 2>/dev/null \
+    | sed -n 's/.*"online":\([0-9]*\).*/\1/p' | head -1
+}
+
+deploy() {
+  local target="$1" previous="$2"
+  log "deploying $target (previous $previous)"
+
+  # A pull that fails is not automatically fatal: the image may already be here
+  # from a local build or an earlier attempt, and refusing to deploy something
+  # we are holding would turn a registry blip into an outage. Only give up when
+  # we genuinely do not have it - and give up BEFORE touching .env, so a
+  # missing image leaves the running deploy exactly as it was.
+  if ! docker pull "$target" >/dev/null 2>&1; then
+    if ! docker image inspect "$target" >/dev/null 2>&1; then
+      log "cannot pull $target and no local copy - leaving $previous running"
+      return 1
+    fi
+    log "pull failed, using the local copy of $target"
+  fi
+
+  set_env RELAY_IMAGE "$target"
+  compose up -d >/dev/null
+
+  if wait_healthy; then
+    set_env RELAY_IMAGE_PREVIOUS "$previous"
+    log "healthy on $target"
+    return 0
+  fi
+
+  log "NOT healthy within ${DEADLINE_S}s, rolling back to $previous"
+  set_env RELAY_IMAGE "$previous"
+  compose up -d >/dev/null
+  if wait_healthy; then
+    log "rolled back to $previous"
+  else
+    log "ROLLBACK ALSO UNHEALTHY - relay is down, needs a human"
+  fi
+  return 1
+}
+
+current="$(get_env RELAY_IMAGE)"
+previous="$(get_env RELAY_IMAGE_PREVIOUS)"
+
+if [ "$ROLLBACK" = 1 ]; then
+  [ -n "$previous" ] || { log "no RELAY_IMAGE_PREVIOUS to roll back to"; exit 1; }
+  deploy "$previous" "$current"
+  exit $?
+fi
+
+if [ -n "$PINNED" ]; then
+  [ "$PINNED" = "$current" ] && { log "already on $current"; exit 0; }
+  if [ "$FORCE" = 0 ]; then
+    online="$(badges_online || true)"
+    if [ -n "$online" ] && [ "$online" -gt 0 ]; then
+      log "deferring $PINNED: $online badge(s) online (--force to override)"
+      exit 0
+    fi
+  fi
+  deploy "$PINNED" "$current"
+  exit $?
+fi
+
+# Newest v* tag in the registry, by version order. skopeo would be tidier, but
+# this needs no package on the box beyond curl.
+newest="$(curl -fsS "https://ghcr.io/token?scope=repository:${IMAGE#ghcr.io/}:pull" 2>/dev/null \
+  | sed -n 's/.*"token":"\([^"]*\)".*/\1/p' \
+  | xargs -I{} curl -fsS -H "Authorization: Bearer {}" "https://ghcr.io/v2/${IMAGE#ghcr.io/}/tags/list" 2>/dev/null \
+  | tr ',' '\n' | sed -n 's/.*"\(v[0-9][0-9.]*\)".*/\1/p' | sort -V | tail -1)"
+
+if [ -z "$newest" ]; then
+  log "could not read tags from $IMAGE (is the package public?)"
+  exit 1
+fi
+
+target="$IMAGE:$newest"
+if [ "$target" = "$current" ]; then
+  log "already on $current"
+  exit 0
+fi
+
+# Any deploy costs every paired badge a re-pair, because hub state is in memory
+# by design. Unattended, that should not interrupt a set.
+if [ "$FORCE" = 0 ]; then
+  online="$(badges_online || true)"
+  if [ -n "$online" ] && [ "$online" -gt 0 ]; then
+    log "deferring $target: $online badge(s) online (--force to override)"
+    exit 0
+  fi
+fi
+
+deploy "$target" "$current"

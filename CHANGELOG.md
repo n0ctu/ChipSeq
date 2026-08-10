@@ -9,6 +9,44 @@ tagged.
 
 ## [Unreleased]
 
+### Added
+
+- **The badge relay ships as a container image, and tagging releases it.** A new
+  workflow builds `server/Dockerfile` on every `v*` tag and pushes
+  `ghcr.io/n0ctu/chipseq-relay`, which the server polls and deploys itself. It
+  replaces a deploy that was `git pull` and a rebuild on the live box, where a
+  bad commit was only discoverable once it was already serving. An image tagged
+  with its version is an artifact that either exists or does not, so rolling
+  back is a tag rather than a git operation on a running service.
+- **Deploys are health-gated and roll themselves back.** `server/deploy-chipseq`
+  pins the image in `.env`, brings it up, and requires it to report healthy
+  *and* answer `/health` through the proxy before recording it. If it does not,
+  the previous tag goes back automatically. Exercised against a deliberately
+  broken image before shipping: the deploy failed its gate after the deadline,
+  restored the previous tag, and the relay was answering again, because a
+  rollback that has never run is a rollback nobody should be relying on.
+- **Deploys defer while adopted badges are connected.** The relay holds
+  sessions, pairings and adoptions in memory by design, so any deploy costs
+  every paired badge a re-pair. An unattended deploy now waits rather than
+  interrupting a set. It gates on `online`, the one `/health` counter that falls
+  again on its own; a badge still mid-pairing is not adopted yet and so does not
+  hold a deploy off, which the test confirmed rather than assumed.
+- **A pull that fails no longer takes the relay with it.** Found by testing: a
+  registry blip aborted the script before it had touched anything, with nothing
+  in the log to say why. It now falls back to a local copy of the image if there
+  is one, and otherwise gives up before editing `.env`, leaving the running
+  version exactly where it was.
+
+### Documented
+
+- **Which `/health` counters can be trusted.** `sweep()` runs only from
+  `issueCode()`, and `stats()` reports `codes.size` and `offers.size` unfiltered,
+  so a badge that connects once and leaves keeps `offers` above zero
+  indefinitely. `sessions` is never deleted at all, and an adoption outlives its
+  badge disconnecting. `online` is the only field derived live on every request,
+  and so the only one anything should gate a decision on - a guard built on any
+  of the others latches on after the first badge of an event and never clears.
+
 ### Fixed
 
 - **Native scrollbars were bright white inside a dark app**, which is most
