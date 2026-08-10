@@ -140,16 +140,27 @@ if [ -n "$PINNED" ]; then
   exit $?
 fi
 
-# Newest v* tag in the registry, by version order. skopeo would be tidier, but
-# this needs no package on the box beyond curl.
-newest="$(curl -fsS "https://ghcr.io/token?scope=repository:${IMAGE#ghcr.io/}:pull" 2>/dev/null \
-  | sed -n 's/.*"token":"\([^"]*\)".*/\1/p' \
-  | xargs -I{} curl -fsS -H "Authorization: Bearer {}" "https://ghcr.io/v2/${IMAGE#ghcr.io/}/tags/list" 2>/dev/null \
-  | tr ',' '\n' | sed -n 's/.*"\(v[0-9][0-9.]*\)".*/\1/p' | sort -V | tail -1)"
+# Tags in the registry. skopeo would be tidier, but this needs no package on
+# the box beyond curl. Read the list once and judge it in two steps, because
+# "the registry did not answer" and "it answered, with no releases yet" want
+# different messages - conflating them sends you to check a package's
+# visibility when the real answer is that nobody has tagged one.
+token="$(curl -fsS "https://ghcr.io/token?scope=repository:${IMAGE#ghcr.io/}:pull" 2>/dev/null \
+  | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')"
+tags="$(curl -fsS -H "Authorization: Bearer ${token:-}" \
+  "https://ghcr.io/v2/${IMAGE#ghcr.io/}/tags/list" 2>/dev/null || true)"
+
+if [ -z "$tags" ]; then
+  log "cannot read tags from $IMAGE - registry unreachable, or the package is private"
+  exit 1
+fi
+
+newest="$(printf '%s' "$tags" | tr ',' '\n' \
+  | sed -n 's/.*"\(v[0-9][0-9.]*\)".*/\1/p' | sort -V | tail -1)"
 
 if [ -z "$newest" ]; then
-  log "could not read tags from $IMAGE (is the package public?)"
-  exit 1
+  log "no v* tags in $IMAGE yet - nothing released to deploy"
+  exit 0
 fi
 
 target="$IMAGE:$newest"

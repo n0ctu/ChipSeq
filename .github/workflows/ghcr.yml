@@ -14,14 +14,17 @@
 # does not: the server pulls one, health-checks it, and puts the previous tag
 # back if it fails. Rollback is then a tag, not a git operation on a live box.
 #
-# ---- one thing that is not automatic ----
+# ---- package visibility ----
 #
-# A GHCR package is created PRIVATE even when the repository is public. After
-# the first successful run, set it public once:
-#   github.com/users/n0ctu/packages/container/chipseq-relay/settings
-# Otherwise the server's anonymous pull gets 403 and the deploy timer will say
-# so on every run. The alternative is a read-only PAT stored on the box, which
-# is a credential to rotate in exchange for nothing.
+# The package inherits this repository's visibility, so it is public and the box
+# can pull it anonymously with no credential at all. Verified against the live
+# registry rather than assumed: an anonymous token lists the tags and the
+# manifest returns 200.
+#
+# If this repository ever goes private the package follows it, the box's
+# anonymous pull starts returning 403, and the last step here is what will say
+# so - loudly, at release time, rather than as a deploy that quietly never
+# happens on a box nobody is watching.
 
 name: Release relay to GHCR
 

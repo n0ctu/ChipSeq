@@ -136,10 +136,13 @@ guard reads `online` anyway rather than `offers`, a field that never falls again
 once it rises. For a set that matters, stop the timer rather than trusting the
 guard.
 
-One thing CI cannot do for you: GHCR creates a package **private even when the
-repository is public**, and the box pulls anonymously. Set it public once, after
-the first tagged build. The workflow's last step asserts an anonymous pull works,
-so this fails the build rather than silently producing a release nothing deploys.
+The image is **anonymously pullable**, because the package inherits this
+repository's visibility and the repository is public, so the box needs no
+registry credential at all. That was checked against the live registry, not
+assumed. If the repository ever goes private the package follows it and the
+box's pulls start failing; the workflow's last step asserts an anonymous pull
+works, so that surfaces as a red release rather than a deploy that silently
+never happens.
 
 Building locally is still one command, and is the right answer at a venue with
 no internet:
