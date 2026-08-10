@@ -164,9 +164,47 @@ jobs:
       - name: Verify what is actually live
         run: |
           set -euo pipefail
+
+          # These requests cross somebody else's edge, and a release should not
+          # go red because that edge hiccuped once. A v0.7.2 deploy that had
+          # already succeeded failed here on a single 415 for a file that was
+          # serving 200 seconds later - the site was correct and the check was
+          # not. Retry before believing it, and send a browser User-Agent,
+          # because a bare curl from a datacentre address is what bot filtering
+          # is looking for.
+          get() {
+            local url="$1" out
+            for attempt in 1 2 3 4 5; do
+              if out=$(curl -fsSL --max-time 20 -A "$UA" "$url" 2>/dev/null); then
+                printf '%s' "$out"
+                return 0
+              fi
+              sleep $(( attempt * 3 ))
+            done
+            echo "::error::$url did not respond after 5 attempts" >&2
+            return 1
+          }
+          head_of() {
+            local url="$1" out
+            for attempt in 1 2 3 4 5; do
+              if out=$(curl -fsSI --max-time 20 -A "$UA" "$url" 2>/dev/null); then
+                printf '%s' "$out" | tr -d '\r'
+                return 0
+              fi
+              sleep $(( attempt * 3 ))
+            done
+            echo "::error::HEAD $url did not respond after 5 attempts" >&2
+            return 1
+          }
+          UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+
+          # A moment to settle: the mirror finished seconds ago, and sw.js goes
+          # up last on purpose.
+          sleep 5
+
           want=$(node -e "import('./js/core/version.js').then((m) => console.log(m.APP_VERSION))")
 
-          live=$(curl -fsSL https://chipseq.app/js/core/version.js \
+          live=$(get https://chipseq.app/js/core/version.js \
                  | sed -n "s/.*APP_VERSION = '\([^']*\)'.*/\1/p")
           echo "expected=$want live=$live"
           if [ "$live" != "$want" ]; then
@@ -176,8 +214,8 @@ jobs:
 
           # The manifest's content type decides whether the app is installable
           # at all, and gets it wrong silently. Assert it rather than trust it.
-          ctype=$(curl -fsSI https://chipseq.app/manifest.webmanifest \
-                  | tr -d '\r' | sed -n 's/^[Cc]ontent-[Tt]ype: *//p')
+          ctype=$(head_of https://chipseq.app/manifest.webmanifest \
+                  | sed -n 's/^[Cc]ontent-[Tt]ype: *//p')
           echo "manifest content-type: $ctype"
           case "$ctype" in
             application/manifest+json*) ;;
@@ -185,15 +223,15 @@ jobs:
           esac
 
           # The worker has to be reachable, or the site is online-only.
-          curl -fsS -o /dev/null https://chipseq.app/sw.js
-          curl -fsS -o /dev/null https://chipseq.app/
+          get https://chipseq.app/sw.js >/dev/null
+          get https://chipseq.app/ >/dev/null
 
           # LiteSpeed ignores directives it does not understand silently, so a
           # broken .htaccess looks exactly like a working one. Check that the
           # header it is supposed to set actually arrives - otherwise the only
           # symptom would be users stuck on an old build with no way to tell.
-          cc=$(curl -fsSI https://chipseq.app/sw.js \
-               | tr -d '\r' | sed -n 's/^[Cc]ache-[Cc]ontrol: *//p')
+          cc=$(head_of https://chipseq.app/sw.js \
+               | sed -n 's/^[Cc]ache-[Cc]ontrol: *//p')
           echo "sw.js cache-control: ${cc:-<none>}"
           case "$cc" in
             *no-cache*) ;;

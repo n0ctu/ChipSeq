@@ -3,7 +3,7 @@
 # not come up. Run from a timer on the box:
 #
 #   /srv/docker/chipseq/deploy-chipseq            # deploy newest, if any
-#   /srv/docker/chipseq/deploy-chipseq --force    # ignore the idle guard
+#   /srv/docker/chipseq/deploy-chipseq --force    # accepted, and does nothing
 #   /srv/docker/chipseq/deploy-chipseq --rollback # go back one tag, now
 #   /srv/docker/chipseq/deploy-chipseq --image REF # deploy exactly this one
 #
@@ -24,6 +24,10 @@ ROLLBACK=0
 PINNED=""
 while [ $# -gt 0 ]; do
   case "$1" in
+    # Kept so existing timers and muscle memory do not break. There is no
+    # longer anything to force past: deploys used to defer while badges were
+    # online, which turned a busy relay into one that never updated at all,
+    # and adoptions now survive a restart anyway.
     --force) FORCE=1 ;;
     --rollback) ROLLBACK=1 ;;
     # Deploy a named image instead of whatever the registry says is newest:
@@ -69,16 +73,6 @@ wait_healthy() {
     sleep 3
   done
   return 1
-}
-
-# `online` is the only counter in /health that falls again on its own: it is
-# derived from live socket state on every request. Gating on `sessions`,
-# `badges`, `codes` or `offers` would latch on after the first badge of an event
-# and never clear, so an idle guard built on them would defer forever. See
-# "What /health reports" in server/README.md.
-badges_online() {
-  curl -fsS --max-time 5 "$HEALTH_URL" 2>/dev/null \
-    | sed -n 's/.*"online":\([0-9]*\).*/\1/p' | head -1
 }
 
 deploy() {
@@ -129,13 +123,6 @@ fi
 
 if [ -n "$PINNED" ]; then
   [ "$PINNED" = "$current" ] && { log "already on $current"; exit 0; }
-  if [ "$FORCE" = 0 ]; then
-    online="$(badges_online || true)"
-    if [ -n "$online" ] && [ "$online" -gt 0 ]; then
-      log "deferring $PINNED: $online badge(s) online (--force to override)"
-      exit 0
-    fi
-  fi
   deploy "$PINNED" "$current"
   exit $?
 fi
@@ -167,16 +154,6 @@ target="$IMAGE:$newest"
 if [ "$target" = "$current" ]; then
   log "already on $current"
   exit 0
-fi
-
-# Any deploy costs every paired badge a re-pair, because hub state is in memory
-# by design. Unattended, that should not interrupt a set.
-if [ "$FORCE" = 0 ]; then
-  online="$(badges_online || true)"
-  if [ -n "$online" ] && [ "$online" -gt 0 ]; then
-    log "deferring $target: $online badge(s) online (--force to override)"
-    exit 0
-  fi
 fi
 
 deploy "$target" "$current"
