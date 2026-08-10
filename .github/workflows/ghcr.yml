@@ -147,4 +147,24 @@ jobs:
             echo "::error::$IMAGE:$GITHUB_REF_NAME is not anonymously pullable - set the package to Public in its settings, or ws.chipseq.app cannot deploy it"
             exit 1
           fi
-          docker run --rm "$IMAGE:$GITHUB_REF_NAME" node --input-type=module -e 'console.log("image runs")'
+
+          # Start it the way it actually runs, rather than overriding the
+          # entrypoint to print something. The previous version ran `node -e`,
+          # which never imported the app - so an image missing one of its own
+          # source files passed this step and crash-looped on the server. Ask
+          # the running relay for /health instead: that answer requires every
+          # module to have loaded.
+          docker run -d --name relay-smoke -p 127.0.0.1:8099:8080 "$IMAGE:$GITHUB_REF_NAME"
+          for attempt in $(seq 1 20); do
+            if curl -fsS --max-time 3 http://127.0.0.1:8099/health; then
+              echo
+              echo "image serves /health"
+              docker rm -f relay-smoke >/dev/null
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::the image did not serve /health within 20s"
+          docker logs relay-smoke 2>&1 | tail -20
+          docker rm -f relay-smoke >/dev/null
+          exit 1

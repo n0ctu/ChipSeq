@@ -7,6 +7,41 @@ must agree - the release workflow fails if they do not.
 Dates are release dates. Unreleased work sits under **Unreleased** until it is
 tagged.
 
+## [Unreleased]
+
+### Added
+
+- **Adoptions survive a restart.** The relay can keep sessions and adoptions in
+  SQLite (`--db`, using the `node:sqlite` builtin, so still no dependencies),
+  and the deployed compose file does. Before this, every deploy cost every
+  paired badge a re-pair, which is why the deploy script had an idle guard -
+  and that guard made things worse, because a relay with badges connected is
+  the normal state at an event, so "wait until nobody is online" meant "never
+  update". Verified end to end rather than in principle: a badge adopted and
+  renamed through the real socket was still adopted, still named and still
+  owned by the same session after the container was destroyed and recreated.
+  Pairing codes and offers are deliberately not persisted, since they expire in
+  120 seconds and an offer names a socket the restart already closed.
+
+### Removed
+
+- **The deploy idle guard.** It blocked deploys rather than postponing them.
+  `--force` is still accepted so existing timers keep working, and now does
+  nothing.
+
+### Fixed
+
+- **The relay image was missing a source file it needed.** `server/Dockerfile`
+  lists its files explicitly and a new one was not added, so the container
+  crash-looped on `ERR_MODULE_NOT_FOUND`. The workflow's image check could not
+  have caught it: it ran `node -e` with the entrypoint overridden, which never
+  imported the app. It now starts the container as it really runs and asks it
+  for `/health`, an answer that requires every module to have loaded.
+- **The cyon deploy failed a release on one bad response.** v0.7.2 went red on a
+  single 415 for a file serving 200 seconds later; the deploy had succeeded and
+  only the check was wrong. Verification now retries with backoff and sends a
+  browser User-Agent.
+
 ## [0.7.2] - 2026-08-10
 
 ### Fixed

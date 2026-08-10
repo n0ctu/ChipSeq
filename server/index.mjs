@@ -1,6 +1,6 @@
 // The ChipSeq badge server.
 //
-//   node server/index.mjs [--port 8080] [--root .]
+//   node server/index.mjs [--port 8080] [--root .] [--db relay.db]
 //
 // Serves the sequencer AND the badge socket from one origin, which is what
 // makes Tailscale Funnel a complete answer: one funnel mapping publishes both,
@@ -22,6 +22,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { attachWebSocket } from './ws.mjs';
 import { Hub } from './rooms.mjs';
+import { openStore } from './store.mjs';
 
 export const PROTOCOL_VERSION = 2;
 
@@ -52,8 +53,12 @@ const MIME = {
   '.md': 'text/markdown; charset=utf-8',
 };
 
-export function createServer({ root, log = () => {} } = {}) {
-  const hub = new Hub();
+export function createServer({ root, log = () => {}, dbPath = null } = {}) {
+  // Without a path this is exactly the process it has always been: state in
+  // memory, and a restart costs one re-pair. With one, adoptions outlive the
+  // container, which is what makes deploying during an event cheap.
+  const store = dbPath ? openStore(dbPath) : null;
+  const hub = new Hub({ store });
   const controllers = new Set(); // { conn, sessionId }
   // Badges that are connected but not yet adopted. The hub only knows badges
   // it owns, so without this the display flow could mint a code for a badge
@@ -451,10 +456,11 @@ export function createServer({ root, log = () => {} } = {}) {
 // ---- CLI ----
 
 function parseArgs(argv) {
-  const out = { port: 8080, root: null };
+  const out = { port: 8080, root: null, db: null };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--port') out.port = Number(argv[++i]);
     else if (argv[i] === '--root') out.root = argv[++i];
+    else if (argv[i] === '--db') out.db = argv[++i];
   }
   return out;
 }
@@ -466,6 +472,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     : fileURLToPath(new URL('..', import.meta.url));
   const { httpServer } = createServer({
     root,
+    dbPath: args.db,
     log: (what, info) => console.log(new Date().toISOString(), what, JSON.stringify(info)),
   });
   httpServer.listen(args.port, () => {
@@ -473,5 +480,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.log(`  app    http://localhost:${args.port}/`);
     console.log(`  socket ws://localhost:${args.port}/ws`);
     console.log(`  serving ${root}`);
+    console.log(args.db ? `  adoptions persist in ${args.db}` : '  adoptions are in memory only');
   });
 }

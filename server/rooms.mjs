@@ -58,14 +58,34 @@ export function sanitizeName(name) {
 }
 
 export class Hub {
-  constructor({ now = () => Date.now(), rand = randomBytes } = {}) {
+  // `store` is optional and everything works without it - that is the path the
+  // tests take, and the one a local run takes. With one, adoptions and sessions
+  // survive a restart, which is what stops a deploy costing every paired badge
+  // a re-pair.
+  constructor({ now = () => Date.now(), rand = randomBytes, store = null } = {}) {
     this.now = now;
     this.rand = rand;
+    this.store = store;
     this.sessions = new Map(); // sessionId -> { id, created }
     this.badges = new Map(); // badgeId -> { id, name, fw, sessionId, trackId, lastSeen, conn }
     this.codes = new Map(); // code -> { sessionId, expires }        (button flow)
     this.offers = new Map(); // code -> { badgeId, expires }          (display flow)
     this.rate = new Map(); // ip -> { count, resets }
+
+    if (store) {
+      const { sessions, badges } = store.load();
+      this.sessions = sessions;
+      this.badges = badges;
+    }
+  }
+
+  // Called after anything that changes an adoption or a session. It writes both
+  // tables whole, so the only way to get persistence wrong is to forget the
+  // call entirely - which server/test.mjs checks by driving the lifecycle and
+  // comparing a reloaded hub against the live one, rather than by trusting that
+  // every site was found.
+  save() {
+    if (this.store) this.store.save(this.sessions, this.badges);
   }
 
   // ---- sessions ----
@@ -73,6 +93,7 @@ export class Hub {
   createSession() {
     const id = randomBytes(16).toString('hex');
     this.sessions.set(id, { id, created: this.now() });
+    this.save();
     return id;
   }
 
@@ -162,6 +183,7 @@ export class Hub {
       lastSeen: this.now(),
       conn: existing ? existing.conn : null,
     });
+    this.save();
     return { ok: true, name: chosen, sessionId: entry.sessionId };
   }
 
@@ -223,6 +245,7 @@ export class Hub {
       lastSeen: this.now(),
       conn: existing ? existing.conn : null,
     });
+    this.save();
     return { ok: true, badgeId: entry.badgeId, name: chosen };
   }
 
@@ -241,6 +264,7 @@ export class Hub {
       const announced = sanitizeName(name);
       if (announced && !known.userNamed) known.name = announced;
       known.lastSeen = this.now();
+      this.save();
       return known;
     }
     return null; // unknown badge: must pair before it exists here
@@ -257,6 +281,7 @@ export class Hub {
       freeBytes: Number(lib.freeBytes) || 0,
       maxTunes: Number(lib.maxTunes) || 0,
     };
+    this.save();
     return true;
   }
 
@@ -276,6 +301,7 @@ export class Hub {
     // Sticky: from here on the badge announcing a different name is ignored,
     // so a reconnect cannot quietly undo what someone typed.
     b.userNamed = true;
+    this.save();
     return true;
   }
 
@@ -285,6 +311,7 @@ export class Hub {
     const b = this.badges.get(badgeId);
     if (!b || b.sessionId !== sessionId) return false;
     b.trackId = trackId || null;
+    this.save();
     return true;
   }
 
@@ -302,6 +329,7 @@ export class Hub {
     if (!b) return null;
     const { sessionId } = b;
     this.badges.delete(badgeId);
+    this.save();
     return sessionId;
   }
 
@@ -312,6 +340,7 @@ export class Hub {
     const b = this.badges.get(badgeId);
     if (!b || b.sessionId !== sessionId) return false;
     this.badges.delete(badgeId);
+    this.save();
     return true;
   }
 

@@ -30,6 +30,14 @@ services:
     container_name: ${CONTAINER_NAME:-chipseq-relay}
     restart: unless-stopped
 
+    # Adoptions outlive the container. Without this a deploy costs every paired
+    # badge a re-pair, which is what made deploying during an event something to
+    # avoid - and what the deploy script's idle guard was trying and failing to
+    # work around.
+    command: ["node", "server/index.mjs", "--port", "8080", "--root", "/srv/empty", "--db", "/data/relay.db"]
+    volumes:
+      - relay-data:/data
+
     networks: [edge]
 
     # No `ports:` on purpose. Caddy is a container on the same network and
@@ -45,10 +53,10 @@ services:
     # ports:
     #   - "127.0.0.1:8080:8080"
 
-    # State is in memory by design: at eight badges there is nothing worth
-    # persisting, and a restart costs one re-pair. Hence no volumes, and hence
-    # a read-only root filesystem with a tmpfs for anything Node wants to
-    # scribble.
+    # Read-only root filesystem: the only thing this writes is the database,
+    # and that lives on the volume above. Pairing codes, offers and rate limits
+    # stay in memory deliberately - they expire in seconds, and an offer names a
+    # socket a restart has already closed.
     read_only: true
     tmpfs:
       - /tmp
@@ -78,6 +86,9 @@ services:
         max-file: "3"
 
     mem_limit: 256m
+
+volumes:
+  relay-data:
 
 networks:
   edge:

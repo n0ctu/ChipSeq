@@ -193,6 +193,34 @@ WantedBy=multi-user.target
 
 ---
 
+## Adoptions persist
+
+`--db <file>` keeps adoptions and sessions in SQLite, via `node:sqlite`, so a
+restart does not cost every paired badge a re-pair. The compose file passes
+`--db /data/relay.db` and mounts a volume for it; without the flag the relay
+behaves exactly as it always did, which is the path the tests and a local run
+take.
+
+This exists because deploys became automatic. A relay with badges connected is
+the normal state at an event, so "restart later" meant "never update".
+
+Pairing codes, offers and rate limits are deliberately **not** persisted. They
+expire in 120 seconds, and an offer names a socket that a restart has already
+closed, so restoring one would resurrect a token for a connection that no
+longer exists. Anything loaded from disk starts offline until its badge
+reconnects, which is exactly what `online` already meant.
+
+The database is rewritten whole on every change. At eight badges that is
+cheaper than being clever, and it removes the only way this could go subtly
+wrong: a mutation whose write was forgotten. `server/test.mjs` reloads a hub
+from the same file after every operation and compares it against the live one,
+so a missing write fails wherever it is - and both were confirmed to fail when
+a `save()` is removed. The first version of that test saved on its own behalf
+before comparing, which made it pass with every `save()` call deleted; it was
+testing the store rather than the write points.
+
+---
+
 ## What `/health` reports
 
 `{"ok":true,"v":2,"sessions":0,"badges":0,"online":0,"codes":0,"offers":0}`.

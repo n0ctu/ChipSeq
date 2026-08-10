@@ -26,6 +26,107 @@ async function until(fn, what, timeout = 3000) {
   return false;
 }
 
+// ---- adoptions survive a restart ----
+//
+// The point of persisting anything: a deploy used to cost every paired badge a
+// re-pair, which is why the deploy script had an idle guard that then blocked
+// deploys outright.
+//
+// The risk in the implementation is a mutation whose write was forgotten, so
+// these do not check individual save() calls. After every operation they reload
+// a hub from the same file and compare it against the live one, which catches a
+// missed write wherever it is.
+{
+  const { openStore } = await import('./store.mjs');
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+
+  const dir = mkdtempSync(join(tmpdir(), 'chipseq-store-'));
+  const file = join(dir, 'relay.db');
+
+  // What a restart sees: a new hub over the same file. `conn` is dropped on the
+  // way out, so compare everything else.
+  // Deliberately does NOT save first. The first version of this did, which
+  // made every one of these assertions pass with the save() calls removed from
+  // rooms.mjs entirely - it was testing the store, not the write points. What
+  // is on disk has to have been put there by the operation itself.
+  const persisted = (hub) => {
+    const fresh = new Hub({ store: openStore(file) });
+    const strip = (m) => [...m.entries()].map(([k, v]) => {
+      const { conn, ...rest } = v; void conn; return [k, rest];
+    }).sort();
+    return {
+      sessions: strip(fresh.sessions),
+      badges: strip(fresh.badges),
+      live: { sessions: strip(hub.sessions), badges: strip(hub.badges) },
+    };
+  };
+  const matches = (hub, what) => {
+    const p = persisted(hub);
+    eq(p.badges, p.live.badges, `badges survive a restart after ${what}`);
+    eq(p.sessions, p.live.sessions, `sessions survive a restart after ${what}`);
+  };
+
+  try {
+    const hub = new Hub({ store: openStore(file) });
+    const session = hub.createSession();
+    matches(hub, 'createSession');
+
+    const code = hub.issueCode(session).code;
+    hub.redeem(code, 'badge:a', '1.2.3.4', { fw: 'fw1', name: 'Astronaut' });
+    matches(hub, 'redeem');
+    ok(hub.badges.get('badge:a').sessionId === session, 'the adoption names its session');
+
+    hub.rename(session, 'badge:a', 'Cosmonaut');
+    matches(hub, 'rename');
+    hub.map(session, 'badge:a', 'track-7');
+    matches(hub, 'map');
+    hub.setLibrary('badge:a', { tunes: [{ id: 'cafe', name: 'Tetris' }], freeBytes: 9, maxTunes: 4 });
+    matches(hub, 'setLibrary');
+    hub.attach('badge:a', { open: true }, { fw: 'fw2', caps: ['note', 'sched'] });
+    matches(hub, 'attach');
+
+    // The thing that actually matters, stated directly rather than via a diff.
+    {
+      const restarted = new Hub({ store: openStore(file) });
+      const b = restarted.badges.get('badge:a');
+      ok(!!b, 'the badge is still adopted after a restart');
+      eq(b.name, 'Cosmonaut', 'and keeps the name someone typed');
+      eq(b.trackId, 'track-7', 'and its track mapping');
+      eq(b.sessionId, session, 'and its owning session');
+      eq(b.conn, null, 'but is offline until it reconnects');
+      eq(restarted.stats().online, 0, 'so online counts it as absent');
+    }
+
+    // Pairing codes are deliberately NOT persisted: they expire in 120s and an
+    // offer is bound to a socket that a restart has already closed.
+    {
+      hub.issueCode(session);
+      hub.offerCode('badge:b');
+      const restarted = new Hub({ store: openStore(file) });
+      eq(restarted.stats().codes, 0, 'pairing codes do not survive a restart');
+      eq(restarted.stats().offers, 0, 'nor do offers, whose sockets are gone');
+    }
+
+    hub.forget(session, 'badge:a');
+    matches(hub, 'forget');
+    ok(!new Hub({ store: openStore(file) }).badges.has('badge:a'), 'forgetting is persisted too');
+
+    // A release is the badge disowning itself, and must stick across a restart
+    // just as firmly - otherwise it comes back adopted and nobody can free it.
+    {
+      const c2 = hub.issueCode(session).code;
+      hub.redeem(c2, 'badge:c', '1.2.3.4', {});
+      hub.release('badge:c');
+      matches(hub, 'release');
+      ok(!new Hub({ store: openStore(file) }).badges.has('badge:c'), 'a released badge stays released');
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ---- pure hub logic, with time and randomness under our control ----
 {
   let clock = 1_000_000;
