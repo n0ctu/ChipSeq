@@ -7,6 +7,20 @@ must agree - the release workflow fails if they do not.
 Dates are release dates. Unreleased work sits under **Unreleased** until it is
 tagged.
 
+## [Unreleased]
+
+### Fixed
+
+- **Native scrollbars were bright white inside a dark app**, which is most
+  obvious in the installed PWA when the tool list grows past the sidebar.
+  Nothing in the stylesheet could reach them: scrollbars, checkboxes, number
+  spinners and the popup a `<select>` opens are painted by the browser, and
+  without `color-scheme` it paints them from the light theme. The root now
+  declares `color-scheme: dark`, with a matching `<meta>` so the very first
+  paint is dark too. `scrollbar-color` puts the native ones on the same two
+  palette colours the piano roll already draws its own with, so the two kinds
+  do not look like they belong to different apps.
+
 ## [0.7.0] - 2026-08-10
 
 ### Added

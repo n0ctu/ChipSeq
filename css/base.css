@@ -2,6 +2,13 @@
    these custom properties via getComputedStyle, so restyling = edit this file. */
 
 :root {
+  /* Tells the browser this is a dark UI, which is the only way to reach the
+     parts of it CSS cannot: native scrollbars, checkboxes, number spinners and
+     the popup a <select> opens. Without it Chrome paints all of those from the
+     light theme, so a long tool list got a bright white scrollbar down the side
+     of an otherwise dark app. Explicitly styled backgrounds are unaffected. */
+  color-scheme: dark;
+
   --bg-0: #101214;
   --bg-1: #17191d;
   --bg-2: #1f2228;
@@ -33,6 +40,15 @@
   --track-8: #22d3ee;
   --font-ui: system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, "JetBrains Mono", "Cascadia Mono", monospace;
+}
+
+/* The generic dark scrollbar is grey rather than THIS palette's grey, and the
+   piano roll already draws its own with these exact two colours - so the
+   native ones elsewhere do not look like they belong to a different app.
+   Declared after the custom properties purely so it reads in order. */
+:root {
+  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-width: thin;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

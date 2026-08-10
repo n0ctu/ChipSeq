@@ -3064,6 +3064,19 @@ await check('the status bar says it is not saving', `(async () => {
 })()`);
 
 // ---- console errors ----
+// ---- the browser is told this is a dark UI ----
+//
+// Native scrollbars, checkboxes, number spinners and the popup a <select>
+// opens are painted by the browser, not by our CSS, so the only way to reach
+// them is color-scheme. Without it Chrome uses the light theme and a long tool
+// list gets a bright white scrollbar down the side of a dark app.
+await check('the root declares a dark color-scheme', `(() => {
+  const root = getComputedStyle(document.documentElement);
+  const meta = document.querySelector('meta[name=color-scheme]');
+  return (root.colorScheme === 'dark' && meta && meta.content === 'dark')
+    || 'colorScheme=' + root.colorScheme + ' meta=' + (meta && meta.content);
+})()`);
+
 // ---- the grid scrolls under the playhead ----
 //
 // tests/unit.mjs pins the arithmetic; this pins the WIRING, by feeding the roll
