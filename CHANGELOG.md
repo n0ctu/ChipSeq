@@ -7,6 +7,25 @@ must agree - the release workflow fails if they do not.
 Dates are release dates. Unreleased work sits under **Unreleased** until it is
 tagged.
 
+## [Unreleased]
+
+### Added
+
+- **A release now carries its own deployment.** `deploy-chipseq` fetches
+  `compose.yaml` and its own next version from the tag it is deploying, each
+  validated before it can replace a working file, and rolled back with the
+  image if the health gate fails. This closes the gap 0.7.3 shipped with:
+  `--db` lives in compose's `command:`, so a new image on an old `compose.yaml`
+  ran happily in memory, passed its gate, and silently had no persistence. One
+  manual install of the script remains, unavoidably - a copy cannot teach the
+  copy already on the box to fetch it - and it is the last one.
+- Three corrections found by exercising the sync in a rig before shipping it:
+  a rollback could restore a `compose.yaml.previous` left by an *earlier*
+  deploy, reverting the file two releases while the image went back one, to a
+  pairing that never existed; a successful deploy left that stale `.previous`
+  behind; and a failing `compose up` aborted the script under `set -e` with
+  the new state recorded and nothing running, instead of rolling back.
+
 ## [0.7.3] - 2026-08-10
 
 ### Added

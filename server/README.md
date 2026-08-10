@@ -100,7 +100,16 @@ test gate, builds this Dockerfile and pushes
 `ghcr.io/n0ctu/chipseq-relay:<tag>`; `server/deploy-chipseq`, run from
 `chipseq-deploy.timer` every ten minutes, notices the newer tag and deploys it.
 
-Install those once, from the checkout on the box:
+Install those once, from the checkout on the box - and once means once: the
+script fetches `compose.yaml` *and its own next version* from each release tag
+it deploys, validated before either can replace a working file, so this copy is
+the bootstrap rather than a file to keep in sync by hand. There is no way
+around that first copy: a script cannot retroactively teach the copy already on
+the box to fetch it. Rollback deliberately uses the script on disk - fetching
+an older script to perform the rollback would be trusting the past release's
+deployer with the present release's mess.
+
+Install:
 
 ```sh
 sudo cp app/server/chipseq-deploy.{service,timer} /etc/systemd/system/

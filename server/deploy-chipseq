@@ -25,6 +25,7 @@ REPO_RAW="${CHIPSEQ_REPO_RAW:-https://raw.githubusercontent.com/n0ctu/ChipSeq}"
 FORCE=0
 ROLLBACK=0
 PINNED=""
+ORIG_ARGS=("$@")
 while [ $# -gt 0 ]; do
   case "$1" in
     # Kept so existing timers and muscle memory do not break. There is no
@@ -152,6 +153,62 @@ restore_compose() {
   log "restored the previous compose.yaml"
 }
 
+# ---- the script itself belongs to the release too ----
+#
+# Same reasoning as compose.yaml, one level up: how a release is deployed ships
+# with the release. Without this, every change to THIS file needs another
+# manual copy onto the box, and the copy is exactly the step people skip.
+#
+# There is a chicken-and-egg here and no way around it: a copy containing this
+# function cannot teach the copy already on the box to fetch it. One manual
+# install is unavoidable - it is also the last one.
+#
+# The replacement is an mv within the directory, i.e. a rename: the running
+# copy keeps executing its own inode. Overwriting in place would feed bash
+# garbage mid-script, because bash reads the file as it goes. After the rename
+# the new copy is exec'd with the original arguments, so THIS deploy is
+# performed by the release's own script; the re-exec cannot loop, because the
+# new copy fetches the same bytes, finds them identical, and carries on.
+#
+# Rollback deliberately does not self-sync: it uses the script on disk, since
+# fetching an older script to perform the rollback would be trusting the past
+# release's deployer with the present release's mess.
+SELF="$(readlink -f "$0")"
+sync_self() {
+  local ref="${1##*:}" tmp
+  [ -n "$REPO_RAW" ] || return 0
+  case "$ref" in
+    v[0-9]*) ;;
+    *) return 0 ;;
+  esac
+  if [ "$SELF" != "$DIR/deploy-chipseq" ]; then
+    log "running from $SELF rather than $DIR/deploy-chipseq - self-update skipped"
+    return 0
+  fi
+  tmp="$(mktemp "$DIR/.deploy-chipseq.XXXXXX")" || return 0
+  if ! curl -fsS --max-time 30 "$REPO_RAW/$ref/server/deploy-chipseq" -o "$tmp"; then
+    log "could not fetch deploy-chipseq for $ref, keeping the one on disk"
+    rm -f "$tmp"
+    return 0
+  fi
+  if ! bash -n "$tmp" 2>/dev/null; then
+    log "deploy-chipseq at $ref does not parse, keeping the one on disk"
+    rm -f "$tmp"
+    return 0
+  fi
+  if cmp -s "$tmp" "$SELF"; then
+    rm -f "$tmp"
+    return 0
+  fi
+  chmod 755 "$tmp"
+  mv "$tmp" "$SELF"
+  log "deploy-chipseq updated from $ref, restarting with it"
+  # The flock fd survives the exec; the new copy re-opens it, releasing the
+  # lock for an instant. A waiter slipping in during that instant still runs
+  # serially - the orders can interleave, the writes cannot.
+  exec "$SELF" "${ORIG_ARGS[@]}"
+}
+
 # Healthy means BOTH the container's own healthcheck has passed and the relay
 # answers through the proxy. The first alone would call a container healthy
 # while Caddy could not reach it; the second alone would accept a stale
@@ -233,6 +290,7 @@ fi
 
 if [ -n "$PINNED" ]; then
   [ "$PINNED" = "$current" ] && { log "already on $current"; exit 0; }
+  sync_self "$PINNED"
   deploy "$PINNED" "$current"
   exit $?
 fi
@@ -266,4 +324,5 @@ if [ "$target" = "$current" ]; then
   exit 0
 fi
 
+sync_self "$target"
 deploy "$target" "$current"
