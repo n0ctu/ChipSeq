@@ -75,9 +75,12 @@ tagged.
 - **The README is now something a user can read in full.** Everything that only
   matters to someone changing the code moved to
   [DEVELOPMENT.md](DEVELOPMENT.md): architecture, the file format rules, audio
-  internals, the service worker, testing, releasing and deployment. The README
-  went from 878 lines to about 320 and links onward rather than explaining
-  itself.
+  internals, the service worker, testing, releasing and deployment. What stayed
+  was then cut again against a sharper rule: no design rationale, and nothing a
+  user learns in the first minute of clicking around. What is left is what the
+  app will not tell you itself, such as which gestures exist, what the M and C
+  markers actually govern, and which guarantees hold when you edit a shared
+  preset. 878 lines became 265, plus a 520-line developer guide.
 
 ### Notes on the deploy
 
