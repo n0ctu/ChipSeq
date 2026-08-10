@@ -7,7 +7,7 @@ must agree - the release workflow fails if they do not.
 Dates are release dates. Unreleased work sits under **Unreleased** until it is
 tagged.
 
-## [Unreleased]
+## [0.7.4] - 2026-08-11
 
 ### Added
 
@@ -41,6 +41,15 @@ tagged.
   pairing that never existed; a successful deploy left that stale `.previous`
   behind; and a failing `compose up` aborted the script under `set -e` with
   the new state recorded and nothing running, instead of rolling back.
+
+### Fixed
+
+- **The systemd deploy units described an idle guard that no longer exists**,
+  promising deploys would defer while badges are online. Nothing defers any
+  more - stopping the timer went from backstop to the only protection, and a
+  comment that overstates the safety net misleads precisely whoever reads it
+  at a venue at 2am. Both files now say what a mid-set deploy actually costs:
+  a few seconds of live playback, with adoptions surviving.
 
 ## [0.7.3] - 2026-08-10
 
