@@ -58,9 +58,13 @@ export function badgeState() {
 
 // Where the deployed build points by default. A static host cannot itself be
 // the badge server, so guessing its origin there is guaranteed wrong - this is
-// the server the GitHub Pages build should reach instead. Anyone running their
+// the server the published build should reach instead. Anyone running their
 // own only has to change the field once; it is remembered.
-export const PUBLIC_BADGE_SERVER = 'wss://chipseq.taileaee9.ts.net/ws';
+//
+// A dedicated relay rather than the Tailscale Funnel it used to be: Funnel
+// relays every public client through Tailscale's own infrastructure, which is
+// fine for scheduled playback and poor for live note-by-note.
+export const PUBLIC_BADGE_SERVER = 'wss://ws.chipseq.app/ws';
 
 // A guess, and only a good one when the app is served BY the badge server.
 // Opened from a plain dev server it points at that instead, which is silently

@@ -7,10 +7,16 @@ must agree - the release workflow fails if they do not.
 Dates are release dates. Unreleased work sits under **Unreleased** until it is
 tagged.
 
-## [Unreleased]
+## [0.7.1] - 2026-08-10
 
 ### Added
 
+- **The app points at a dedicated relay.** `wss://ws.chipseq.app/ws` replaces
+  the Tailscale Funnel address as the default in the Badges card. Funnel relays
+  every public client through Tailscale's own infrastructure, which is fine for
+  scheduled playback and poor for live note-by-note; the new host answers in
+  about 20 ms of round trip. Anyone running their own relay still only changes
+  the field once, and it is remembered.
 - **The badge relay ships as a container image, and tagging releases it.** A new
   workflow builds `server/Dockerfile` on every `v*` tag and pushes
   `ghcr.io/n0ctu/chipseq-relay`, which the server polls and deploys itself. It
