@@ -1996,6 +1996,78 @@ await check('pressing Send uploads the song to the badge', `(async () => {
   }
 }
 
+// ---- sending an edited song asks before replacing ----
+//
+// The id is the content checksum, so the edit produces a different id under
+// the same name. A shared name is not proof of an update - every fresh project
+// is called "Untitled" - so the card must ask, and Cancel must cost nothing.
+const oldTuneId = [...labBadge.tunes.keys()][0];
+await evaluate(`window.__chipseq.store.commit('smoke edit', ['notes'], (d) => {
+  d.tracks[0].notes[0].pitch += 1;
+})`);
+const newTuneId = await evaluate(`(async () => {
+  const { buildTune } = await import('/js/core/badge-tune.js');
+  return buildTune(window.__chipseq.store.getDoc(),
+    { name: window.__chipseq.store.getDoc().name }).id;
+})()`);
+
+await check('sending the edited song opens a Replace dialog', `(async () => {
+  const scope = document.querySelector('#badges-body [data-act="put-scope"]');
+  if (scope) scope.value = ''; // whole song, same as the id computed above
+  document.querySelector('#badges-body [data-act="put"]').click();
+  const dlg = document.getElementById('dlg-confirm');
+  for (let i = 0; i < 40; i++) {
+    if (dlg.open) break;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  if (!dlg.open) return 'no dialog appeared';
+  const title = document.getElementById('confirm-title').textContent;
+  return title === 'Replace tune' || 'wrong dialog: ' + title;
+})()`);
+
+await check('cancelling leaves the badge untouched', `(async () => {
+  const dlg = document.getElementById('dlg-confirm');
+  dlg.querySelector('button[value="cancel"]').click();
+  await new Promise((r) => setTimeout(r, 400));
+  return !dlg.open || 'dialog still open';
+})()`);
+{
+  const untouched = labBadge.tunes.has(oldTuneId) && !labBadge.tunes.has(newTuneId)
+    && labBadge.tunes.size === 1;
+  if (untouched) { pass++; console.log('OK  ', 'and the old version is still the only one stored'); }
+  else { fail++; console.log('FAIL', `and the old version is still the only one stored -> ${[...labBadge.tunes.keys()]}`); }
+}
+
+await check('confirming Replace sends the new version', `(async () => {
+  const scope = document.querySelector('#badges-body [data-act="put-scope"]');
+  if (scope) scope.value = '';
+  document.querySelector('#badges-body [data-act="put"]').click();
+  const dlg = document.getElementById('dlg-confirm');
+  for (let i = 0; i < 40; i++) {
+    if (dlg.open) break;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  if (!dlg.open) return 'no dialog appeared';
+  document.getElementById('btn-confirm-ok').click();
+  return true;
+})()`);
+{
+  // The replace is judged on the badge itself: the new id arrives, the stale
+  // one is dropped after the commit, and exactly one tune remains.
+  let swapped = false;
+  for (let i = 0; i < 100; i++) {
+    if (labBadge.tunes.has(newTuneId) && !labBadge.tunes.has(oldTuneId) && labBadge.tunes.size === 1) {
+      swapped = true;
+      break;
+    }
+    await sleep(100);
+  }
+  if (swapped) { pass++; console.log('OK  ', 'the badge ends up with the new version under the old name, alone'); }
+  else { fail++; console.log('FAIL', `the badge ends up with the new version alone -> ${[...labBadge.tunes.keys()]}`); }
+}
+// Put the song back so the later playback tests see the notes they expect.
+await evaluate(`window.__chipseq.store.undo()`);
+
 await check('deleting a stored tune clears it from the card', `(async () => {
   const del = document.querySelector('#badges-body .bg-tune [data-act="drop-tune"]');
   if (!del) return 'no delete button';

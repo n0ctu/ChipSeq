@@ -91,7 +91,7 @@ const ASSETS = [
   ['js/ui/status-bar.js', '714d2f0a4a7c'],
   ['js/ui/toolbar.js', '59f231c1cec0'],
   ['js/ui/tools-panel.js', '305409d02558'],
-  ['js/ui/tools/badges.js', 'fe7cfb6f84e6'],
+  ['js/ui/tools/badges.js', '3d66049dafad'],
   ['js/ui/tools/effects.js', '84d1f1a4c3c9'],
   ['js/ui/tools/envelope-editor.js', '8ae27ecfdc03'],
   ['js/ui/tools/harmonics.js', '0c2488e2b9c6'],

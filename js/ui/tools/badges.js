@@ -11,6 +11,7 @@ import {
 import { createUpload, replacePlan } from '../../net/badge-upload.js';
 import { buildTune } from '../../core/badge-tune.js';
 import { icon } from '../icons.js';
+import { confirmDialog } from '../dialogs.js';
 
 // Bytes, for a card that has to say whether a 39 kB tune fits in what is left.
 export function formatBytes(n) {
@@ -286,8 +287,8 @@ export function mount(body, { store, badgeStream = null }) {
   // Refuses up front when it cannot fit. The badge would refuse too, but only
   // after the announcement round trip, and "it does not fit" is a better thing
   // to learn before a progress bar appears than during one.
-  function sendTune(badgeId, trackId) {
-    const b = state.badges.find((x) => x.id === badgeId);
+  async function sendTune(badgeId, trackId) {
+    let b = state.badges.find((x) => x.id === badgeId);
     if (!b || uploads.has(badgeId)) return;
     const doc = store.getDoc();
     let built;
@@ -301,7 +302,25 @@ export function mount(body, { store, badgeStream = null }) {
     // Sending the same song again REPLACES the copy on the badge: same name,
     // different id means the old versions are dropped once the new one has
     // committed. Same id means the exact bytes are already there.
-    const plan = replacePlan(b.lib, { id: built.id, name: doc.name, bytes: built.bytes.length });
+    let plan = replacePlan(b.lib, { id: built.id, name: doc.name, bytes: built.bytes.length });
+    if (plan.upload && plan.dropFirst.length + plan.dropAfter.length > 0) {
+      // Ask before replacing, because a shared name is not proof of an update:
+      // every fresh project is called "Untitled", and two unrelated songs with
+      // that name would otherwise silently destroy each other on the badge.
+      // Only the person pressing Send knows which of the two cases this is -
+      // same precedent as overwriting a named arp preset.
+      const go = await confirmDialog(
+        'Replace tune',
+        `“${doc.name}” is already on ${b.name}. Send the current version in its place? Rename the project if you want to keep both.`,
+        'Replace'
+      );
+      if (!go) return;
+      // The library can change while the dialog is open - a lib push, another
+      // upload finishing - so what was decided from is re-decided, not reused.
+      b = state.badges.find((x) => x.id === badgeId);
+      if (!b || uploads.has(badgeId)) return;
+      plan = replacePlan(b.lib, { id: built.id, name: doc.name, bytes: built.bytes.length });
+    }
     if (!plan.upload) {
       state.error = null;
       ensureClient().askLibrary(badgeId);

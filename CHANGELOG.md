@@ -11,17 +11,22 @@ tagged.
 
 ### Added
 
-- **Sending an edited song updates it on the badge instead of duplicating it.**
-  A tune's id is the checksum of its content - load-bearing for the mesh, so it
-  rightly changes on every edit - but the person pressing Send thinks in names,
-  and two entries called "Tetris" is a bug from where they stand. Send now
-  replaces: once the new version commits, every same-named tune with a
-  different id is dropped, which also cleans up duplicates that accumulated
-  before this existed. The badge's own reported library is the ground truth,
-  so it works from any browser and any session. Upload happens before the drop
-  so a failed transfer costs nothing; only when the badge cannot hold both
-  versions at once is the stale copy dropped first. No firmware or protocol
-  change - the existing put and drop verbs, in the right order.
+- **Sending an edited song replaces it on the badge - after asking.** A tune's
+  id is the checksum of its content - load-bearing for the mesh, so it rightly
+  changes on every edit - but the person pressing Send thinks in names, and two
+  entries called "Tetris" is a bug from where they stand. Send now offers to
+  replace: "already on the badge - send the current version in its place?
+  Rename the project to keep both." It asks rather than assuming, because a
+  shared name is not proof of an update - every fresh project is called
+  "Untitled", and two unrelated songs with that name would otherwise silently
+  destroy each other. Confirming drops every same-named tune with a different
+  id once the new version commits, which also cleans up duplicates that
+  accumulated before this existed; cancelling costs nothing. The badge's own
+  reported library is the ground truth, so it works from any browser and any
+  session. Upload happens before the drop so a failed transfer costs nothing
+  stored; only when the badge cannot hold both versions at once is the stale
+  copy dropped first. No firmware or protocol change - the existing put and
+  drop verbs, in the right order.
 - **A release now carries its own deployment.** `deploy-chipseq` fetches
   `compose.yaml` and its own next version from the tag it is deploying, each
   validated before it can replace a working file, and rolled back with the
