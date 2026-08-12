@@ -96,7 +96,7 @@ export class FakeBadge {
   // would look correct while doing nothing.
   constructor({
     url, id, fw = 'fake-2.0.0', code = null, clockSkew = 0, onEvent = null,
-    caps = ['note', 'sched', 'store'],
+    caps = ['note', 'sched', 'store', 'fetch'],
     // What this badge claims about its own adoption in `hello`:
     //   null  - no claim (the default, and what a badge with no persistent
     //           store should send: the server's record stands)
@@ -250,6 +250,9 @@ export class FakeBadge {
         return;
       case 'lib?':
         this.sendLibrary();
+        break;
+      case 'get':
+        this.sendTuneBack(msg);
         return;
       case 'drop':
         // An unknown id is not an error: report the library as it now stands
@@ -281,6 +284,28 @@ export class FakeBadge {
     let used = 0;
     for (const t of this.tunes.values()) used += t.bytes;
     return Math.max(0, this.flashBytes - used);
+  }
+
+  // §6.5: stream a stored tune back. No acks and no window - reads do not
+  // stall the way flash writes do, and the transport is ordered - so this is
+  // deliberately simpler than the upload side. The file carries its own CRC;
+  // the sequencer verifies it there, so the badge's whole job is to return
+  // the bytes verbatim.
+  sendTuneBack(msg) {
+    const tune = this.tunes.get(msg.id);
+    if (!tune || !tune.data) {
+      this.send({ t: 'get_fail', id: msg.id, reason: 'unknown' });
+      return;
+    }
+    const CHUNK = 1024;
+    const chunks = Math.ceil(tune.data.length / CHUNK);
+    this.send({ t: 'get_begin', id: msg.id, bytes: tune.data.length, chunks });
+    for (let seq = 0; seq < chunks; seq++) {
+      const d = Buffer.from(tune.data.subarray(seq * CHUNK, (seq + 1) * CHUNK)).toString('base64');
+      this.send({ t: 'get_data', id: msg.id, seq, d });
+    }
+    this.send({ t: 'get_end', id: msg.id });
+    this.onEvent({ t: 'fetched', id: msg.id, chunks });
   }
 
   sendLibrary() {

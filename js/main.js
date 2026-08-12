@@ -11,6 +11,8 @@ import { createEngine } from './core/engine.js';
 import { createBadgeStream } from './net/badge-stream.js';
 import { getBadgeClient } from './net/badges.js';
 import { parseMidi } from './core/midi-import.js';
+import { parseTune } from './core/badge-tune.js';
+import { tuneToProject } from './core/badge-import.js';
 
 import { createUiStore } from './ui/ui-store.js';
 import { initStartScreen } from './ui/start-screen.js';
@@ -151,10 +153,27 @@ trackImportInput.addEventListener('change', async () => {
   }
 });
 
+// A .cbt is the badge's own format: a converted performance, not a project.
+// The warning is not decoration - arps arrive as plain notes and instruments
+// are not in the file, and someone re-importing their own song deserves to
+// know why it came back simpler than it left.
+function openImportedTune(bytes) {
+  const { doc, warnings } = tuneToProject(parseTune(bytes));
+  openProject(doc);
+  const save = document.getElementById('st-save');
+  if (save) {
+    save.textContent = `converted from a badge tune - arpeggios arrive as plain notes, instruments are not stored in it${
+      warnings.length ? '; ' + warnings.join('; ') : ''}`;
+    setTimeout(() => (save.textContent = ''), 10000);
+  }
+}
+
 async function handleFile(file) {
   const name = file.name.toLowerCase();
   try {
-    if (name.endsWith('.mid') || name.endsWith('.midi')) {
+    if (name.endsWith('.cbt')) {
+      openImportedTune(new Uint8Array(await file.arrayBuffer()));
+    } else if (name.endsWith('.mid') || name.endsWith('.midi')) {
       const parsed = parseMidi(await file.arrayBuffer());
       // Decide mode before showing the dialog: default to mono (badge-first).
       const assignments = await midiImportDialog(parsed);
@@ -250,7 +269,7 @@ const offline = initOffline({
 // tool's module only when its card first opens.
 // badgeStream goes in so the Badges card can offer the live/scheduled switch:
 // the stream owns that decision, and two places holding it would drift.
-const toolsPanel = initToolsPanel({ store, uiStore, engine, roll, badgeStream });
+const toolsPanel = initToolsPanel({ store, uiStore, engine, roll, badgeStream, openImportedTune });
 initTracksPanel({
   store,
   uiStore,

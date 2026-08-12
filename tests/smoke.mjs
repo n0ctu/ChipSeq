@@ -2068,16 +2068,6 @@ await check('confirming Replace sends the new version', `(async () => {
 // Put the song back so the later playback tests see the notes they expect.
 await evaluate(`window.__chipseq.store.undo()`);
 
-await check('deleting a stored tune clears it from the card', `(async () => {
-  const del = document.querySelector('#badges-body .bg-tune [data-act="drop-tune"]');
-  if (!del) return 'no delete button';
-  del.click();
-  for (let i = 0; i < 60; i++) {
-    if (!document.querySelector('#badges-body .bg-tune')) return true;
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  return 'the tune is still listed';
-})()`);
 
 // ---- auditioning a note reaches the badges ----
 //
@@ -2346,6 +2336,66 @@ await check('gain above unity is allowed and flagged as hot', `(() => {
 await evaluate(`document.querySelector('#instrument-body #in-audition').click()`);
 await sleep(100);
 await check('audition toggle stops the loop', `!window.__chipseq.engine.isAuditioning()`);
+
+// These two live AFTER the audition sequence on purpose: opening a project -
+// which the fetch test does, twice - kills the audition loop the toggle test
+// above needs to still be running from 900 lines earlier. Moving the tests was
+// the fix; teaching openProject to spare a test's audition would be backwards.
+// ---- fetching the tune back opens it as a project ----
+//
+// The full loop: the tune stored on the badge comes back over the socket,
+// reverses into ticks, and opens in the editor with the conversion warning
+// showing. Asserted around a real transfer against the fake badge.
+const preFetchDocId = await evaluate(`window.__chipseq.store.getDoc().id`);
+const storedTune = [...labBadge.tunes.values()][0];
+
+await check('the fetch button opens the stored tune as a project', `(async () => {
+  const btn = document.querySelector('#badges-body .bg-tune [data-act="get-tune"]');
+  if (!btn) return 'no fetch button - is the fetch capability wired through?';
+  btn.click();
+  for (let i = 0; i < 100; i++) {
+    if (window.__chipseq.store.getDoc().id !== ${JSON.stringify(preFetchDocId)}) break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  const doc = window.__chipseq.store.getDoc();
+  if (doc.id === ${JSON.stringify(preFetchDocId)}) return 'no project opened';
+  if (doc.name !== ${JSON.stringify(storedTune.name)}) return 'wrong name: ' + doc.name;
+  const notes = doc.tracks.reduce((n, t) => n + t.notes.length, 0);
+  if (!(notes > 0)) return 'no notes came back';
+  const notice = document.getElementById('st-save').textContent;
+  return notice.includes('converted from a badge tune')
+    || 'no conversion warning shown: "' + notice + '"';
+})()`);
+
+await check('the fetched copy re-exports identically to what the badge holds', `(async () => {
+  const { buildTune } = await import('/js/core/badge-tune.js');
+  const rebuilt = buildTune(window.__chipseq.store.getDoc(),
+    { name: ${JSON.stringify(storedTune.name)} });
+  return rebuilt.id === ${JSON.stringify(storedTune.id)}
+    || 'ids differ: ' + rebuilt.id + ' vs ${storedTune.id}';
+})()`);
+
+// Put the original project back and remove the imported one from storage, or
+// the recents-count assertion later in this file counts a project this test
+// created.
+await evaluate(`(async () => {
+  const { loadProject, deleteProject } = await import('/js/core/persist.js');
+  const importedId = window.__chipseq.store.getDoc().id;
+  window.__chipseq.openProject(loadProject(${JSON.stringify(preFetchDocId)}));
+  deleteProject(importedId);
+})()`);
+
+await check('deleting a stored tune clears it from the card', `(async () => {
+  const del = document.querySelector('#badges-body .bg-tune [data-act="drop-tune"]');
+  if (!del) return 'no delete button';
+  del.click();
+  for (let i = 0; i < 60; i++) {
+    if (!document.querySelector('#badges-body .bg-tune')) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return 'the tune is still listed';
+})()`);
+
 
 // save as preset via the prompt dialog
 await evaluate(`document.querySelector('#instrument-body #in-save').click()`);

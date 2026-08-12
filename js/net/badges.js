@@ -288,6 +288,10 @@ export function createBadgeClient({ onChange = () => {}, onFrame = () => {} } = 
         return;
       case 'put_ack':
       case 'put_done':
+      case 'get_begin':
+      case 'get_data':
+      case 'get_end':
+      case 'get_fail':
         onFrame(msg);
         return;
       default:

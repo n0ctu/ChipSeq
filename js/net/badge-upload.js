@@ -85,6 +85,88 @@ export function replacePlan(lib, tune) {
   return { upload: true, dropFirst: stale.map((t) => t.id), dropAfter: [] };
 }
 
+// The download mirror of createUpload, and deliberately simpler: no window and
+// no acks, because reads do not stall the way flash writes do and the
+// transport is ordered (§6.5). The badge streams get_begin, the chunks, then
+// get_end; this assembles them and resolves the bytes. Integrity is NOT judged
+// here - the file carries its own CRC and parseTune is the gate - so the only
+// checks are the ones assembly itself needs: every seq present, length as
+// announced.
+export const FETCH_IDLE_MS = 5000;
+
+export function createFetch({
+  send,
+  badgeId,
+  tuneId,
+  onProgress = () => {},
+  now = () => Date.now(),
+  setTimer = (fn, ms) => setInterval(fn, ms),
+  clearTimer = (t) => clearInterval(t),
+}) {
+  const parts = new Map(); // seq -> Uint8Array
+  let expected = null; // { bytes, chunks } from get_begin
+  let lastFrameAt = now();
+  let timer = null;
+  let settled = false;
+  let resolve, reject;
+  const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+
+  const fail = (reason) => {
+    if (settled) return;
+    settled = true;
+    clearTimer(timer);
+    reject(Object.assign(new Error(`fetch failed: ${reason}`), { reason }));
+  };
+
+  return {
+    promise,
+    start() {
+      send({ t: 'get', badge: badgeId, id: tuneId });
+      // One idle timer rather than per-chunk bookkeeping: any frame resets it,
+      // so a stream that stalls anywhere fails the same way.
+      timer = setTimer(() => {
+        if (now() - lastFrameAt > FETCH_IDLE_MS) fail('timeout');
+      }, 500);
+      return promise;
+    },
+    cancel() {
+      fail('cancelled');
+    },
+    handle(msg) {
+      if (settled || msg.badge !== badgeId || msg.id !== tuneId) return;
+      lastFrameAt = now();
+      if (msg.t === 'get_fail') return fail(msg.reason || 'refused');
+      if (msg.t === 'get_begin') {
+        expected = { bytes: msg.bytes, chunks: msg.chunks };
+        return;
+      }
+      if (msg.t === 'get_data') {
+        const bin = atob(msg.d);
+        const raw = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) raw[i] = bin.charCodeAt(i);
+        parts.set(msg.seq, raw);
+        onProgress({ badgeId, id: tuneId, got: parts.size, chunks: expected ? expected.chunks : 0 });
+        return;
+      }
+      if (msg.t === 'get_end') {
+        if (!expected || parts.size !== expected.chunks) return fail('short');
+        const out = new Uint8Array(expected.bytes);
+        let at = 0;
+        for (let seq = 0; seq < expected.chunks; seq++) {
+          const part = parts.get(seq);
+          if (!part || at + part.length > out.length) return fail('short');
+          out.set(part, at);
+          at += part.length;
+        }
+        if (at !== expected.bytes) return fail('short');
+        settled = true;
+        clearTimer(timer);
+        resolve(out);
+      }
+    },
+  };
+}
+
 export function createUpload({
   send,
   badgeId,

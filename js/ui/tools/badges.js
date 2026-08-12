@@ -8,7 +8,7 @@ import {
   getBadgeClient, onBadgeChange, onBadgeFrame, badgeState, savedUrl,
   shouldAutoConnect, isGuessedUrl, badgeCan,
 } from '../../net/badges.js';
-import { createUpload, replacePlan } from '../../net/badge-upload.js';
+import { createUpload, createFetch, replacePlan } from '../../net/badge-upload.js';
 import { buildTune } from '../../core/badge-tune.js';
 import { icon } from '../icons.js';
 import { confirmDialog } from '../dialogs.js';
@@ -39,7 +39,7 @@ export function countdown(expires, now = Date.now()) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-export function mount(body, { store, badgeStream = null }) {
+export function mount(body, { store, badgeStream = null, openImportedTune = null }) {
   let client = null;
   let unsubscribe = null;
   let unsubscribeFrames = null;
@@ -50,6 +50,9 @@ export function mount(body, { store, badgeStream = null }) {
   // closing the card cancels them - a transfer whose progress bar is gone is a
   // transfer nobody can stop.
   const uploads = new Map();
+  // In-flight downloads, keyed like uploads. A fetched tune opens as a new
+  // project, so one at a time per badge is plenty.
+  const fetches = new Map();
 
   // The card rebuilds its DOM on every state change, and state changes for
   // reasons that have nothing to do with what you are typing - a clock sample
@@ -180,6 +183,40 @@ export function mount(body, { store, badgeStream = null }) {
       ${modeSwitch()}`;
   }
 
+  // Fetch a stored tune back and open it as a project (§6.5). The transfer
+  // resolves raw bytes; parseTune inside openImportedTune is the integrity
+  // gate, since the file carries its own CRC.
+  function fetchTune(badgeId, tuneId) {
+    if (fetches.has(badgeId) || !openImportedTune) return;
+    const transfer = createFetch({
+      send: (m) => ensureClient().send(m),
+      badgeId,
+      tuneId,
+    });
+    fetches.set(badgeId, transfer);
+    state.error = null;
+    transfer.start().then(
+      (bytes) => {
+        fetches.delete(badgeId);
+        try {
+          openImportedTune(bytes);
+        } catch (err) {
+          state.error = `That tune did not survive the trip: ${err.message}`;
+          render();
+        }
+      },
+      (err) => {
+        fetches.delete(badgeId);
+        state.error = err.reason === 'unknown'
+          ? 'The badge no longer holds that tune.'
+          : err.reason === 'busy'
+            ? 'The badge is busy - try again shortly.'
+            : `Fetch failed (${err.reason || 'unknown'}).`;
+        render();
+      }
+    );
+  }
+
   // Live vs scheduled. Measured over a real Funnel, live costs 50 ms of onset
   // error against scheduled's 0.3 ms - so scheduled is the default and this
   // exists because on a LAN the gap narrows, and because a badge that has not
@@ -236,6 +273,8 @@ export function mount(body, { store, badgeStream = null }) {
                 <div class="bg-tune" data-tune="${t.id}">
                   <b>${t.name || t.id}</b>
                   <span class="lv-mode">${t.tracks} trk · ${formatMs(t.ms)} · ${formatBytes(t.bytes)}</span>
+                  ${badgeCan(b, 'fetch') && openImportedTune ? `<button class="btn-icon" data-act="get-tune"
+                    title="Fetch and open in the editor - a converted performance, not the original project">${icon('music')}</button>` : ''}
                   <button class="btn-icon" data-act="drop-tune" title="Delete from the badge">${icon('trash')}</button>
                 </div>`).join('')}</div>`
             : '<div class="in-hint">Nothing stored yet.</div>')
@@ -277,6 +316,7 @@ export function mount(body, { store, badgeStream = null }) {
       // number reaches the card.
       unsubscribeFrames = onBadgeFrame((msg) => {
         for (const up of uploads.values()) up.transfer.handle(msg);
+        for (const f of fetches.values()) f.handle(msg);
       });
     }
     return client;
@@ -396,6 +436,13 @@ export function mount(body, { store, badgeStream = null }) {
       const code = input.value.trim();
       if (code) ensureClient().adopt(code);
       input.value = '';
+      return;
+    }
+    const getTune = e.target.closest('[data-act="get-tune"]');
+    if (getTune) {
+      const badgeId = getTune.closest('[data-id]').dataset.id;
+      const tuneId = getTune.closest('[data-tune]').dataset.tune;
+      fetchTune(badgeId, tuneId);
       return;
     }
     const forget = e.target.closest('[data-act="forget"]');

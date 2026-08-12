@@ -407,7 +407,7 @@ async function until(fn, what, timeout = 3000) {
   await until(() => (controller.last('badges') || { badges: [] }).badges.length === 1, 'adoption');
 
   const id = controller.last('badges').badges[0].id;
-  eq(controller.last('badges').badges[0].caps, ['note', 'sched', 'store'],
+  eq(controller.last('badges').badges[0].caps, ['note', 'sched', 'store', 'fetch'],
     'the badge advertises what it can do, and the sequencer is told');
 
   // Chunk it the way js/net/badge-upload.js does.
@@ -500,6 +500,46 @@ async function until(fn, what, timeout = 3000) {
       'and is told the badge is not addressable');
     eq(stranger.all('put_ack').length, 0, 'and never sees an acknowledgement from it');
     stranger.ws.close();
+  }
+
+  // Fetching back (§6.5): the round trip that makes a badge a place you can
+  // recover a tune FROM, not only send one to. The bytes must come back
+  // verbatim - the whole feature rests on that.
+  {
+    const collected = new Map();
+    let ended = false;
+    const before = controller.messages.length;
+    controller.send({ t: 'get', badge: id, id: tune.id });
+    await until(() => controller.messages.slice(before).some((m) => m.t === 'get_end'), 'the stream to finish');
+    for (const m of controller.messages.slice(before)) {
+      if (m.t === 'get_data') collected.set(m.seq, Buffer.from(m.d, 'base64'));
+      if (m.t === 'get_end') ended = true;
+    }
+    const begin = controller.messages.slice(before).find((m) => m.t === 'get_begin');
+    ok(begin && begin.bytes === tune.bytes.length && begin.badge === id,
+      'get_begin announces the size, stamped with which badge answered');
+    const back = Buffer.concat([...collected.keys()].sort((a, b) => a - b).map((k) => collected.get(k)));
+    ok(ended && back.equals(Buffer.from(tune.bytes)),
+      'the fetched bytes are identical to what was uploaded');
+
+    const n = controller.messages.length;
+    controller.send({ t: 'get', badge: id, id: 'ffffffff' });
+    await until(() => controller.messages.slice(n).some((m) => m.t === 'get_fail'), 'a refusal');
+    eq(controller.messages.slice(n).find((m) => m.t === 'get_fail').reason, 'unknown',
+      'an id the badge does not hold is refused, not streamed');
+  }
+
+  // A stranger cannot fetch either - the ownership check covers the read path.
+  {
+    const thief = new Controller();
+    await thief.connect();
+    const n = thief.messages.length;
+    thief.send({ t: 'get', badge: id, id: tune.id });
+    await until(() => thief.messages.slice(n).some((m) => m.t === 'get_fail'), 'the thief refused');
+    eq(thief.messages.slice(n).find((m) => m.t === 'get_fail').reason, 'offline',
+      'a session that does not own the badge cannot read its tunes');
+    eq(thief.messages.filter((m) => m.t === 'get_data').length, 0, 'and receives no bytes at all');
+    thief.ws.close();
   }
 
   // Replacing: the frame sequence js/ui/tools/badges.js sends when a song is

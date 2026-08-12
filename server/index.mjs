@@ -36,7 +36,7 @@ export const MAX_RELAY_BYTES = 8 * 1024;
 // than a passthrough: the badge is on the far side of the internet, and a
 // relay that forwards anything is a relay that forwards whatever an attacker
 // puts in it.
-const BADGE_TO_CONTROLLER = new Set(['put_ack', 'put_done', 'lib']);
+const BADGE_TO_CONTROLLER = new Set(['put_ack', 'put_done', 'lib', 'get_begin', 'get_data', 'get_end', 'get_fail']);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -430,10 +430,15 @@ export function createServer({ root, log = () => {}, dbPath = null } = {}) {
           case 'put_data':
           case 'put_end':
           case 'lib?':
-          case 'drop': {
+          case 'drop':
+          case 'get': {
             const b = need(msg.badge);
             if (!b || !b.conn) {
-              conn.sendJson({ t: 'put_done', id: msg.id, badge: msg.badge, ok: false, reason: 'offline' });
+              // The refusal has to speak the vocabulary of what was asked:
+              // an upload answers with put_done, a download with get_fail.
+              conn.sendJson(msg.t === 'get'
+                ? { t: 'get_fail', id: msg.id, badge: msg.badge, reason: 'offline' }
+                : { t: 'put_done', id: msg.id, badge: msg.badge, ok: false, reason: 'offline' });
               return;
             }
             const { badge, ...frame } = msg;

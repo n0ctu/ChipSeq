@@ -341,7 +341,7 @@ timed.
 `{t:"badges", badges:[…]}` is **pushed** whenever the roster changes - a badge
 connecting, dropping, being renamed or remapped. Do not poll for it. Each entry
 is `{id, name, fw, caps, trackId, online, lastSeen, lib}`, where `caps` is what
-the badge said it can do (`note`, `sched`, `store`, `mesh`) and `lib` is its
+the badge said it can do (`note`, `sched`, `store`, `fetch`, `mesh`) and `lib` is its
 last reported tune library or `null`.
 
 **Address by capability, not by hope.** A badge that did not advertise `store`
@@ -367,12 +367,17 @@ exactly what `docs/badge-protocol.md` §6 documents.
 | `{t:"put_data", badge, id, seq, d}` | one chunk, ≤1024 raw bytes, base64 in `d` |
 | `{t:"put_end", badge, id}` | commit; the badge verifies the CRC |
 | `{t:"drop", badge, id}` | delete a stored tune |
+| `{t:"get", badge, id}` | fetch a stored tune back (`fetch` capability) |
 
 | ← server | meaning |
 |---|---|
 | `{t:"put_ack", badge, id, seq}` | that chunk is safe on the badge |
 | `{t:"put_done", badge, id, ok, crc?, reason?}` | committed, or refused (`crc`, `space`, `format`, `abort`, `offline`) |
 | `{t:"lib", badge, tunes, freeBytes, maxTunes}` | the badge's library, also pushed unprompted after a change |
+| `{t:"get_begin", badge, id, bytes, chunks}` | the fetch is starting; chunks follow in order |
+| `{t:"get_data", badge, id, seq, d}` | one chunk of the tune coming back |
+| `{t:"get_end", badge, id}` | the stream is complete - the file's own CRC is the integrity check |
+| `{t:"get_fail", badge, id, reason}` | refused (`unknown`, `busy`, or `offline` from the server) |
 
 `badge` on the replies is **stamped by the server**, not taken from the badge's
 frame - a badge must not be able to claim it is a different badge.
@@ -409,7 +414,8 @@ Reachable from the public internet, so:
   `server/test.mjs` asserts a second controller can neither see nor play
   another session's badges, nor upload to one - and each of those was
   confirmed to fail when the check is removed.
-- The badge→controller path is an **allowlist** (`put_ack`, `put_done`, `lib`),
+- The badge→controller path is an **allowlist** (`put_ack`, `put_done`, `lib`,
+  and the `get_*` stream),
   not a passthrough. The badge is on the far side of the internet, and a relay
   that forwards anything is one that forwards whatever an attacker puts in it.
 - Protocol v2 is a **hard cut**: a badge announcing any other version is told

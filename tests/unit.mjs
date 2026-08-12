@@ -3282,6 +3282,113 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
 // The whole point of keeping this out of the card is that it can be driven
 // here with no socket and no clock.
 
+// ---- a fetched tune reverses into a project ----
+//
+// The whole feature rests on one property: reversing the badge's milliseconds
+// onto the tick grid and rebuilding the tune reproduces the EXACT bytes. Held
+// for every shipped demo, not asserted in prose. The conversion is lossy in
+// the ways the format is (arps flattened, instruments absent) - but never in
+// pitch or time at a constant tempo.
+{
+  const { buildTune, parseTune } = await import('../js/core/badge-tune.js');
+  const { tuneToProject } = await import('../js/core/badge-import.js');
+  const { readFileSync } = await import('node:fs');
+  const { migrate } = await import('../js/core/doc.js');
+
+  for (const f of ['mono', 'poly', 'rickroll', 'tetris', 'bad-apple']) {
+    const doc = migrate(JSON.parse(readFileSync(new URL(`../demos/${f}.chipseq.json`, import.meta.url), 'utf8')));
+    const original = buildTune(doc, { name: doc.name });
+    const parsed = parseTune(original.bytes);
+    const { doc: imported, warnings } = tuneToProject(parsed);
+    const rebuilt = buildTune(imported, { name: parsed.name });
+    assert(Buffer.from(rebuilt.bytes).equals(Buffer.from(original.bytes)),
+      `${f}: import then re-export is byte-identical`);
+    eq(warnings, [], `${f}: a tune this app built imports without warnings`);
+    eq(imported.mode, parsed.tracks.length > 1 ? 'poly' : 'mono', `${f}: mode follows the track count`);
+  }
+
+  // Foreign tunes: off-grid notes are quantized, and the user is told.
+  const foreign = {
+    name: 'Elsewhere', bpmHint: 120, loopStartMs: 0, loopEndMs: 0,
+    tracks: [{ name: 'Lead', notes: [
+      { startMs: 0, durMs: 100, pitch: 60 },
+      { startMs: 517, durMs: 90, pitch: 62 },  // 5.2 ms/tick grid: this is ~3.3 ms off
+    ] }],
+  };
+  const res = tuneToProject(foreign);
+  assert(res.warnings.some((w) => w.includes('quantized')), 'off-grid notes produce a quantization warning');
+  assert(res.worstOffGridMs > 1, 'and the reported error is the real one');
+
+  // No tempo hint: a grid is assumed, and saying so is not optional.
+  const untempoed = { ...foreign, bpmHint: 0, tracks: [{ name: 'L', notes: [{ startMs: 0, durMs: 500, pitch: 60 }] }] };
+  assert(tuneToProject(untempoed).warnings.some((w) => w.includes('no tempo')),
+    'a tune without a tempo hint warns that the grid was assumed');
+
+  // Loop points come back as a loop region.
+  const looped = { name: 'L', bpmHint: 120, loopStartMs: 1000, loopEndMs: 3000,
+    tracks: [{ name: 'L', notes: [{ startMs: 0, durMs: 100, pitch: 60 }] }] };
+  const l = tuneToProject(looped).doc.loop;
+  assert(l && l.startTick > 0 && l.endTick > l.startTick, 'loop points reverse into a loop region');
+}
+
+// ---- fetching a tune back: the transfer state machine ----
+{
+  const { createFetch, FETCH_IDLE_MS } = await import('../js/net/badge-upload.js');
+  const b64 = (arr) => Buffer.from(arr).toString('base64');
+
+  function rig() {
+    const sent = [];
+    let t = 0;
+    const timers = [];
+    const f = createFetch({
+      send: (m) => sent.push(m),
+      badgeId: 'b1', tuneId: 'cafe0001',
+      now: () => t,
+      setTimer: (fn) => { timers.push(fn); return timers.length; },
+      clearTimer: () => {},
+    });
+    return { f, sent, tick: (ms) => { t += ms; timers.forEach((fn) => fn()); } };
+  }
+
+  {
+    const r = rig();
+    const p = r.f.start();
+    eq(r.sent, [{ t: 'get', badge: 'b1', id: 'cafe0001' }], 'start asks the badge for the tune');
+    r.f.handle({ t: 'get_begin', badge: 'b1', id: 'cafe0001', bytes: 5, chunks: 2 });
+    r.f.handle({ t: 'get_data', badge: 'b1', id: 'cafe0001', seq: 0, d: b64([1, 2, 3]) });
+    r.f.handle({ t: 'get_data', badge: 'b1', id: 'cafe0001', seq: 1, d: b64([4, 5]) });
+    r.f.handle({ t: 'get_end', badge: 'b1', id: 'cafe0001' });
+    eq([...await p], [1, 2, 3, 4, 5], 'the chunks assemble into the announced bytes');
+  }
+
+  {
+    const r = rig();
+    const p = r.f.start();
+    // frames about some other badge or tune must not leak in
+    r.f.handle({ t: 'get_begin', badge: 'OTHER', id: 'cafe0001', bytes: 1, chunks: 1 });
+    r.f.handle({ t: 'get_fail', badge: 'b1', id: 'ffffffff', reason: 'unknown' });
+    r.f.handle({ t: 'get_fail', badge: 'b1', id: 'cafe0001', reason: 'unknown' });
+    const err = await p.catch((e) => e);
+    eq(err.reason, 'unknown', 'a refusal rejects with the badge reason, and only for the right tune');
+  }
+
+  {
+    const r = rig();
+    const p = r.f.start();
+    r.f.handle({ t: 'get_begin', badge: 'b1', id: 'cafe0001', bytes: 5, chunks: 2 });
+    r.f.handle({ t: 'get_data', badge: 'b1', id: 'cafe0001', seq: 0, d: b64([1, 2, 3]) });
+    r.f.handle({ t: 'get_end', badge: 'b1', id: 'cafe0001' });
+    eq((await p.catch((e) => e)).reason, 'short', 'a stream missing a chunk is rejected, not padded');
+  }
+
+  {
+    const r = rig();
+    const p = r.f.start();
+    r.tick(FETCH_IDLE_MS + 1000);
+    eq((await p.catch((e) => e)).reason, 'timeout', 'a stalled stream times out instead of hanging');
+  }
+}
+
 // ---- sending a tune again replaces it ----
 //
 // A tune's id is the CRC-32 of its content, so editing a song and sending it

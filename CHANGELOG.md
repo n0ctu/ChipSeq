@@ -7,6 +7,22 @@ must agree - the release workflow fails if they do not.
 Dates are release dates. Unreleased work sits under **Unreleased** until it is
 tagged.
 
+## [Unreleased]
+
+### Added
+
+- **A tune on a badge can be fetched back and edited.** The protocol gains its
+  read path (§6.5, capability `fetch`): the mirror of upload, without the
+  window and acks that exist only because flash writes stall. The sequencer
+  reverses the fetched milliseconds onto the tick grid via the tempo hint in
+  the file header, which is exact for anything this app built - held in tests
+  as import-then-re-export being byte-identical for every demo - and
+  best-effort for anything else: off-grid notes are quantized to the nearest
+  tick and the app says by how much. A `.cbt` file can also simply be dropped
+  on the app. Both paths warn that the result is a conversion, not the
+  original project: arpeggios arrive as plain notes, and instruments and
+  automation were never in the format.
+
 ## [0.7.4] - 2026-08-11
 
 ### Added

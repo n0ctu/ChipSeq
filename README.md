@@ -238,6 +238,12 @@ a track live on them, uploads tunes for standalone playback, and lets badges
 form their own offline mesh. That needs the relay server, which has its own
 guide in [`server/README.md`](server/README.md).
 
+A tune stored on a badge can be fetched back and opened for editing (on
+firmware that supports it), and a `.cbt` file can be dropped on the app like
+any other import. Either way what comes back is a conversion, not the original
+project: arpeggios arrive as plain notes, and instruments and automation are
+not stored in the badge format. The app says so when it happens.
+
 ## Keyboard
 
 | Keys | Action |
