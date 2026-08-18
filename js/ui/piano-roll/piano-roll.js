@@ -3,7 +3,7 @@
 
 import { readTheme, drawGrid, drawNotes, drawOverlay, drawRuler, drawKeys, drawChordLane } from './render.js';
 import { clampScroll, effectiveSnap, followScroll, tickToX, PITCH_MIN, PITCH_MAX } from './coords.js';
-import { flattenNote, buildChordEvents } from '../../core/flatten.js';
+import { renderNoteEvents, makeArpContext, buildChordEvents } from '../../core/flatten.js';
 import { songEndTick, soloActive } from '../../core/doc.js';
 import { chordName } from '../../core/music.js';
 import { attachInteractions } from './interactions.js';
@@ -35,8 +35,47 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
     }
     return chordCache;
   }
-  store.subscribe(['notes', 'tracks', 'song', 'doc'], () => {
+
+  // Ghost events - what an arpeggiated note actually plays - are cached the
+  // same way, and for the same reason: they change only when the document
+  // does, and the roll repaints far more often than that. Once the follow-
+  // scroll is moving, every frame. Before this cache each repaint rebuilt an
+  // arp context PER NOTE, whose chord lookup - the only cache
+  // buildChordEvents has - then rebuilt the whole chord track per note.
+  // Measured on a real song: 260 ms per frame for 62 arp notes. Cached: 0.5.
+  //
+  // Keyed by the note object rather than its id, because ids are not enforced
+  // unique and the object is; anything that replaces the object (undo, open,
+  // reload) also fires the subscription below, so a stale key never survives.
+  // NO_GHOST marks a note whose arp renders to itself, so it is not recomputed
+  // every frame either - `?? null` would have done exactly that.
+  const NO_GHOST = Symbol('no ghost');
+  let arpCtx = null;
+  const ghostCache = new Map();
+  function ghostFor(doc, note) {
+    let g = ghostCache.get(note);
+    if (g === undefined) {
+      arpCtx ??= makeArpContext(doc);
+      const events = renderNoteEvents(doc, note, arpCtx);
+      const plain = events.length === 1
+        && events[0].pitch === note.pitch
+        && events[0].startTick === note.startTick
+        && events[0].durationTicks === note.durationTicks;
+      g = plain ? NO_GHOST : events;
+      ghostCache.set(note, g);
+    }
+    return g === NO_GHOST ? null : g;
+  }
+
+  // One subscription clears all three: they are derived from the same
+  // document, so they go stale together. 'harmonics' is what the arp editor
+  // commits with; the rest is every scope that can change what a note plays,
+  // and 'doc' covers undo/redo and project open, which REPLACE the objects the
+  // cache and the context both hold.
+  store.subscribe(['notes', 'tracks', 'song', 'harmonics', 'doc'], () => {
     chordCache = null;
+    arpCtx = null;
+    ghostCache.clear();
     markDirty('chords');
   });
 
@@ -143,15 +182,17 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
       const silenced = solo && !track.solo;
       for (const note of track.notes) {
         if (note.startTick > endTick) break;
-        if (note.startTick + note.durationTicks < startTick && !note.harmonics) continue;
+        // The same cull for every note. Arp notes used to be exempt, which
+        // kept EVERY arp note from tick 0 to the viewport's right edge in the
+        // working set, growing as the playhead advanced. The exemption bought
+        // nothing: renderHarmonics clamps every step inside the note's own
+        // [start, start+duration), and chord mode uses the note's extent, so a
+        // ghost can never outrun the note that owns it. tests/unit.mjs pins
+        // that property, because this line depends on it.
+        if (note.startTick + note.durationTicks < startTick) continue;
         if (erased && erased.has(note.id)) continue;
         const item = { track, note, ghost: null, silenced };
-        if (note.harmonics) {
-          const events = flattenNote(doc, track.id, note.id);
-          if (!(events.length === 1 && events[0].pitch === note.pitch && events[0].startTick === note.startTick && events[0].durationTicks === note.durationTicks)) {
-            item.ghost = events;
-          }
-        }
+        if (note.harmonics) item.ghost = ghostFor(doc, note);
         items.push(item);
       }
     }

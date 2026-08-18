@@ -119,16 +119,28 @@ export function explainNoteChord(doc, trackId, noteId) {
   return resolveChord(note, note.harmonics, makeArpContext(doc));
 }
 
-// Render one note's events (used for ghost display and per-note preview).
-export function flattenNote(doc, trackId, noteId) {
-  const note = getNote(doc, trackId, noteId);
-  if (!note) return [];
-  const ctx = makeArpContext(doc);
+// Render one note's events against a context the CALLER owns. This is the
+// shape the piano roll needs: it renders every visible arp note every time it
+// repaints, and the context's chord lookup is the only cache buildChordEvents
+// has. Building a fresh context per note - which flattenNote below does, and
+// which the roll used to do - rebuilds the whole chord-track timeline for
+// every autoSong arp note, every frame. Measured on a 774-note chord track:
+// ~4 ms per note, 260 ms per frame for 62 arp notes. Shared: 0.5 ms.
+export function renderNoteEvents(doc, note, ctx) {
   if (doc.mode === 'mono' && note.harmonics && note.harmonics.mode === 'chord') {
     // Chord decorations are rejected in mono; render as plain note.
     return [{ pitch: note.pitch, startTick: note.startTick, durationTicks: note.durationTicks, velocity: note.velocity }];
   }
   return renderHarmonics(note, ctx);
+}
+
+// Render one note's events by id, with a context of its own. Right for a
+// one-shot - the Harmonics card explaining or auditioning the selected note -
+// and wrong for anything that runs per frame; use renderNoteEvents there.
+export function flattenNote(doc, trackId, noteId) {
+  const note = getNote(doc, trackId, noteId);
+  if (!note) return [];
+  return renderNoteEvents(doc, note, makeArpContext(doc));
 }
 
 // flattenSong(doc) -> { events: [{pitch,startTick,durationTicks,velocity,instrumentId}], warnings: [] }

@@ -3594,6 +3594,89 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     'no location at all yields nothing rather than throwing');
 }
 
+// ---- ghost events: cached, culled, and still correct ----
+//
+// The piano roll used to re-render every arpeggiated note's events on every
+// repaint, each with a fresh arp context - and the context's chord lookup is
+// the only cache buildChordEvents has, so every autoSong arp note rebuilt the
+// whole chord track, every frame. A real song stuttered at 4 fps from 62 arp
+// notes. These pin the three things the fix depends on.
+{
+  const { flattenNote, renderNoteEvents, makeArpContext } = await import('../js/core/flatten.js');
+  const { arpHeavySong } = await import('./util.mjs');
+  const { migrate, normalizeDoc } = await import('../js/core/doc.js');
+  const { readFileSync } = await import('node:fs');
+
+  const docs = [];
+  for (const f of ['mono', 'poly', 'rickroll', 'tetris', 'bad-apple']) {
+    docs.push([f, migrate(JSON.parse(readFileSync(new URL(`../demos/${f}.chipseq.json`, import.meta.url), 'utf8')))]);
+  }
+  const synth = await arpHeavySong({ arpNotes: 200 });
+  normalizeDoc(synth);
+  docs.push(['synthetic', synth]);
+
+  for (const [name, doc] of docs) {
+    // 1. The shared-context path is the reference path. Same events, exactly.
+    const ctx = makeArpContext(doc);
+    let mismatches = 0, arps = 0, overhang = 0;
+    for (const track of doc.tracks) {
+      for (const note of track.notes) {
+        if (!note.harmonics) continue;
+        arps++;
+        const shared = renderNoteEvents(doc, note, ctx);
+        const fresh = flattenNote(doc, track.id, note.id);
+        if (JSON.stringify(shared) !== JSON.stringify(fresh)) mismatches++;
+        // 2. The cull invariant: no ghost outruns its note. The roll's left-edge
+        //    cull now treats arp notes like any other, and is only right if this
+        //    holds - so a future arp mode that overhangs the note fails HERE
+        //    rather than by silently vanishing from the grid.
+        const end = note.startTick + note.durationTicks;
+        for (const ev of shared) {
+          if (ev.startTick < note.startTick || ev.startTick + ev.durationTicks > end) overhang++;
+        }
+      }
+    }
+    if (arps === 0) continue;
+    eq(mismatches, 0, `${name}: shared-context ghosts equal flattenNote for all ${arps} arp notes`);
+    eq(overhang, 0, `${name}: no ghost event outruns its note (the cull depends on it)`);
+  }
+
+  // 3. The regression itself, deterministically: rendering N autoSong arp
+  //    notes through ONE context must build the chord lookup once, not N
+  //    times. Counted, not timed, so it cannot flake in CI.
+  {
+    const doc = synth;
+    // Timing-free probe: render every arp note through one context, then
+    // empty the chord track BEHIND the context's back and render again. A
+    // context that caches its lookup still sees the original chords; one that
+    // rebuilt per note would see none. Deterministic, so CI-safe.
+    const ctx = makeArpContext(doc);
+    const first = doc.tracks.flatMap((t) => t.notes.filter((n) => n.harmonics).map((n) => renderNoteEvents(doc, n, ctx)));
+    // Empty the chord track behind the context's back. If the context really
+    // caches its lookup, later renders still see the ORIGINAL chords.
+    const chordTrack = doc.tracks.find((t) => t.id === doc.chordTrackId);
+    const saved = chordTrack.notes;
+    chordTrack.notes = [];
+    const second = doc.tracks.flatMap((t) => t.notes.filter((n) => n.harmonics).map((n) => renderNoteEvents(doc, n, ctx)));
+    chordTrack.notes = saved;
+    eq(JSON.stringify(second), JSON.stringify(first),
+      'a shared context resolves chords once and reuses them - it does not rebuild per note');
+    // And a FRESH context does see the change, which is what proves the probe
+    // measures caching rather than nothing. Not the first note: it sits on a
+    // C major chord in C major, where the key fallback happens to produce the
+    // identical triad and the control would pass for the wrong reason. Bar 2
+    // is an A minor chord, which the key fallback cannot reproduce.
+    const bar2 = doc.tracks[1].notes.find((n) => n.startTick >= 96 * 4 && n.startTick < 96 * 8);
+    const idx = doc.tracks.flatMap((t) => t.notes.filter((n) => n.harmonics)).indexOf(bar2);
+    chordTrack.notes = [];
+    const freshCtx = makeArpContext(doc);
+    const withNoChords = renderNoteEvents(doc, bar2, freshCtx);
+    chordTrack.notes = saved;
+    assert(JSON.stringify(withNoChords) !== JSON.stringify(first[idx]),
+      'whereas a fresh context sees the emptied chord track (so the probe is real)');
+  }
+}
+
 // ---- playhead following ----
 //
 // The three phases are asserted as properties of one calculation rather than as

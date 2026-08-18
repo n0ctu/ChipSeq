@@ -17,3 +17,8 @@ docs/
 
 # Real compose env files. server/.env.example is the tracked one.
 .env
+
+# Work-in-progress songs dropped in for local testing. Not fixtures.
+*.chipseq.json
+!demos/*.chipseq.json
+!tests/fixtures/**/*.chipseq.json

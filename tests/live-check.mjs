@@ -4,38 +4,48 @@ import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { findChrome } from './util.mjs';
 
 const CHROME = findChrome();
 const URL = process.argv[2] || 'https://chipseq.app/';
-const PROFILE = '/tmp/chipseq-live-profile-' + Date.now();
-
-const chrome = spawn(CHROME, [
-  '--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run',
-  '--autoplay-policy=no-user-gesture-required', '--window-size=1400,900',
-  // Port 0, not a fixed one - the same trap tests/smoke.mjs fell into. A fixed
-  // port silently attaches to whatever browser already holds it, so a leaked
-  // instance from an earlier run turns every later run into a check of a stale
-  // profile. It looks like a pass either way, which is the dangerous part.
-  '--remote-debugging-port=0',
-  `--user-data-dir=${PROFILE}`,
-  'about:blank',
-], { stdio: 'ignore' });
+// os.tmpdir() honours $TMPDIR - see tests/smoke.mjs for why that matters.
+const PROFILE = join(tmpdir(), 'chipseq-live-profile-' + Date.now());
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Chrome writes the port it actually chose here.
+// CHROME_CDP=127.0.0.1:port attaches to a Chrome started elsewhere instead of
+// spawning one - see tests/smoke.mjs for why (a sandbox that allows TCP but
+// not the AF_UNIX socket Chromium needs for its singleton lock).
+let chrome = null;
 let DEBUG_PORT = null;
-for (let i = 0; i < 100; i++) {
-  try {
-    const line = (await readFile(join(PROFILE, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
-    if (Number(line)) { DEBUG_PORT = Number(line); break; }
-  } catch {}
-  await sleep(100);
-}
-if (!DEBUG_PORT) {
-  console.error('FAIL Chrome never reported a debugging port');
-  process.exit(1);
+if (process.env.CHROME_CDP) {
+  DEBUG_PORT = Number(process.env.CHROME_CDP.split(':').pop());
+} else {
+  chrome = spawn(CHROME, [
+    '--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run',
+    '--autoplay-policy=no-user-gesture-required', '--window-size=1400,900',
+    // Port 0, not a fixed one - the same trap tests/smoke.mjs fell into. A fixed
+    // port silently attaches to whatever browser already holds it, so a leaked
+    // instance from an earlier run turns every later run into a check of a stale
+    // profile. It looks like a pass either way, which is the dangerous part.
+    '--remote-debugging-port=0',
+    `--user-data-dir=${PROFILE}`,
+    'about:blank',
+  ], { stdio: 'ignore' });
+
+  // Chrome writes the port it actually chose here.
+  for (let i = 0; i < 100; i++) {
+    try {
+      const line = (await readFile(join(PROFILE, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
+      if (Number(line)) { DEBUG_PORT = Number(line); break; }
+    } catch {}
+    await sleep(100);
+  }
+  if (!DEBUG_PORT) {
+    console.error('FAIL Chrome never reported a debugging port');
+    process.exit(1);
+  }
 }
 
 let targets = null;
@@ -46,7 +56,8 @@ for (let i = 0; i < 50; i++) {
   } catch {}
   await sleep(200);
 }
-const page = targets.find((t) => t.type === 'page');
+let page = targets.find((t) => t.type === 'page');
+if (!page) page = await (await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/new?about:blank`, { method: 'PUT' })).json();
 const ws = new WebSocket(page.webSocketDebuggerUrl);
 await new Promise((r) => (ws.onopen = r));
 
@@ -202,10 +213,14 @@ console.log(`\n${pass} passed, ${fail} failed`);
 // with it. kill() followed straight by process.exit() orphans the tree and
 // leaves the profile behind - which is how a leaked browser came to hold a
 // debugging port for days.
-await new Promise((resolve) => {
-  const done = setTimeout(() => { chrome.kill('SIGKILL'); resolve(); }, 5000);
-  chrome.once('exit', () => { clearTimeout(done); resolve(); });
-  chrome.kill('SIGTERM');
-});
-await removeProfile(PROFILE);
+if (chrome) {
+  await new Promise((resolve) => {
+    const done = setTimeout(() => { chrome.kill('SIGKILL'); resolve(); }, 5000);
+    chrome.once('exit', () => { clearTimeout(done); resolve(); });
+    chrome.kill('SIGTERM');
+  });
+  await removeProfile(PROFILE);
+} else {
+  ws.close();
+}
 process.exit(fail ? 1 : 0);

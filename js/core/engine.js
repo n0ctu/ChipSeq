@@ -88,11 +88,21 @@ export function createEngine(store) {
     return loop;
   }
 
-  function refreshEvents(fromTick) {
-    const doc = store.getDoc();
-    events = flattenSong(doc).events;
+  // Two separate jobs, because they have separate triggers. Flattening is
+  // owed to a document change; seeking is owed to the playhead moving. A loop
+  // wrap moves the playhead and changes nothing, so it must not pay for a
+  // flatten - measured at 16-28 ms on real songs, inside a 25 ms scheduler
+  // tick, which is how a tight loop drops notes via the stale-event path.
+  function reflatten() {
+    events = flattenSong(store.getDoc()).events;
+  }
+  function seekTo(fromTick) {
     eventIndex = events.findIndex((e) => e.startTick + e.durationTicks > fromTick);
     if (eventIndex < 0) eventIndex = events.length;
+  }
+  function refreshEvents(fromTick) {
+    reflatten();
+    seekTo(fromTick);
   }
 
   function scheduleWindow() {
@@ -167,7 +177,7 @@ export function createEngine(store) {
       if (loop) {
         passStartTime = endTime;
         passStartTick = loop.startTick;
-        refreshEvents(loop.startTick);
+        seekTo(loop.startTick); // the song did not change; only where we are in it
         nextBeatTick = Math.ceil(loop.startTick / tpb) * tpb;
       } else {
         if (audioCtx.currentTime >= endTime) stop();

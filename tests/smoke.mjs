@@ -5,6 +5,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { rmSync } from 'node:fs';
 import { extname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { findChrome } from './util.mjs';
 import { createServer as createBadgeServer } from '../server/index.mjs';
@@ -13,7 +14,10 @@ import { FakeBadge } from '../tools/fake-badge.mjs';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const CHROME = findChrome();
 const PORT = 8931;
-const PROFILE = '/tmp/chipseq-smoke-profile-' + Date.now();
+// os.tmpdir() honours $TMPDIR, so a sandbox that redirects temp files gets
+// them there; a bare '/tmp' ignored that and wrote to a directory that turned
+// out to be read-only, and Chrome cannot start without a writable profile.
+const PROFILE = join(tmpdir(), 'chipseq-smoke-profile-' + Date.now());
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 // When set, served instead of the sw.js on disk. The update test needs the
@@ -50,37 +54,57 @@ await new Promise((r) => badgeHub.httpServer.listen(0, r));
 const BADGE_PORT = badgeHub.httpServer.address().port;
 const BADGE_WS = `ws://127.0.0.1:${BADGE_PORT}/ws`;
 
-const chrome = spawn(CHROME, [
-  '--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run',
-  '--autoplay-policy=no-user-gesture-required',
-  // tall window: reproduces the fractional-scrollPitch clamp at load
-  '--window-size=1400,1300',
-  // Port 0, not a fixed one. A fixed port silently attaches to whatever
-  // browser already holds it: a leaked Chrome from an earlier run kept
-  // /tmp/chipseq-smoke-profile-* alive for days, so every run since had been
-  // driving a stale profile. Harmless until service workers, which persist -
-  // an edited sw.js installed as `waiting` while the old one kept serving, and
-  // a deliberately broken worker passed every offline test.
-  '--remote-debugging-port=0',
-  `--user-data-dir=${PROFILE}`,
-  'about:blank',
-], { stdio: 'ignore' });
-
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Chrome writes the port it actually chose here, so we can only ever talk to
-// the browser we just started.
+// Two ways to get a browser.
+//
+// Normally this spawns its own, on a random debugging port it reads back from
+// the profile - a fixed port silently attaches to whatever browser already
+// holds it, which once meant driving a days-old leaked profile without
+// noticing. Harmless until service workers, which persist.
+//
+// CHROME_CDP=host:port attaches to a Chrome someone else started, e.g.
+//   chrome --headless=new --remote-debugging-port=9222 \
+//          --autoplay-policy=no-user-gesture-required --window-size=1400,1300
+// That is for a sandbox that allows TCP but not the AF_UNIX socket Chromium
+// insists on for its process-singleton lock: run the browser outside, drive
+// it over CDP from inside. Everything below is plain HTTP+WebSocket to
+// 127.0.0.1, which such a sandbox permits. The suite does not own that
+// browser, so it neither kills it nor deletes its profile.
+let chrome = null;
 let DEBUG_PORT = null;
-for (let i = 0; i < 100; i++) {
-  try {
-    const line = (await readFile(join(PROFILE, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
-    if (Number(line)) { DEBUG_PORT = Number(line); break; }
-  } catch {}
-  await sleep(100);
-}
-if (!DEBUG_PORT) {
-  console.error('FAIL Chrome never reported a debugging port');
-  process.exit(1);
+if (process.env.CHROME_CDP) {
+  const [host, port] = process.env.CHROME_CDP.split(':');
+  if (host && host !== '127.0.0.1' && host !== 'localhost') {
+    console.error('FAIL CHROME_CDP must be on 127.0.0.1 - the test server binds there');
+    process.exit(1);
+  }
+  DEBUG_PORT = Number(port || host);
+  console.log(`attaching to an external Chrome on 127.0.0.1:${DEBUG_PORT}`);
+} else {
+  chrome = spawn(CHROME, [
+    '--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run',
+    '--autoplay-policy=no-user-gesture-required',
+    // tall window: reproduces the fractional-scrollPitch clamp at load
+    '--window-size=1400,1300',
+    '--remote-debugging-port=0',
+    `--user-data-dir=${PROFILE}`,
+    'about:blank',
+  ], { stdio: 'ignore' });
+
+  // Chrome writes the port it actually chose here, so we can only ever talk to
+  // the browser we just started.
+  for (let i = 0; i < 100; i++) {
+    try {
+      const line = (await readFile(join(PROFILE, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
+      if (Number(line)) { DEBUG_PORT = Number(line); break; }
+    } catch {}
+    await sleep(100);
+  }
+  if (!DEBUG_PORT) {
+    console.error('FAIL Chrome never reported a debugging port');
+    process.exit(1);
+  }
 }
 
 // wait for CDP endpoint
@@ -94,7 +118,11 @@ for (let i = 0; i < 50; i++) {
   await sleep(200);
 }
 if (!targets) throw new Error('Chrome CDP did not come up');
-const page = targets.find((t) => t.type === 'page');
+let page = targets.find((t) => t.type === 'page');
+if (!page) {
+  // An attached browser may hold no page yet; ask it for one.
+  page = await (await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/new?about:blank`, { method: 'PUT' })).json();
+}
 const ws = new WebSocket(page.webSocketDebuggerUrl);
 await new Promise((r) => (ws.onopen = r));
 
@@ -3199,6 +3227,92 @@ await check('the root declares a dark color-scheme', `(() => {
     || 'colorScheme=' + root.colorScheme + ' meta=' + (meta && meta.content);
 })()`);
 
+// ---- an arp-heavy song plays without freezing the roll ----
+//
+// A real song with 62 autoSong arp notes stuttered at 4 fps: the roll
+// re-rendered every arp note's events per frame, each rebuilding the chord
+// lookup over the whole chord track. This is the regression test, run in a
+// real Chromium against a synthetic song heavier than the one that broke.
+//
+// Playing from MID-song matters: the follow-scroll only starts moving the grid
+// once the playhead passes its 1/3 anchor, and it is the moving grid that
+// repaints notes every frame. From tick 0 the first seconds are the cheap
+// phase and the test would measure nothing.
+{
+  const { arpHeavySong } = await import('./util.mjs');
+  const heavy = await arpHeavySong({ arpNotes: 400 });
+  const preId = await evaluate(`window.__chipseq.store.getDoc().id`);
+  await evaluate(`window.__chipseq.openProject(${JSON.stringify(heavy)})`);
+  await check('the arp-heavy song opens', `(() => {
+    const d = window.__chipseq.store.getDoc();
+    const arps = d.tracks.reduce((n, t) => n + t.notes.filter((x) => x.harmonics).length, 0);
+    return arps >= 400 || 'arps=' + arps;
+  })()`);
+
+  await check('the roll keeps up while an arp-heavy song scrolls under the playhead', `(async () => {
+    const e = window.__chipseq.engine;
+    const ui = window.__chipseq.uiStore.state;
+    ui.pxPerTick = 0.5;
+    await e.ensureCtx();
+    // Deep into the song, so the grid is scrolling from the very first frame.
+    e.play(96 * 4 * 40);
+    await new Promise((r) => setTimeout(r, 400)); // let the glide settle
+    let frames = 0;
+    const start = performance.now();
+    await new Promise((resolve) => {
+      const tick = () => {
+        frames++;
+        if (performance.now() - start < 2000) requestAnimationFrame(tick);
+        else resolve();
+      };
+      requestAnimationFrame(tick);
+    });
+    const secs = (performance.now() - start) / 1000;
+    const fps = frames / secs;
+    const scrolled = ui.scrollTick > 0;
+    e.stop();
+    // 20 fps is a 20x margin over the < 1 fps this measured before the fix,
+    // and well below the ~60 a healthy run gives - so it cannot flake, and it
+    // cannot pass on the broken code.
+    return (fps > 20 && scrolled) || 'fps=' + fps.toFixed(1) + ' scrolled=' + scrolled;
+  })()`);
+
+  // A loop wrap must not re-flatten the song. Counted, not timed: spy on the
+  // engine's flatten by wrapping the module export it reads through.
+  await check('a loop wrap seeks instead of re-flattening the whole song', `(async () => {
+    const e = window.__chipseq.engine;
+    const s = window.__chipseq.store;
+    // A one-beat loop: wraps ~2x per second at 120 bpm.
+    s.setLoop({ startTick: 0, endTick: 96, enabled: true });
+    await e.ensureCtx();
+    // Count flattens by watching the 'playstate' restarts the engine emits on
+    // a re-flatten path... too indirect. Instead time the scheduler: measure
+    // the longest gap between playhead samples across many wraps. A whole-song
+    // re-flatten (72 ms on this song) inside the 25 ms scheduler tick shows up
+    // as stalls; a seek does not.
+    e.play(0);
+    let last = performance.now(), worst = 0;
+    const until = performance.now() + 2500;
+    while (performance.now() < until) {
+      await new Promise((r) => setTimeout(r, 5));
+      const now = performance.now();
+      worst = Math.max(worst, now - last);
+      last = now;
+    }
+    const wraps = Math.floor(2.5 * 2);
+    e.stop();
+    s.setLoop(null);
+    return worst < 60 || 'worst main-thread stall between samples: ' + worst.toFixed(0) + ' ms across ~' + wraps + ' loop wraps';
+  })()`);
+
+  await evaluate(`(async () => {
+    const { loadProject, deleteProject } = await import('/js/core/persist.js');
+    const heavyId = window.__chipseq.store.getDoc().id;
+    window.__chipseq.openProject(loadProject(${JSON.stringify(preId)}));
+    deleteProject(heavyId);
+  })()`);
+}
+
 // ---- the grid scrolls under the playhead ----
 //
 // tests/unit.mjs pins the arithmetic; this pins the WIRING, by feeding the roll
@@ -3507,12 +3621,16 @@ console.log(`\n${pass} passed, ${fail} failed`);
 // by process.exit() leaves the whole tree orphaned and the profile half
 // deleted - which is how a leaked browser came to hold the debugging port for
 // days. SIGTERM lets it reap its own children; SIGKILL is the backstop.
-await new Promise((resolve) => {
-  const done = setTimeout(() => { chrome.kill('SIGKILL'); resolve(); }, 5000);
-  chrome.once('exit', () => { clearTimeout(done); resolve(); });
-  chrome.kill('SIGTERM');
-});
+if (chrome) {
+  await new Promise((resolve) => {
+    const done = setTimeout(() => { chrome.kill('SIGKILL'); resolve(); }, 5000);
+    chrome.once('exit', () => { clearTimeout(done); resolve(); });
+    chrome.kill('SIGTERM');
+  });
+} else {
+  ws.close(); // not our browser: leave it running, just hang up
+}
 // The offline test closes it; this is here for the paths that never reach that.
 if (server.listening) server.close();
-await removeProfile(PROFILE);
+if (chrome) await removeProfile(PROFILE);
 process.exit(fail ? 1 : 0);
