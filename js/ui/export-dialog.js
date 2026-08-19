@@ -108,7 +108,7 @@ export function initExportDialog({ store, conflicts }) {
     // may be blocked while mono has unresolved conflicts.
     const blocked = (fmt) => !fmt.modes.includes(doc.mode)
       || (fmt.blockedByConflicts && conflicts.count() > 0);
-    if (blocked(exporterById(tab) || {})) tab = 'wav';
+    if (blocked(exporterById(tab) || {})) tab = 'json';
 
     for (const btn of dlg.querySelectorAll('#seg-export .seg-btn')) {
       const fmt = exporterById(btn.dataset.tab);
@@ -196,7 +196,10 @@ export function initExportDialog({ store, conflicts }) {
     if (fmt.text) {
       renderPreview();
       const current = tab === 'fmf' ? lastFmf : lastHeader;
-      if (current) downloadBlob(new Blob([current.text], { type: fmt.mime }), name);
+      if (!current) return;
+      downloadBlob(new Blob([current.text], { type: fmt.mime }), name);
+      // The file is on disk; the dialog's job is done.
+      dlg.close('download');
       return;
     }
 
@@ -210,6 +213,10 @@ export function initExportDialog({ store, conflicts }) {
       });
       if (out.level) showLevel(out.level);
       if (out.blob) downloadBlob(out.blob, name);
+      // The file is on disk, so close - UNLESS the limiter had to shape the
+      // mix. That warning exists so the user learns WHY the render sounds
+      // squashed, and a dialog that closes on top of it says "exported fine".
+      if (!(out.level && out.level.over)) dlg.close('download');
     } finally {
       btn.disabled = false;
       btn.textContent = label;
@@ -222,7 +229,10 @@ export function initExportDialog({ store, conflicts }) {
       $('inp-symbol').value = sanitizeSymbolName(doc.name);
       showLevel(null); // never show the previous render's level
       $('chk-export-stereo').checked = false;
-      tab = doc.mode === 'mono' && conflicts.count() === 0 ? 'h' : 'wav';
+      // The project file is the default: it is the only format that keeps
+      // everything (arps editable, automation, instruments) and it applies to
+      // every mode, so it is never a disabled surprise.
+      tab = 'json';
       renderTabs();
       openDialog(dlg);
     },

@@ -9,8 +9,13 @@ tagged.
 
 ## [Unreleased]
 
+## [0.7.6] - 2026-08-19
+
 ### Added
 
+- **Unreal Superhero 3 ships as the sixth demo.** The remake that motivated
+  0.7.5's arp-rendering cache - 9 tracks, 3349 notes, the arpeggios on - now
+  loads from the start screen and is precached for offline use.
 - **A tune on a badge can be fetched back and edited.** The protocol gains its
   read path (§6.5, capability `fetch`): the mirror of upload, without the
   window and acks that exist only because flash writes stall. The sequencer
@@ -22,6 +27,27 @@ tagged.
   on the app. Both paths warn that the result is a conversion, not the
   original project: arpeggios arrive as plain notes, and instruments and
   automation were never in the format.
+
+### Changed
+
+- **The export dialog defaults to the project file.** The `.chipseq.json`
+  format is the only one that keeps everything - arpeggios editable,
+  instruments, automation - and it applies to every mode, so it is the tab
+  the dialog opens on. The badge and Flipper formats are one click away, as
+  before.
+- **Downloading an export closes the dialog.** The file is on disk; the
+  dialog's job is done. The one exception: a `.wav` whose mix the limiter had
+  to shape stays open, so the level warning that explains why it sounds
+  squashed is actually seen.
+
+### Removed
+
+- **Per-track badge transfer.** The badges card offered sending a single
+  track to a badge; in practice everyone sends the whole tune and lets the
+  badge pick its part (the "Plays" mapping), so the scope selector was a
+  control that wasted space and invited a tune with the other parts missing.
+  The whole-song Send remains, as does per-track mapping for live playback.
+  The `.cbt` format itself still supports track subsets.
 
 ## [0.7.5] - 2026-08-19
 

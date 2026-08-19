@@ -176,7 +176,7 @@ export function mount(body, { store, badgeStream = null, openImportedTune = null
               ${tracks.map((t) => `<option value="${t.id}"${b.trackId === t.id ? ' selected' : ''}>${t.name}</option>`).join('')}
             </select>
           </div>
-          ${library(b, tracks)}
+          ${library(b)}
         </div>`).join('')}</div>`
         : '<div class="in-hint">No badges yet. Type the code the badge is showing, above.</div>'}
 
@@ -245,7 +245,7 @@ export function mount(body, { store, badgeStream = null, openImportedTune = null
   // What a badge is holding, and how to put something there. Hidden entirely
   // for a badge that never advertised `store`: a control that silently does
   // nothing is worse than an absent one.
-  function library(b, tracks) {
+  function library(b) {
     if (!badgeCan(b, 'store')) return '';
     const up = uploads.get(b.id);
     if (up) {
@@ -260,9 +260,6 @@ export function mount(body, { store, badgeStream = null, openImportedTune = null
     }
 
     const lib = b.lib;
-    // A one-track song has no "whole song" to choose - offering it would be
-    // the same option twice.
-    const wholeSong = tracks.length > 1;
     return `
       <div class="bg-lib">
         <div class="lv-out-head">On the badge${lib
@@ -280,13 +277,10 @@ export function mount(body, { store, badgeStream = null, openImportedTune = null
             : '<div class="in-hint">Nothing stored yet.</div>')
           : '<div class="in-hint">Library not read yet.</div>'}
         <div class="harm-row">
-          <select data-act="put-scope">
-            ${wholeSong ? '<option value="">Whole song — badge picks a part</option>' : ''}
-            ${tracks.map((t) => `<option value="${t.id}"${!wholeSong || b.trackId === t.id ? ' selected' : ''}>Only “${t.name}”</option>`).join('')}
-          </select>
-          <button class="btn" data-act="put">Send</button>
+          <button class="btn" data-act="put">Send this song</button>
         </div>
-        <div class="in-hint">Stored tunes play with no server and no network.</div>
+        <div class="in-hint">Sends every track - the badge picks its part.
+          Stored tunes play with no server and no network.</div>
       </div>`;
   }
 
@@ -322,18 +316,20 @@ export function mount(body, { store, badgeStream = null, openImportedTune = null
     return client;
   }
 
-  // Send the current song - or one track of it - to a badge.
+  // Send the current song - every track of it - to a badge. The badge picks
+  // the part it plays; per-track transfers used to be offered here and were
+  // removed, because nobody wants a tune with the other parts missing.
   //
   // Refuses up front when it cannot fit. The badge would refuse too, but only
   // after the announcement round trip, and "it does not fit" is a better thing
   // to learn before a progress bar appears than during one.
-  async function sendTune(badgeId, trackId) {
+  async function sendTune(badgeId) {
     let b = state.badges.find((x) => x.id === badgeId);
     if (!b || uploads.has(badgeId)) return;
     const doc = store.getDoc();
     let built;
     try {
-      built = buildTune(doc, { trackIds: trackId ? [trackId] : null, name: doc.name });
+      built = buildTune(doc, { name: doc.name });
     } catch (err) {
       state.error = err.message;
       render();
@@ -453,8 +449,7 @@ export function mount(body, { store, badgeStream = null, openImportedTune = null
     }
     const put = e.target.closest('[data-act="put"]');
     if (put) {
-      const card = put.closest('[data-id]');
-      sendTune(card.dataset.id, card.querySelector('[data-act="put-scope"]').value || null);
+      sendTune(put.closest('[data-id]').dataset.id);
       return;
     }
     const cancel = e.target.closest('[data-act="cancel-put"]');

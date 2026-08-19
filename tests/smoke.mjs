@@ -789,6 +789,24 @@ await evaluate(`(() => {
 await evaluate(`document.getElementById('btn-export').click()`);
 await sleep(200);
 await check('export dialog open', `document.getElementById('dlg-export').open`);
+await check('the project file is the default export format', `(() => {
+  const active = document.querySelector('#seg-export .seg-btn.active');
+  return (active && active.dataset.tab === 'json' && !document.getElementById('export-json-pane').hidden)
+    || 'active=' + (active && active.dataset.tab);
+})()`);
+await check('Download delivers the file and closes the dialog', `(async () => {
+  document.getElementById('btn-export-download').click();
+  for (let i = 0; i < 20; i++) {
+    if (!document.getElementById('dlg-export').open) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return 'dialog still open after download';
+})()`);
+// Reopen for the format-specific checks; .h is a click away now, not the default.
+await evaluate(`document.getElementById('btn-export').click()`);
+await sleep(200);
+await evaluate(`document.querySelector('#seg-export [data-tab="h"]').click()`);
+await sleep(150);
 await check('.h preview contains NOTE_', `document.getElementById('export-preview').textContent.includes('NOTE_')`);
 await check('.h preview has BadgeNote array', `document.getElementById('export-preview').textContent.includes('static const BadgeNote')`);
 await evaluate(`document.querySelector('#seg-export [data-tab="fmf"]').click()`);
