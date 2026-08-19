@@ -23,6 +23,50 @@ tagged.
   original project: arpeggios arrive as plain notes, and instruments and
   automation were never in the format.
 
+## [0.7.5] - 2026-08-19
+
+### Fixed
+
+- **Arp-heavy songs no longer freeze playback.** A demoscene-scale project - 7
+  tracks, 3291 notes, 71 song-chord arpeggios against a 774-note chord track -
+  stuttered at 4 fps once the grid started scrolling under the playhead, while
+  the badge played the same song fine. Three defects multiplied: the roll
+  re-rendered every arpeggiated note's events on every frame; each render built
+  a fresh chord-lookup context, so every autoSong arp rebuilt the whole chord
+  track (~4 ms per note per frame); and the left-edge cull exempted exactly the
+  arp notes, so the working set grew as the song advanced. Ghost events are now
+  cached like chord events already were - computed when the document changes,
+  never per frame - and the cull treats every note the same, which is safe
+  because an arpeggio can never sound outside its own note (now pinned by a
+  test). Measured on the real song: 259 ms per frame became 0.5 ms.
+- **A loop wrap no longer re-flattens the whole song.** It cost 16-28 ms inside
+  the 25 ms scheduler tick on every pass of a loop, which is how a tight loop
+  could starve the scheduler and drop notes. A wrap now only seeks; flattening
+  stays owed to document changes, which already restart playback.
+
+### Tests
+
+- The fps regression test failed its own audition first: with the ghost cache
+  deliberately bypassed it still passed, because the synthetic chord track was
+  block chords on bar lines - 5x cheaper to look up than the real song's. The
+  fixture now costs what a real chord track costs (verified: 1.9 fps broken vs
+  60 fixed, split at 20), and the suite gained deterministic guards too:
+  cache-path ghosts must equal the reference path for every arp note in every
+  demo, no ghost may outrun its note, and a shared context must resolve chords
+  once - proven by emptying the chord track behind its back.
+- A boot that never finishes now reports which of the suite's five boots it
+  was, what the page looked like, and **every network request still pending
+  with its age** - which immediately identified a 7-minute renderer stall on
+  one machine as a single cache-served SVG request that Chromium itself never
+  answered (426 s and 442 s across two runs: a deterministic internal timeout,
+  environment-level, not the app). The boot check also fails at its own 20 s
+  deadline now instead of waiting out a wedged renderer, because a probe into
+  a blocked page held the old check hostage for the full 442 s.
+- Both browser harnesses put Chrome profiles under `os.tmpdir()` (honouring
+  `$TMPDIR`) and accept `CHROME_CDP=host:port` to attach to a browser started
+  elsewhere - for sandboxes that allow TCP but not the AF_UNIX socket Chromium
+  requires for its process-singleton lock.
+
 ## [0.7.4] - 2026-08-11
 
 ### Added
