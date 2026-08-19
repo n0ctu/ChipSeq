@@ -139,8 +139,20 @@ function once(method) {
     eventWaiters.set(method, list);
   });
 }
+// Every request the page has started but not finished, with its start time.
+// Purely diagnostic: when a boot times out, the single most useful fact is
+// which fetch never came back - a module, sw.js, a demo - and this is the only
+// vantage point that can see it. One boot on one machine blocked for 426
+// SECONDS with the app object never appearing, and nothing in the pass/fail
+// output could say why.
+const inflight = new Map();
 ws.onmessage = (ev) => {
   const msg = JSON.parse(ev.data);
+  if (msg.method === 'Network.requestWillBeSent') {
+    inflight.set(msg.params.requestId, { url: msg.params.request.url, at: Date.now() });
+  } else if (msg.method === 'Network.loadingFinished' || msg.method === 'Network.loadingFailed') {
+    inflight.delete(msg.params.requestId);
+  }
   if (msg.method && eventWaiters.has(msg.method)) {
     for (const resolve of eventWaiters.get(msg.method)) resolve(msg.params);
     eventWaiters.delete(msg.method);
@@ -238,7 +250,11 @@ async function navigateAndBoot(why = '') {
       })()`);
     } catch (err) { state = '(evaluate failed: ' + err.message.split('\n')[0] + ')'; }
     const errs = consoleErrors.length ? ' consoleErrors=' + JSON.stringify(consoleErrors.slice(-3)) : '';
-    console.log(`FAIL the app did not finish booting within 20s [boot #${bootCount}${why ? ' ' + why : ''}, ${Date.now() - t0} ms] ${state}${errs}`);
+    const stuck = [...inflight.values()]
+      .map((r) => `${r.url.replace(/^https?:\/\/127\.0\.0\.1:\d+/, '')} (${((Date.now() - r.at) / 1000).toFixed(1)}s)`)
+      .slice(0, 8);
+    const net = stuck.length ? ` pendingRequests=[${stuck.join(', ')}]` : ' pendingRequests=none';
+    console.log(`FAIL the app did not finish booting within 20s [boot #${bootCount}${why ? ' ' + why : ''}, ${Date.now() - t0} ms] ${state}${errs}${net}`);
     fail++;
   }
 }
@@ -268,6 +284,7 @@ const WAV_HELPERS = `
 
 await send('Runtime.enable');
 await send('Page.enable');
+await send('Network.enable');
 await navigateAndBoot('first load');
 // hermetic run even if a stale browser profile is reused
 await evaluate(`localStorage.clear()`);
