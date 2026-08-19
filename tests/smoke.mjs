@@ -209,16 +209,36 @@ const BOOTED = `!!window.__chipseq && (
   || document.querySelectorAll('#demo-list .demo-item').length > 0
 )`;
 
-async function navigateAndBoot() {
+let bootCount = 0;
+async function navigateAndBoot(why = '') {
   // Wait for the load event before evaluating anything. A Runtime.evaluate
   // sent while the old document is being torn down is simply dropped, and
   // send() then waits for a reply that never comes - the run hangs rather than
   // failing, which is a far worse way to be wrong.
+  bootCount++;
+  const t0 = Date.now();
   const loaded = once('Page.loadEventFired');
   await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
   await Promise.race([loaded, sleep(20000)]);
   if (!(await waitUntil(BOOTED))) {
-    console.log('FAIL the app did not finish booting within 20s');
+    // Say WHICH boot and WHAT the page looked like. "did not boot" on its own
+    // cannot be acted on from a paste - and this failed once on a machine the
+    // author could not see into.
+    let state = '(page unreachable)';
+    try {
+      state = await evaluate(`(() => {
+        const app = !!window.__chipseq;
+        const start = document.getElementById('screen-start');
+        const editor = document.getElementById('screen-editor');
+        const demos = document.querySelectorAll('#demo-list .demo-item').length;
+        const doc = app ? window.__chipseq.store.getDoc() : null;
+        return 'app=' + app + ' start=' + (start && !start.hidden) + ' editor=' + (editor && !editor.hidden)
+          + ' demos=' + demos + (doc ? ' doc="' + doc.name + '" notes=' + doc.tracks.reduce((n, t) => n + t.notes.length, 0) : '')
+          + ' readyState=' + document.readyState;
+      })()`);
+    } catch (err) { state = '(evaluate failed: ' + err.message.split('\n')[0] + ')'; }
+    const errs = consoleErrors.length ? ' consoleErrors=' + JSON.stringify(consoleErrors.slice(-3)) : '';
+    console.log(`FAIL the app did not finish booting within 20s [boot #${bootCount}${why ? ' ' + why : ''}, ${Date.now() - t0} ms] ${state}${errs}`);
     fail++;
   }
 }
@@ -248,10 +268,10 @@ const WAV_HELPERS = `
 
 await send('Runtime.enable');
 await send('Page.enable');
-await navigateAndBoot();
+await navigateAndBoot('first load');
 // hermetic run even if a stale browser profile is reused
 await evaluate(`localStorage.clear()`);
-await navigateAndBoot();
+await navigateAndBoot('after localStorage.clear');
 
 // ---- fresh boot: start page greets new users with the seeded demo ----
 await check('fresh boot greets with the start page', `!document.getElementById('screen-start').hidden && !!window.__chipseq`);
@@ -2865,7 +2885,7 @@ await check('the engine exposes a pre-limiter peak for the clip indicator', `(()
 // ---- autosave + reload ----
 await sleep(700); // let autosave debounce flush
 const projName = await evaluate(`window.__chipseq.store.getDoc().name`);
-await navigateAndBoot();
+await navigateAndBoot('reload-resumes');
 await check('reload resumes the LAST-OPENED project (incl. its mode)', `(() => {
   const doc = window.__chipseq && window.__chipseq.store.getDoc();
   const activeSeg = document.querySelector('#seg-mode .seg-btn.active');
@@ -3512,7 +3532,7 @@ if (consoleErrors.length) {
 // This is the claim the whole service worker exists to make, so it is tested by
 // actually cutting the network rather than by checking that a file is present.
 // 127.0.0.1 is a secure context, which is why a worker can register here at all.
-await navigateAndBoot();
+await navigateAndBoot('service-worker');
 
 await check('the service worker registers and takes control', `(async () => {
   const reg = await navigator.serviceWorker.ready;
@@ -3569,7 +3589,7 @@ await check('a file outside the precache really cannot be fetched', `(async () =
   }
 })()`);
 
-await navigateAndBoot();
+await navigateAndBoot('offline');
 
 await check('the app boots with the network off', `(() => {
   const start = document.getElementById('screen-start');

@@ -44,19 +44,25 @@ export function findChrome() {
 //
 // Kept in tests rather than demos/ deliberately: it is a stress fixture, not
 // music, and Nico's real project is a work in progress that is not committed.
-export async function arpHeavySong({ arpNotes = 400, chordNotes = 300 } = {}) {
+export async function arpHeavySong({ arpNotes = 400, chordNotes = 800 } = {}) {
   const { createProject, createTrack, createNote, PPQ } = await import('../js/core/doc.js');
   const doc = createProject({ name: 'Arp stress', mode: 'poly' });
   doc.tracks = [];
 
-  // A chord track: block chords every bar, three notes each, in a loop of
-  // four chords. This is what every arp note will look up.
+  // A chord track that costs what a real one costs. buildChordEvents is
+  // O(unique starts x notes), and a real chord track is not block chords on
+  // bar lines: the one that broke had 774 notes at 773 distinct starts -
+  // comping, offbeats, broken figures. Block chords on the bar (100 starts)
+  // made this fixture 5x too cheap and let the fps test pass with the cache
+  // bypassed. So: every note starts on its own eighth-note slot. Same music
+  // to the arps (they read the chord at their onset), honest to the profiler.
   const chords = createTrack({ name: 'Chords', role: 'melody', instrumentId: 'square', doc });
   const shapes = [[60, 64, 67], [57, 60, 64], [65, 69, 72], [67, 71, 74]];
   for (let i = 0; i < chordNotes; i++) {
-    const bar = Math.floor(i / 3);
+    const startTick = i * (PPQ / 2);
+    const bar = Math.floor(startTick / (PPQ * 4));
     const shape = shapes[bar % shapes.length];
-    chords.notes.push(createNote({ pitch: shape[i % 3], startTick: bar * PPQ * 4, durationTicks: PPQ * 4 }));
+    chords.notes.push(createNote({ pitch: shape[i % 3], startTick, durationTicks: PPQ * 2 }));
   }
   doc.tracks.push(chords);
   doc.chordTrackId = chords.id;
