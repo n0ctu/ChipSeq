@@ -178,6 +178,29 @@ jobs:
         # it is the firmware handover, it must not be published, and a rule
         # that only holds because of another file's contents is not a rule.
 
+
+  # Verification runs in its OWN job, on a fresh runner, for two reasons that
+  # took three releases to learn:
+  #
+  # 1. cyon's edge bot-protection blocklists SOME GitHub runner IPs (it served
+  #    an HTTP 415 to one, and passes/failures alternated within the same
+  #    evening while both attempts did identical FTPS work - a per-IP lottery,
+  #    not throttling). A separate job means a separate runner and a second
+  #    draw; and when it still loses, re-running failed jobs repeats ONLY this
+  #    check, not the mirror.
+  # 2. The `environment:` lives on the deploy job, so a verify false-negative
+  #    used to paint a permanent red `failure` deployment for a deploy that had
+  #    succeeded - which is exactly how the deployments page got wonky. Out
+  #    here, a blocked probe fails the RUN, not the deployment record.
+  verify:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Verify what is actually live
         run: |
           set -euo pipefail
@@ -196,15 +219,20 @@ jobs:
           # releases, three false reds. Eight attempts with growing gaps cover
           # about five minutes, which "fine on re-run" says is enough.
           probe() {
-            local mode="$1" url="$2" out
+            local mode="$1" url="$2" out code
             for attempt in 1 2 3 4 5 6 7 8; do
-              if out=$(curl -fsS"$mode"L --max-time 20 -A "$UA" "$url" 2>/dev/null); then
+              if out=$(curl -fsS"$mode"L --max-time 20 -A "$UA" "$url" 2>&1); then
                 printf '%s' "$out" | tr -d '\r'
                 return 0
               fi
+              # Say what came back. Three releases of failures read "did not
+              # respond" while the edge was answering 415 the whole time,
+              # because this used to throw stderr away.
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -A "$UA" "$url" || echo 'no-conn')
+              echo "  attempt $attempt: $url -> HTTP $code (${out##*curl: })" >&2
               sleep $(( attempt * 10 ))
             done
-            echo "::error::$url did not respond within ~5 minutes of retries" >&2
+            echo "::error::$url still refused after ~5 minutes of retries (last: HTTP $code)" >&2
             return 1
           }
           get() { probe '' "$1"; }
