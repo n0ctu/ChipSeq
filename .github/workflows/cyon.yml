@@ -189,30 +189,26 @@ jobs:
           # not. Retry before believing it, and send a browser User-Agent,
           # because a bare curl from a datacentre address is what bot filtering
           # is looking for.
-          get() {
-            local url="$1" out
-            for attempt in 1 2 3 4 5; do
-              if out=$(curl -fsSL --max-time 20 -A "$UA" "$url" 2>/dev/null); then
-                printf '%s' "$out"
-                return 0
-              fi
-              sleep $(( attempt * 3 ))
-            done
-            echo "::error::$url did not respond after 5 attempts" >&2
-            return 1
-          }
-          head_of() {
-            local url="$1" out
-            for attempt in 1 2 3 4 5; do
-              if out=$(curl -fsSI --max-time 20 -A "$UA" "$url" 2>/dev/null); then
+          # Backoff sized by evidence, not optimism. cyon's edge throttles the
+          # runner's address right after the FTPS session; v0.7.2's verify was
+          # refused for at least 53 seconds and v0.7.5's for over 50 - both
+          # deploys had SUCCEEDED and re-running minutes later passed. Three
+          # releases, three false reds. Eight attempts with growing gaps cover
+          # about five minutes, which "fine on re-run" says is enough.
+          probe() {
+            local mode="$1" url="$2" out
+            for attempt in 1 2 3 4 5 6 7 8; do
+              if out=$(curl -fsS"$mode"L --max-time 20 -A "$UA" "$url" 2>/dev/null); then
                 printf '%s' "$out" | tr -d '\r'
                 return 0
               fi
-              sleep $(( attempt * 3 ))
+              sleep $(( attempt * 10 ))
             done
-            echo "::error::HEAD $url did not respond after 5 attempts" >&2
+            echo "::error::$url did not respond within ~5 minutes of retries" >&2
             return 1
           }
+          get() { probe '' "$1"; }
+          head_of() { probe 'I' "$1"; }
           UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 
           # A moment to settle: the mirror finished seconds ago, and sw.js goes
