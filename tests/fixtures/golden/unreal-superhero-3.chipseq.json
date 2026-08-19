@@ -1,0 +1,6 @@
+# chipseq-golden digest v1
+# artifact exceeds 32768 bytes - compared by hash, head/tail for context
+bytes:  743374
+sha256: 4551e22111531b988d33ef2b2b068d9e25c38dbe805b74772f160a5060aca48b
+head:   {\n  \"schema\": \"chipseq-tune\",\n  \"version\": 4,\n  \"id\": \"6adb0d65-e8c0-40c4-bf4f-f11bdb4fefd3\",\n  \"name\": \"Unreal Superhero 3\",\n  \"mode\": \"poly\",\n  \"ppq\": 96,\n  \"song\": {\n    \"key\": {\n      \"tonic\": 5,\n      \"mode\": \"minor\"\n    },\n    \"tempo\": [\n      {\n        \"tick\": 0,\n        \"bpm\": 127\n      }\n  
+tail:   s\": 20\n    }\n  },\n  \"buses\": [\n    {\n      \"id\": \"d8a6b740-1f6a-4fbc-998d-ea47dc8fbf4a\",\n      \"name\": \"Bus 1\",\n      \"chain\": [\n        {\n          \"kind\": \"reverb\",\n          \"v\": 1,\n          \"params\": {\n            \"seconds\": 3,\n            \"decay\": 2.5\n          }\n        }\n      ]\n    }\n  ]\n}\n

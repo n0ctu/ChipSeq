@@ -811,7 +811,7 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   const { readFile } = await import('node:fs/promises');
   const { migrate } = await import('../js/core/doc.js');
   const index = JSON.parse(await readFile(new URL('../demos/index.json', import.meta.url), 'utf8'));
-  eq(index, ['mono.chipseq.json', 'poly.chipseq.json', 'rickroll.chipseq.json', 'tetris.chipseq.json', 'bad-apple.chipseq.json'], 'demo manifest lists all five demos in display order');
+  eq(index, ['mono.chipseq.json', 'poly.chipseq.json', 'rickroll.chipseq.json', 'tetris.chipseq.json', 'bad-apple.chipseq.json', 'unreal-superhero-3.chipseq.json'], 'demo manifest lists all six demos in display order');
   for (const file of index) {
     const doc = migrate(JSON.parse(await readFile(new URL('../demos/' + file, import.meta.url), 'utf8')));
     assert(doc.tracks.every((t) => t.notes.length >= 0), file + ' migrates cleanly');
@@ -823,7 +823,7 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   for (const file of index) {
     names.push(JSON.parse(await readFile(new URL('../demos/' + file, import.meta.url), 'utf8')).name);
   }
-  eq(names, ['Demo Mono', 'Demo Poly', 'Rickroll', 'Tetris', 'Bad Apple'], 'demo names in manifest (= display) order');
+  eq(names, ['Demo Mono', 'Demo Poly', 'Rickroll', 'Tetris', 'Bad Apple', 'Unreal Superhero 3'], 'demo names in manifest (= display) order');
   const evs = flattenSong(poly).events;
   assert(evs.some((e) => e.gainCurve), 'poly demo has an intra-note gain curve');
   assert(evs.some((e) => e.duty != null), 'poly demo has duty automation');

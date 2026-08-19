@@ -144,7 +144,7 @@ await check('live app boots to the start page', `!document.getElementById('scree
 await check('title is correct', `document.title.startsWith('ChipSeq - n0ctus chiptune sequencer')`);
 await check('demos fetched fresh from the subpath', `(() => {
   const text = document.getElementById('demo-list').textContent;
-  return document.querySelectorAll('#demo-list .demo-item').length === 5
+  return document.querySelectorAll('#demo-list .demo-item').length === 6
     && text.includes('Demo Mono') && text.includes('Bad Apple') || text.slice(0, 100);
 })()`);
 await evaluate(`[...document.querySelectorAll('#demo-list .demo-item')].find((i) => i.textContent.includes('Demo Mono')).click()`);

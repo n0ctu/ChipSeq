@@ -1,0 +1,6 @@
+# chipseq-golden digest v1
+# artifact exceeds 32768 bytes - compared by hash, head/tail for context
+bytes:  2228745
+sha256: e3cf6f60b2a5b1c1adeb952b7f15c585551b53d817e15e803d1a809d4a3d6c68
+head:   {\n \"warnings\": [],\n \"events\": [\n  {\n   \"pitch\": 53,\n   \"startTick\": 0,\n   \"durationTicks\": 24,\n   \"velocity\": 31,\n   \"trackId\": \"5f313874-6f56-4e4a-a954-42c93c8bc748\",\n   \"instrumentId\": \"saw\",\n   \"noteId\": \"c48ffb76-fe80-4bb2-ab1f-f3a1a7e0c68d\",\n   \"gainMul\": 0.707107\n  },\n  {\n   \"pitch\": 65,\n   \"s
+tail:      0.565383,\n     0.568279,\n     0.570604,\n     0.572506,\n     0.574103,\n     0.575496,\n     0.575496,\n     0.576773,\n     0.578014,\n     0.579296,\n     0.5807,\n     0.582315,\n     0.584242,\n     0.586602,\n     0.589543,\n     0.593251,\n     0.597957,\n     0.603957,\n     0.589543\n    ]\n   }\n  }\n ]\n}\n

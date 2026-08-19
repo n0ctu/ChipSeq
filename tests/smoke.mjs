@@ -302,8 +302,9 @@ await check('demos listed in their own section, not in recents', `(() => {
   const demoItems = document.querySelectorAll('#demo-list .demo-item');
   const demoText = document.getElementById('demo-list').textContent;
   const recents = document.getElementById('recent-list').textContent;
-  return demoItems.length === 5 && demoText.includes('Demo Mono') && demoText.includes('Demo Poly')
+  return demoItems.length === 6 && demoText.includes('Demo Mono') && demoText.includes('Demo Poly')
     && demoText.includes('Rickroll') && demoText.includes('Tetris') && demoText.includes('Bad Apple')
+    && demoText.includes('Unreal Superhero 3')
     && recents.includes('No projects yet')
     || 'demos=' + demoItems.length + ' recents=' + recents.slice(0, 60);
 })()`);
@@ -360,7 +361,7 @@ await sleep(300);
 await check('demo still listed pristine after the fork', `(() => {
   const demoItems = document.querySelectorAll('#demo-list .demo-item').length;
   const recents = document.querySelectorAll('#recent-list .recent-item').length;
-  return demoItems === 5 && recents === 1 || 'demos=' + demoItems + ' recents=' + recents;
+  return demoItems === 6 && recents === 1 || 'demos=' + demoItems + ' recents=' + recents;
 })()`);
 // the poly demo shows off the automation lanes
 await evaluate(`[...document.querySelectorAll('#demo-list .demo-item')].find((i) => i.textContent.includes('Demo Poly')).click()`);

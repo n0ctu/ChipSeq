@@ -1,0 +1,6 @@
+# chipseq-golden digest v1
+# artifact exceeds 32768 bytes - compared by hash, head/tail for context
+bytes:  113175
+sha256: 6cc212c5cd7ec618bc7339f8d4a6234b1e4346ff0dd561b5fe07783e16f79837
+head:   # chipseq .cbt v1\nbytes:          32152\nid:             8df1bd39\nname:           \"unreal-superhero-3\"\nflags:          0x00 (loop=false)\ntotalMs:        115394\nloop:           0..0\nbpmHint:        127\nnotePoolOffset: 496\n\ntrack 0: \"Lead High\" notes=788 lengthMs=114449\ntrack 1: \"Lead Low\" notes=260 le
+tail:   6 00 00 62 07 20 00 75 dd 00 00 62 07 22 00\n007d50  d7 e4 00 00 9c 07 1d 00 dc 7f 01 00 61 07 1d 00\n007d60  3d 87 01 00 62 07 20 00 9f 8e 01 00 62 07 22 00\n007d70  01 96 01 00 c4 0e 1d 00 c5 a4 01 00 61 07 20 00\n007d80  26 ac 01 00 eb 0c 22 00 11 b9 01 00 d9 01 27 00\n007d90  ea ba 01 00 d8 07 1d 00\n
