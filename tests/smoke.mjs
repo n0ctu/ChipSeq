@@ -236,15 +236,22 @@ async function navigateAndBoot(why = '') {
   bootCount++;
   const t0 = Date.now();
   const loaded = once('Page.loadEventFired');
-  await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+  // The navigate reply itself can be held by a wedged renderer, so it gets a
+  // cap too; the loadEventFired race below is what actually paces the boot.
+  await Promise.race([send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` }), sleep(5000)]);
   await Promise.race([loaded, sleep(20000)]);
   if (!(await waitUntil(BOOTED))) {
     // Say WHICH boot and WHAT the page looked like. "did not boot" on its own
     // cannot be acted on from a paste - and this failed once on a machine the
     // author could not see into.
+    // The diagnostic itself must not wait on the renderer it is diagnosing.
+    // waitUntil caps every probe, so it correctly gave up at its deadline -
+    // and then THIS evaluate, uncapped, sat on the wedged renderer for seven
+    // minutes before the failure line could print. A boot report that arrives
+    // 435 seconds after the 20-second verdict is a second bug, not detail.
     let state = '(page unreachable)';
     try {
-      state = await evaluate(`(() => {
+      state = await Promise.race([sleep(3000).then(() => '(renderer did not answer the diagnostic within 3s - wedged)'), evaluate(`(() => {
         const app = !!window.__chipseq;
         const start = document.getElementById('screen-start');
         const editor = document.getElementById('screen-editor');
@@ -253,7 +260,7 @@ async function navigateAndBoot(why = '') {
         return 'app=' + app + ' start=' + (start && !start.hidden) + ' editor=' + (editor && !editor.hidden)
           + ' demos=' + demos + (doc ? ' doc="' + doc.name + '" notes=' + doc.tracks.reduce((n, t) => n + t.notes.length, 0) : '')
           + ' readyState=' + document.readyState;
-      })()`);
+      })()`)]);
     } catch (err) { state = '(evaluate failed: ' + err.message.split('\n')[0] + ')'; }
     const errs = consoleErrors.length ? ' consoleErrors=' + JSON.stringify(consoleErrors.slice(-3)) : '';
     const stuck = [...inflight.values()]
