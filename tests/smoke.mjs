@@ -207,7 +207,13 @@ async function waitUntil(expr, { timeout = 20000, every = 100 } = {}) {
   const deadline = Date.now() + timeout;
   for (;;) {
     let v = false;
-    try { v = await evaluate(expr); } catch {}
+    // Race each probe against its own small timeout. Runtime.evaluate has
+    // none: a wedged renderer simply never replies, and one probe then holds
+    // this loop far past its deadline - a boot that should have failed at 20
+    // seconds was observed reporting after 442, because a single evaluate sat
+    // blocked the whole time the page was. The orphaned reply resolves into
+    // `pending` later and is ignored.
+    try { v = await Promise.race([evaluate(expr), sleep(2000).then(() => false)]); } catch {}
     if (v === true) return true;
     if (Date.now() > deadline) return false;
     await sleep(every);
