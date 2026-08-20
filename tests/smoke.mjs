@@ -175,10 +175,12 @@ ws.onmessage = (ev) => {
 // and every check after it queued behind the same dead renderer, one at a
 // time. A rejection here becomes a FAIL for that one check and the suite
 // keeps moving.
-// 30s: no healthy check comes close (the whole suite is a few minutes), and
-// this machine has been seen holding a single asset for 44s while wedged, so
-// the cap must not turn a slow-but-alive renderer into a false failure.
-const SEND_TIMEOUT_MS = 30000;
+// 60s. The cap exists to stop a wedged renderer holding the suite for
+// minutes, NOT to police how long honest work takes - and 30s was already
+// tight enough to fail a service-worker update that legitimately refetches
+// 3.2 MB. Anything genuinely slower than this should be polled with
+// waitUntil rather than awaited in one call.
+const SEND_TIMEOUT_MS = 60000;
 function send(method, params = {}, { timeout = SEND_TIMEOUT_MS } = {}) {
   return new Promise((resolve, reject) => {
     const id = ++msgId;
@@ -243,6 +245,13 @@ async function evaluate(expr, { retryOnStall = true } = {}) {
     if (!retryOnStall || !isStall(err)) throw err;
     const back = await waitForRenderer(10 * 60 * 1000);
     if (!back.ok) throw err;
+    // The renderer answered straight away, so it was never wedged: this
+    // expression is what took too long. Repeating it would just spend the
+    // cap a second time and then abort the run, which is how one slow step
+    // cost 240 gathered results.
+    if (back.ms < 3000) {
+      throw new Error(err.message + ' - the renderer is responsive, so this EXPRESSION is what hung:\n  ' + expr.slice(0, 200));
+    }
     console.log(`     (renderer stalled ${(back.ms / 1000).toFixed(0)}s mid-suite, then answered - retrying that step)`);
     return await evaluateOnce(expr);
   }
@@ -789,6 +798,36 @@ await check('reset returns every card to following its own status', `(() => {
   // back to auto: harmonics is configured, so it opens again by itself
   return (Object.keys(saved).length === 0 && sec.classList.contains('open'))
     || 'saved=' + JSON.stringify(saved) + ' open=' + sec.classList.contains('open');
+})()`);
+
+// The merge window, through the control that actually spams: the harmonics
+// gate commits on every `input` event (applyArp -> store.commit), so a drag
+// used to log an entry per tick and bury whatever came before it. The mixer's
+// gain slider was never the offender - it previews on `input` and commits
+// once on `change`.
+await check('a slider run collapses into ONE undo step', `(async () => {
+  const store = window.__chipseq.store;
+  const gate = document.querySelector('#harmonics-body #harm-gate');
+  if (!gate) return 'no gate slider - harmonics card not open on an arp note';
+  const gateOf = () => {
+    for (const t of store.getDoc().tracks) for (const n of t.notes) if (n.harmonics) return n.harmonics.gate;
+    return null;
+  };
+  // Close any step an earlier test left open, so this measures ONLY the drag
+  // - folding is time-based, and a neighbouring 'edit arpeggio' within the
+  // window would otherwise be swept into the same step.
+  store.commit('fold barrier', ['song'], () => {});
+  const before = gateOf();
+  for (let i = 1; i <= 40; i++) {
+    gate.value = String(i);
+    gate.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  const dragged = gateOf();
+  store.undo();
+  const restored = gateOf();
+  store.undo(); // drop the barrier, leaving the project as we found it
+  return (dragged !== before && restored === before)
+    || JSON.stringify({ before, dragged, restored });
 })()`);
 
 // ---- chord source menu (autoSong) ----
@@ -1499,27 +1538,6 @@ await check('Ctrl+Z undoes and Ctrl+Y redoes on a QWERTZ keyboard', `(async () =
   return (undone && redone) || 'undone=' + undone + ' redone=' + redone;
 })()`);
 
-await check('a slider run collapses into ONE undo step', `(async () => {
-  const store = window.__chipseq.store;
-  const sec = document.getElementById('sec-mixer');
-  if (!sec || sec.hidden) return 'mixer card missing';
-  if (!sec.classList.contains('open')) sec.querySelector('.tool-card-head').click();
-  await new Promise((r) => setTimeout(r, 250));
-  const slider = document.querySelector('#mixer-body input[data-act="gain"]');
-  if (!slider) return 'no gain slider';
-  const before = store.getDoc().tracks[0].gain;
-  // 40 input events, as a real drag delivers them - each one commits.
-  for (let i = 1; i <= 40; i++) {
-    slider.value = String(40 + i);
-    slider.dispatchEvent(new Event('input', { bubbles: true }));
-  }
-  const dragged = store.getDoc().tracks[0].gain;
-  store.undo();
-  const restored = store.getDoc().tracks[0].gain;
-  return (dragged !== before && restored === before)
-    || JSON.stringify({ before, dragged, restored });
-})()`);
-
 await check('undo returns the viewport to where the undone edit was made', `(async () => {
   const { createNote, addNote } = await import('/js/core/doc.js');
   const store = window.__chipseq.store;
@@ -1542,6 +1560,11 @@ await check('undo returns the viewport to where the undone edit was made', `(asy
   // clamped to the song - so the claim is "it jumped back to the edit", not
   // "it landed on tick 4000".
   const cameBack = ui.scrollTick > 1000;
+  // Put the view back at the start: leaving it parked mid-song is exactly
+  // the hidden dependency that made the automation-lane tests click 1536
+  // ticks off target.
+  roll.restoreView({ scrollTick: 0, scrollPitch: 84, pxPerTick: ui.pxPerTick, cursorTick: 0, cursorPitch: 84 });
+  await new Promise((r) => setTimeout(r, 350));
   return (wentHome && cameBack) || JSON.stringify({ wentHome, scrollTick: ui.scrollTick });
 })()`);
 
@@ -3907,8 +3930,14 @@ await check('one versioned cache holds the whole app', `(async () => {
 {
   const real = await readFile(join(ROOT, 'sw.js'), 'utf8');
   swOverride = real.replace(/const VERSION = '[^']+'/, "const VERSION = 'smoke-update'");
-  await evaluate(`navigator.serviceWorker.getRegistration().then((r) => r.update()).then(() => true)`);
-  const appeared = await waitUntil(`!document.getElementById('st-update').hidden`, { timeout: 20000 });
+  // Started, not awaited. registration.update() resolves only once the new
+  // worker has INSTALLED, so awaiting it ties this call to the health of a
+  // worker that has just been seen wedging - and a wedged worker held it
+  // past every per-call timeout, ending a whole run. (Not a volume problem:
+  // the precache is 3.2 MB from localhost, well under a second on this
+  // hardware.) The condition below is the real thing being tested anyway.
+  await evaluate(`(() => { navigator.serviceWorker.getRegistration().then((r) => r.update()); return true; })()`);
+  const appeared = await waitUntil(`!document.getElementById('st-update').hidden`, { timeout: 120000 });
   if (appeared) { pass++; console.log('OK   a new build offers itself in the status bar'); }
   else { fail++; console.log('FAIL a new build never offered itself'); }
 
