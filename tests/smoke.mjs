@@ -85,6 +85,14 @@ if (process.env.CHROME_CDP) {
   chrome = spawn(CHROME, [
     '--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run',
     '--autoplay-policy=no-user-gesture-required',
+    // Chrome ships component extensions - Google Docs Offline among them -
+    // and they run service workers of their own even in a fresh headless
+    // profile. One showed up alongside ours in a boot failure
+    // (activated/stopped chrome-extension://nkeimhog.../thunk.js), and a
+    // second worker competing to start is a variable this suite has no
+    // reason to carry. The app under test uses no extensions.
+    '--disable-extensions',
+    '--disable-component-extensions-with-background-pages',
     // tall window: reproduces the fractional-scrollPitch clamp at load
     '--window-size=1400,1300',
     '--remote-debugging-port=0',
