@@ -146,8 +146,30 @@ function once(method) {
 // SECONDS with the app object never appearing, and nothing in the pass/fail
 // output could say why.
 const inflight = new Map();
+// Service-worker state, reported by the BROWSER rather than by the renderer -
+// which is what makes it readable exactly when a boot failure has left the
+// renderer with no document to evaluate against. A navigation this worker
+// never answers is a blank page until Chromium's own ~5 minute event timeout,
+// so when a boot fails, what the worker was doing is the first question.
+const swVersions = new Map();
+const swErrors = [];
+const swReport = () => {
+  const live = [...swVersions.values()]
+    .filter((v) => v.status !== 'redundant')
+    .map((v) => `${v.status}/${v.runningStatus}${v.scriptURL ? ' ' + v.scriptURL.replace(/^https?:\/\/[^/]+/, '') : ''}`);
+  const errs = swErrors.length ? ` swErrors=${JSON.stringify(swErrors.slice(-2))}` : '';
+  return ` serviceWorker=[${live.join(', ') || 'none'}]${errs}`;
+};
 ws.onmessage = (ev) => {
   const msg = JSON.parse(ev.data);
+  if (msg.method === 'ServiceWorker.workerVersionUpdated') {
+    for (const v of msg.params.versions || []) {
+      swVersions.set(v.versionId, v);
+    }
+  }
+  if (msg.method === 'ServiceWorker.workerErrorReported') {
+    swErrors.push(msg.params.errorMessage || msg.params);
+  }
   if (msg.method === 'Network.requestWillBeSent') {
     inflight.set(msg.params.requestId, { url: msg.params.request.url, at: Date.now() });
   } else if (msg.method === 'Network.loadingFinished' || msg.method === 'Network.loadingFailed') {
@@ -357,7 +379,12 @@ async function navigateAndBoot(why = '') {
       .map((r) => `${r.url.replace(/^https?:\/\/127\.0\.0\.1:\d+/, '')} (${((Date.now() - r.at) / 1000).toFixed(1)}s)`)
       .slice(0, 8);
     const net = stuck.length ? ` pendingRequests=[${stuck.join(', ')}]` : ' pendingRequests=none';
-    console.log(`FAIL the app did not finish booting within 20s [boot #${bootCount}${why ? ' ' + why : ''}, ${Date.now() - t0} ms] ${state}${errs}${net}`);
+    // The decisive line: 'activated/running' with a pending navigation means
+    // the worker was alive and simply never answered; 'installing' means it
+    // never finished precaching; 'stopped' means Chromium had shut it down
+    // and starting it again is what stalled.
+    const sw = swReport();
+    console.log(`FAIL the app did not finish booting within 20s [boot #${bootCount}${why ? ' ' + why : ''}, ${Date.now() - t0} ms] ${state}${errs}${net}${sw}`);
     fail++;
     // Wait the wedge out here, once. Every check after this one would
     // otherwise take its own twenty-second timeout to discover the same
@@ -398,6 +425,11 @@ const WAV_HELPERS = `
 await send('Runtime.enable');
 await send('Page.enable');
 await send('Network.enable');
+try {
+  await send('ServiceWorker.enable');
+} catch (err) {
+  console.log('     (ServiceWorker domain unavailable: ' + err.message + ')');
+}
 await navigateAndBoot('first load');
 // hermetic run even if a stale browser profile is reused
 await evaluate(`localStorage.clear()`);

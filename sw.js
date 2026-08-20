@@ -159,7 +159,14 @@ async function precache() {
     }
     // `reload` so a precache never inherits something stale from the HTTP
     // cache: this copy is the one the app runs from until the next release.
-    const res = await fetch(url, { cache: 'reload' });
+    //
+    // Bounded for the same reason the fetch handler is: a single request that
+    // never settles would leave this worker in `installing` for as long as the
+    // browser allows, and a worker stuck installing is one that can never be
+    // updated either. Failing the install is recoverable - the next visit
+    // tries again - while hanging is not.
+    const res = await deadline(fetch(url, { cache: 'reload' }), NET_DEADLINE_MS, null);
+    if (!res) throw new Error(`precache timed out: ${path}`);
     if (!res.ok) throw new Error(`precache failed: ${path} (${res.status})`);
     await cache.put(url, res);
   });
@@ -201,13 +208,69 @@ async function takeOver() {
 }
 
 // ---- fetch ----
+//
+// 4. NOTHING HERE MAY WAIT FOREVER. Once this worker calls respondWith, the
+//    browser waits on OUR promise, and a navigation that never resolves is a
+//    blank page - for about five minutes, which is when Chromium gives up on
+//    a service worker event and goes to the network itself. That is not a
+//    theory: a navigation was observed pending for 397 seconds with the
+//    renderer perfectly responsive, so the page had simply never been
+//    answered. Whatever put the worker in that state, the worker must not be
+//    able to hold a page hostage while it is there - so every path below is
+//    bounded, and the bound falls back to the thing most likely to work
+//    rather than to an error.
+
+// Long enough that a slow phone on a bad connection still gets its answer
+// from the network, short enough that a person does not conclude the app is
+// broken and close the tab.
+const NET_DEADLINE_MS = 10000;
+// The cache lives on disk and is normally instant. If it is not answering
+// quickly, waiting longer is not going to help a page that is already blank.
+const CACHE_DEADLINE_MS = 3000;
+
+function deadline(promise, ms, fallback) {
+  return Promise.race([
+    // A rejection is a real answer - let it through rather than converting it
+    // into the fallback, or an offline miss would wait the full timeout.
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
+// Cache lookups, bounded. A miss and a stall look the same to the caller
+// (both null), which is right: in both cases the network is what is left.
+async function cacheLookup(cache, req, opts) {
+  try {
+    return (await deadline(cache.match(req, opts), CACHE_DEADLINE_MS, null)) || null;
+  } catch {
+    return null; // an unreadable cache is a miss, not a failure to serve
+  }
+}
+
+async function openCache() {
+  try {
+    return await deadline(caches.open(CACHE), CACHE_DEADLINE_MS, null);
+  } catch {
+    return null;
+  }
+}
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
-  if (new URL(req.url).origin !== self.location.origin) return;
+  let sameOrigin = false;
+  try {
+    sameOrigin = new URL(req.url).origin === self.location.origin;
+  } catch {
+    return; // an unparseable URL is not ours to serve
+  }
+  if (!sameOrigin) return;
   // The badge relay is another origin and its socket is not a fetch at all, so
   // nothing about the badge path passes through here.
+  //
+  // Handing respondWith a rejected promise shows the browser's own network
+  // error, which is the honest outcome when neither cache nor network can
+  // answer - and far better than never resolving.
   event.respondWith(req.mode === 'navigate' ? shell(req) : cacheFirst(req));
 });
 
@@ -215,18 +278,28 @@ self.addEventListener('fetch', (event) => {
 // revalidating on every request would only add latency and would make an
 // offline load wait for a timeout before it worked.
 async function cacheFirst(req) {
-  const cache = await caches.open(CACHE);
+  const cache = await openCache();
   // ignoreSearch because the lazily loaded tool cards import with
   // ?v=APP_VERSION and the precached key has no query.
-  const hit = await cache.match(req, { ignoreSearch: true });
+  const hit = cache && (await cacheLookup(cache, req, { ignoreSearch: true }));
   return hit || fetch(req);
 }
 
 // Any navigation inside the scope is the app, so a reload of a deep URL works
 // with no network instead of hitting the server's 404.
 async function shell(req) {
-  const cache = await caches.open(CACHE);
-  return (await cache.match(href('index.html'))) || fetch(req);
+  const cache = await openCache();
+  const cached = cache && (await cacheLookup(cache, href('index.html')));
+  if (cached) return cached;
+  // No cached shell: go to the network, but do not wait on it indefinitely.
+  // If the deadline passes, try the cache once more - a precache finishing in
+  // the background is the likeliest reason both were empty a moment ago - and
+  // otherwise let the request fail so the browser reports it.
+  const res = await deadline(fetch(req).catch(() => null), NET_DEADLINE_MS, null);
+  if (res) return res;
+  const late = cache && (await cacheLookup(cache, href('index.html')));
+  if (late) return late;
+  return Response.error();
 }
 
 // ---- messages ----
