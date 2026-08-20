@@ -211,7 +211,9 @@ async function waitForRenderer(budgetMs) {
   } while (Date.now() < deadline);
   return { ok: false, ms: Date.now() - startedAt };
 }
-async function evaluate(expr) {
+const isStall = (err) => / no reply within /.test(' ' + err.message + ' ');
+
+async function evaluateOnce(expr) {
   const res = await send('Runtime.evaluate', {
     expression: expr,
     awaitPromise: true,
@@ -223,7 +225,45 @@ async function evaluate(expr) {
   return res.result.value;
 }
 
+// A stalled renderer is this MACHINE, not the app - so wait it out and try
+// the same call again rather than letting it end the run. Capping the CDP
+// calls stopped the suite hanging for minutes, but it turned the stall into
+// a rejection, and the many bare `await evaluate(...)` setup steps outside
+// check() are not wrapped in anything: one of them aborted a whole run at
+// the top level, so 240 results that had already been gathered were never
+// printed. Retrying keeps the run alive; a call that still fails once the
+// renderer is answering again is a real failure and throws.
+//
+// `retryOnStall: false` is for the probe paths that RACE this call and walk
+// away from it - they must not leave a ten-minute retry running behind them.
+async function evaluate(expr, { retryOnStall = true } = {}) {
+  try {
+    return await evaluateOnce(expr);
+  } catch (err) {
+    if (!retryOnStall || !isStall(err)) throw err;
+    const back = await waitForRenderer(10 * 60 * 1000);
+    if (!back.ok) throw err;
+    console.log(`     (renderer stalled ${(back.ms / 1000).toFixed(0)}s mid-suite, then answered - retrying that step)`);
+    return await evaluateOnce(expr);
+  }
+}
+
 let pass = 0, fail = 0;
+
+// A run that dies mid-way must still say what it had learned. The suite is
+// one long top-level-await script, so a rejection anywhere outside check()
+// ends the module - and a raw stack trace replaced 240 results that had
+// already been gathered. This prints the tally and the cause, then leaves
+// with a failing status. It is a REPORT, not a recovery: the run is over
+// either way, and a stall is retried before it can ever get here.
+for (const signal of ['unhandledRejection', 'uncaughtException']) {
+  process.on(signal, (err) => {
+    console.log(`\nFAIL the run ended early (${signal}): ${(err && err.message) || err}`);
+    console.log(`\n${pass} passed, ${fail + 1} failed (incomplete - the suite did not reach the end)`);
+    process.exit(1);
+  });
+}
+
 async function check(label, expr) {
   try {
     const v = await evaluate(expr);
@@ -249,7 +289,12 @@ async function waitUntil(expr, { timeout = 20000, every = 100 } = {}) {
     // seconds was observed reporting after 442, because a single evaluate sat
     // blocked the whole time the page was. The orphaned reply resolves into
     // `pending` later and is ignored.
-    try { v = await Promise.race([evaluate(expr), sleep(2000).then(() => false)]); } catch {}
+    try {
+      v = await Promise.race([
+        evaluate(expr, { retryOnStall: false }).catch(() => false),
+        sleep(2000).then(() => false),
+      ]);
+    } catch {}
     if (v === true) return true;
     if (Date.now() > deadline) return false;
     await sleep(every);
@@ -296,7 +341,7 @@ async function navigateAndBoot(why = '') {
         return 'app=' + app + ' start=' + (start && !start.hidden) + ' editor=' + (editor && !editor.hidden)
           + ' demos=' + demos + (doc ? ' doc="' + doc.name + '" notes=' + doc.tracks.reduce((n, t) => n + t.notes.length, 0) : '')
           + ' readyState=' + document.readyState;
-      })()`)]);
+      })()`, { retryOnStall: false }).catch((e) => '(diagnostic failed: ' + e.message.split('\n')[0] + ')')]);
     } catch (err) { state = '(evaluate failed: ' + err.message.split('\n')[0] + ')'; }
     const errs = consoleErrors.length ? ' consoleErrors=' + JSON.stringify(consoleErrors.slice(-3)) : '';
     const stuck = [...inflight.values()]
