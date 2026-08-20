@@ -9,6 +9,8 @@ tagged.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-20
+
 ### Changed
 
 - **Undo history is delta-based, and much longer.** A step used to be a full
@@ -49,6 +51,21 @@ tagged.
   exists once the dragged row has left the list being looked at. It now
   marks the gap the pointer is in, with a top-edge line for the first slot,
   and clears itself when a drag ends where it started.
+- **The service worker can no longer hold a page hostage.** A navigation was
+  observed pending for 397 seconds while the renderer answered instantly -
+  the page had not been slow to arrive, it had never been *answered*. Once
+  the worker calls `respondWith`, the browser waits on its promise, and the
+  only thing ending that wait was Chromium giving up on the event about five
+  minutes later. For a visitor that is a blank page for five minutes, which
+  is indistinguishable from the site being down. Every path in the worker is
+  now bounded and each bound falls back to whatever is most likely to work:
+  cache lookups get 3 s, the network 10 s, and a navigation that loses both
+  tries the cache once more before letting the browser report an ordinary
+  network error. Installing is bounded the same way, since a worker stuck
+  installing can never be updated either - failing is recoverable, hanging is
+  not. This bounds the symptom; the underlying cause is still unproven, so
+  the test suite now reports what the browser knows about the worker whenever
+  a boot fails.
 - **Ctrl+Z and Ctrl+Y work on QWERTZ keyboards.** Undo and redo were bound
   to key POSITIONS on a US layout; on Swiss and German boards Z and Y trade
   places, so the key labelled Z arrived as `KeyY` and Ctrl+Z faithfully ran
