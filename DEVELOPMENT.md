@@ -36,9 +36,10 @@ moment it is fresh every module it lazily asks for is too.
 ## Architecture
 
 - `js/core/` is the engine and touches no DOM: document model (`doc.js`),
-  snapshot undo (`store.js`), the harmonics and arp renderer (`harmonics.js`),
-  the single flatten pipeline (`flatten.js`, shared by playback, wav, `.h` and
-  ghosts), the Web Audio engine, the MIDI parser and the exporters.
+  delta-based undo (`store.js`, over the neighbouring-state deltas in
+  `history.js`), the harmonics and arp renderer (`harmonics.js`), the single
+  flatten pipeline (`flatten.js`, shared by playback, wav, `.h` and ghosts),
+  the Web Audio engine, the MIDI parser and the exporters.
 - `js/ui/` is screens, the canvas piano roll and the panels. UI talks to core
   only through the store; core never touches the DOM.
 - `js/ui/tools/` is one file per sidebar tool, each exporting
@@ -48,8 +49,8 @@ moment it is fresh every module it lazily asks for is too.
   (a PNG is a signature, three chunks and a CRC, and Node ships the deflate);
   change the mark, re-run it, commit the PNGs.
 - Console handle: `window.__chipseq` exposes `{store, uiStore, engine,
-  conflicts, openProject}` plus `offline` for the service worker (`update()`,
-  `activate()`, `unregister()`).
+  conflicts, openProject, roll}` plus `offline` for the service worker
+  (`update()`, `activate()`, `unregister()`).
 
 ### Adding a tool
 
