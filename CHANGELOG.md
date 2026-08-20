@@ -9,6 +9,54 @@ tagged.
 
 ## [Unreleased]
 
+### Changed
+
+- **Undo history is delta-based, and much longer.** A step used to be a full
+  serialized copy of the project; on the largest shipped demo (420 KB) the
+  8 MB cap held **19 of them**. A step is now the difference between
+  neighbouring serializations - the newest state whole, older ones as byte
+  deltas - so the same song now holds **1000 steps** (measured; the entry
+  cap binds, not the byte cap) and a pitch edit costs about two bytes.
+  Where both sides of a change have equal length - transpose, quantize,
+  velocity and gain edits, where digits change in place - only the differing
+  byte runs are stored, so the unchanged bytes between them cost nothing.
+  A change that only ADDS (importing ten MIDI tracks) stores the newer side's
+  length rather than its content, because undo only ever rebuilds the older
+  state; deleting ten tracks pays their bytes, which is irreducible - that
+  is precisely the information undo exists to hold. Reconstruction is a
+  string splice, so exactness is structural rather than a property of a
+  differ, and a property test hammers it with 500 random mutations.
+- **At most one undo step per two seconds per kind of action.** Dragging a
+  mixer or harmonics slider used to log an entry per input event, burying
+  the edit before it under hundreds of steps; a drag is now one step. The
+  window is anchored at the start of each run rather than sliding, so an
+  unbroken run of one action still logs a step every two seconds - half a
+  minute of steady note-drawing stays about fifteen undoable steps instead
+  of collapsing into a single Ctrl+Z that erases all of it. Only commits of
+  the SAME kind merge: a note edit one second after a fade stays its own
+  step.
+- **Undo returns the viewport to where the undone edit was made.** The
+  scroll position and cursor ride inside the undo step. Without it, a run of
+  Ctrl+Z reverts changes that may be nowhere near the screen, and the only
+  feedback is that nothing visible happens - so the key gets pressed again,
+  and again, past the change that was meant.
+
+### Fixed
+
+- **The track drop indicator marks where the row will actually land.** It
+  used to mark the row at the post-removal index - right by coincidence when
+  dragging down, one row too low when dragging up, because that index only
+  exists once the dragged row has left the list being looked at. It now
+  marks the gap the pointer is in, with a top-edge line for the first slot,
+  and clears itself when a drag ends where it started.
+- **Ctrl+Z and Ctrl+Y work on QWERTZ keyboards.** Undo and redo were bound
+  to key POSITIONS on a US layout; on Swiss and German boards Z and Y trade
+  places, so the key labelled Z arrived as `KeyY` and Ctrl+Z faithfully ran
+  redo on an empty stack - indistinguishable from a dead shortcut. Letter
+  shortcuts now match the letter on the keycap. A focused slider or select
+  no longer swallows them either: only text editing keeps every key, so
+  undo works right after touching a mixer slider.
+
 ## [0.7.7] - 2026-08-20
 
 ### Added

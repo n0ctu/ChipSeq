@@ -3773,6 +3773,153 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
   assert(Math.abs(tight(songEnd) - anchorX) < 1e-9, 'zoomed in, the playhead stays anchored to the last tick');
 }
 
+// ---- delta undo history ----
+{
+  const { computeDelta, restore, deltaStack } = await import('../js/core/history.js');
+
+  // Property: restore(next, computeDelta(next, prev)) === prev, byte for
+  // byte, for random mutations of random strings - inserts, deletes,
+  // replacements, equal-length scatter (the sparse path), and no-ops.
+  // Seeded LCG so a failure is reproducible.
+  let seed = 0xC0FFEE;
+  const rnd = (n) => ((seed = (seed * 1664525 + 1013904223) >>> 0), seed % n);
+  const alpha = 'abcdefghij0123456789{}[],:"';
+  const randStr = (n) => Array.from({ length: n }, () => alpha[rnd(alpha.length)]).join('');
+  let prev = randStr(2000);
+  for (let i = 0; i < 500; i++) {
+    let next;
+    const kind = rnd(4);
+    if (kind === 0) {
+      // splice: delete some, insert some (covers pure insert/delete too)
+      const at = rnd(prev.length + 1);
+      next = prev.slice(0, at) + randStr(rnd(200)) + prev.slice(at + rnd(Math.min(200, prev.length - at)));
+    } else if (kind === 1) {
+      // equal-length scatter: the sparse/run path
+      const chars = [...prev];
+      for (let k = rnd(20); k > 0 && chars.length; k--) chars[rnd(chars.length)] = alpha[rnd(alpha.length)];
+      next = chars.join('');
+    } else if (kind === 2) {
+      next = prev; // no-op commit
+    } else {
+      next = randStr(rnd(3000)); // total rewrite (import-sized)
+    }
+    const d = computeDelta(next, prev);
+    if (restore(next, d) !== prev) {
+      assert(false, `delta round-trip broke at iteration ${i} (kind ${kind}, seed path)`);
+      break;
+    }
+    if (i === 499) assert(true, 'delta round-trip is byte-exact across 500 random mutations');
+    prev = next;
+  }
+
+  // The newer side of a dense delta stores only its LENGTH: an import that
+  // ADDS a lot must cost an entry of almost nothing, and a deletion pays
+  // exactly the bytes it has to preserve.
+  const small = 'aaa';
+  const big = 'aaa' + 'x'.repeat(100000) + 'zzz';
+  const stImport = deltaStack({ maxEntries: 10, maxBytes: 1024 * 1024 });
+  stImport.push(small);
+  stImport.push(big); // the "import": entry restores small from big
+  assert(stImport.pop() === big && stImport.pop() === small, 'import-sized push round-trips');
+  const { deltaSize, computeDelta: cd } = await import('../js/core/history.js');
+  assert(deltaSize(cd(big, small)) < 100, 'an insertion-only step costs bytes, not the inserted content: ' + deltaSize(cd(big, small)));
+  assert(deltaSize(cd(small, big)) > 100000, 'a deletion pays the bytes undo must preserve');
+
+  // Stack: pop order, eviction drops the OLDEST, never the only state.
+  const st = deltaStack({ maxEntries: 3, maxBytes: 1024 * 1024 });
+  for (const v of ['s1', 's2', 's3', 's4']) st.push(v);
+  assert(st.size === 3, 'entry cap evicts down to the cap');
+  eq([st.pop(), st.pop(), st.pop(), st.pop()], ['s4', 's3', 's2', null], 'pop returns newest first; the evicted oldest is gone');
+}
+
+// ---- store: merge window, view rides in undo, caps ----
+{
+  const { createStore } = await import('../js/core/store.js');
+  const { setView: writeView } = await import('../js/core/doc.js');
+
+  // An injected clock, so the 2-second merge window is driven, not raced.
+  let t = 1000;
+  const mk = () => createStore(createProject({ name: 'hist', mode: 'poly' }), { now: () => t });
+
+  // A slider drag: 200 commits inside the window cost ONE step.
+  let store = mk();
+  const base = store.getDoc().tracks[0].gain;
+  for (let i = 1; i <= 200; i++) {
+    t += 5; // 200 ticks over 1s, as a real drag arrives
+    store.commit('set gain', ['tracks'], (d) => { d.tracks[0].gain = 0.005 * i; });
+  }
+  store.undo();
+  assert(store.getDoc().tracks[0].gain === base, 'a slider run folds into one step: one undo restores the start');
+  assert(!store.canUndo(), 'and it was ONE step, not two hundred');
+
+  // The window is ANCHORED, not sliding: an unbroken run of one action still
+  // logs a step every 2 seconds. Thirty seconds of steady note-drawing must
+  // not collapse into a single Ctrl+Z that erases all of it.
+  store = mk();
+  for (let i = 0; i < 30; i++) {
+    t += 1000; // one edit a second, same label, no gap over 2s
+    store.commit('add note', ['notes'], (d) => { d.tracks[0].name = 'n' + i; });
+  }
+  let steps = 0;
+  while (store.canUndo()) { store.undo(); steps++; }
+  assert(steps >= 14 && steps <= 16, 'a long run of one action logs ~one step per 2s, not one total: ' + steps);
+
+  // ...a different label does not fold, whatever the clock says...
+  store = mk();
+  store.commit('set gain', ['tracks'], (d) => { d.tracks[0].gain = 0.5; });
+  t += 100;
+  store.commit('rename track', ['tracks'], (d) => { d.tracks[0].name = 'B'; });
+  store.undo();
+  assert(store.getDoc().tracks[0].name !== 'B' && store.getDoc().tracks[0].gain === 0.5, 'a different action inside the window stays its own step');
+
+  // ...same label past the window is a new step...
+  store = mk();
+  store.commit('set gain', ['tracks'], (d) => { d.tracks[0].gain = 0.5; });
+  t += 2001;
+  store.commit('set gain', ['tracks'], (d) => { d.tracks[0].gain = 0.9; });
+  store.undo();
+  assert(store.getDoc().tracks[0].gain === 0.5, 'past the window the same label starts a new step');
+  assert(store.canUndo(), 'and the earlier step is still there');
+
+  // ...and a commit right after undo NEVER folds backwards.
+  t += 100;
+  store.commit('set gain', ['tracks'], (d) => { d.tracks[0].gain = 1.2; });
+  store.undo();
+  assert(store.getDoc().tracks[0].gain === 0.5, 'undo resets the fold: the next commit is its own step');
+
+  // The view rides INSIDE the step: undo puts the viewport back where the
+  // edit was made (so a run of Ctrl+Z shows each reverted change), and the
+  // loop rides along the same way full snapshots always carried it.
+  store = mk();
+  writeView(store.getDoc(), { scrollTick: 500, scrollPitch: 60, pxPerTick: 0.5, cursorTick: 500, cursorPitch: 60 });
+  t += 3000;
+  store.commit('edit here', ['notes'], (d) => { d.tracks[0].name = 'edited'; });
+  store.setView({ scrollTick: 9000, scrollPitch: 40, pxPerTick: 0.5, cursorTick: 9000, cursorPitch: 40 });
+  store.undo();
+  assert(store.getView().scrollTick === 500 && store.getView().cursorTick === 500, 'undo restores the viewport of the undone edit');
+
+  // updatedAt is OUTSIDE the step: undo stamps fresh, so autosave treats the
+  // undone document as new work rather than matching an old save.
+  store = mk();
+  store.commit('x', ['notes'], (d) => { d.tracks[0].name = 'Y'; });
+  const stamped = store.getDoc().updatedAt;
+  t += 3000;
+  store.undo();
+  assert(store.getDoc().updatedAt >= stamped, 'undo bumps updatedAt instead of restoring a stale one');
+
+  // Redo round-trip through the delta stacks, several levels deep.
+  store = mk();
+  const names = ['n1', 'n2', 'n3', 'n4'];
+  for (const n of names) {
+    t += 3000;
+    store.commit('rename ' + n, ['tracks'], (d) => { d.tracks[0].name = n; });
+  }
+  const seen = [];
+  while (store.canUndo()) { store.undo(); seen.push(store.getDoc().tracks[0].name); }
+  while (store.canRedo()) { store.redo(); seen.push(store.getDoc().tracks[0].name); }
+  eq(seen, ['n3', 'n2', 'n1', 'Lead', 'n1', 'n2', 'n3', 'n4'], 'undo/redo walk the exact states in order');
+}
+
 // ---- offline precache list ----
 //
 // The service worker's file list is generated from the real import graph. These

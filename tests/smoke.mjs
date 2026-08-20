@@ -1408,10 +1408,56 @@ await check('Ctrl+Z undoes and Ctrl+Y redoes on a QWERTZ keyboard', `(async () =
   return (undone && redone) || 'undone=' + undone + ' redone=' + redone;
 })()`);
 
+await check('a slider run collapses into ONE undo step', `(async () => {
+  const store = window.__chipseq.store;
+  const sec = document.getElementById('sec-mixer');
+  if (!sec || sec.hidden) return 'mixer card missing';
+  if (!sec.classList.contains('open')) sec.querySelector('.tool-card-head').click();
+  await new Promise((r) => setTimeout(r, 250));
+  const slider = document.querySelector('#mixer-body input[data-act="gain"]');
+  if (!slider) return 'no gain slider';
+  const before = store.getDoc().tracks[0].gain;
+  // 40 input events, as a real drag delivers them - each one commits.
+  for (let i = 1; i <= 40; i++) {
+    slider.value = String(40 + i);
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  const dragged = store.getDoc().tracks[0].gain;
+  store.undo();
+  const restored = store.getDoc().tracks[0].gain;
+  return (dragged !== before && restored === before)
+    || JSON.stringify({ before, dragged, restored });
+})()`);
+
+await check('undo returns the viewport to where the undone edit was made', `(async () => {
+  const { createNote, addNote } = await import('/js/core/doc.js');
+  const store = window.__chipseq.store;
+  const ui = window.__chipseq.uiStore.state;
+  const roll = window.__chipseq.roll;
+  // Park the view far down the song and let it settle into doc.view (the
+  // mirror is throttled at 300ms), then edit from there.
+  roll.restoreView({ scrollTick: 4000, scrollPitch: 60, pxPerTick: ui.pxPerTick, cursorTick: 4000, cursorPitch: 60 });
+  await new Promise((r) => setTimeout(r, 500));
+  store.commit('note far away', ['notes'], (d) => {
+    addNote(d, d.tracks[0].id, createNote({ pitch: 60, startTick: 4200, durationTicks: 96 }));
+  });
+  // Scroll back to the beginning, as someone would before pressing Ctrl+Z.
+  roll.restoreView({ scrollTick: 0, scrollPitch: 84, pxPerTick: ui.pxPerTick, cursorTick: 0, cursorPitch: 84 });
+  await new Promise((r) => setTimeout(r, 500));
+  const wentHome = ui.scrollTick < 100;
+  store.undo();
+  await new Promise((r) => setTimeout(r, 200));
+  // Not an exact camera - the view mirror is throttled and the scroll is
+  // clamped to the song - so the claim is "it jumped back to the edit", not
+  // "it landed on tick 4000".
+  const cameBack = ui.scrollTick > 1000;
+  return (wentHome && cameBack) || JSON.stringify({ wentHome, scrollTick: ui.scrollTick });
+})()`);
+
 await check('a focused slider or select does not swallow Ctrl+Z', `(async () => {
   const store = window.__chipseq.store;
   const before = store.getDoc().tracks[0].name;
-  store.commit('rename for undo', ['tracks'], (d) => { d.tracks[0].name = 'Renamed again'; });
+  store.commit('rename while a widget has focus', ['tracks'], (d) => { d.tracks[0].name = 'Renamed again'; });
   const sel = document.getElementById('sel-snap');
   sel.focus();
   window.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, ctrlKey: true, key: 'z', code: 'KeyZ' }));
@@ -1470,6 +1516,11 @@ await check('the solo button silences others without hiding them', `(async () =>
   const { soloActive, createTrack, pickTrackColor } = await import('/js/core/doc.js');
   const { flattenSong } = await import('/js/core/flatten.js');
   const store = window.__chipseq.store;
+  // Captured BEFORE the fixture: the cleanup below rewinds to this rather
+  // than undoing a fixed number of times. Commits of the same kind inside
+  // the merge window collapse into one step, so counting undos would be
+  // counting something the store deliberately does not promise.
+  const startState = JSON.stringify(store.getDoc().tracks);
   // set up its own context rather than depending on where in the suite it runs
   store.commit('solo fixture', ['song', 'tracks', 'notes'], (d) => {
     d.mode = 'poly';
@@ -1495,9 +1546,10 @@ await check('the solo button silences others without hiding them', `(async () =>
   soloBtn.click();
   await new Promise((r) => setTimeout(r, 200));
   const cleared = !soloActive(store.getDoc());
-  store.undo();
-  store.undo();
-  store.undo();
+  for (let guard = 20; guard > 0 && store.canUndo(); guard--) {
+    if (JSON.stringify(store.getDoc().tracks) === startState) break;
+    store.undo();
+  }
   return (lit && active && onlySoloed && nothingHidden && cleared)
     || 'lit=' + lit + ' active=' + active + ' only=' + onlySoloed
        + ' kept=' + nothingHidden + ' cleared=' + cleared;

@@ -207,6 +207,17 @@ const startScreen = initStartScreen({
 const roll = initPianoRoll(store, uiStore, engine, conflicts);
 const exportDialog = initExportDialog({ store, conflicts });
 
+// Undo puts the viewport back where the undone edit was made. The view rides
+// inside the undo step for exactly this: without it, a run of Ctrl+Z reverts
+// changes that may be nowhere near the screen, and the only feedback is that
+// nothing visible happens - so people press it again, and again, past the
+// change they meant to reach. `view` is written throttled and outside undo,
+// so this restores where the user WAS, not a frame-exact camera.
+store.subscribe(['history'], (ev) => {
+  if (ev.label !== 'undo' && ev.label !== 'redo') return;
+  roll.restoreView(store.getView());
+});
+
 const actions = initToolbar({
   store,
   uiStore,
@@ -321,4 +332,4 @@ boot();
 // Console/debugging handle (also used by the smoke tests).
 // `offline` is here so a worker serving something wrong can be removed from the
 // console - __chipseq.offline.unregister() - rather than through devtools.
-window.__chipseq = { store, uiStore, engine, conflicts, openProject, offline };
+window.__chipseq = { store, uiStore, engine, conflicts, openProject, offline, roll };
