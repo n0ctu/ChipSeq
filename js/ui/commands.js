@@ -80,13 +80,19 @@ export const COMMANDS = [
   },
 ];
 
-// The event, written the way `keys` is written.
+// The event, written the way `keys` is written. Letters go by e.key - what
+// the keycap SAYS - not e.code, which names the key's position on a US
+// board. On QWERTZ (the Swiss and German layouts) Z and Y trade places, so
+// code-based matching swapped undo and redo: the key labeled Z arrived as
+// KeyY and "Ctrl+Z does nothing" was Ctrl+Z faithfully running a redo on an
+// empty stack. Non-letter keys keep their codes; those name positions on
+// purpose.
 export function chordOf(e) {
   const parts = [];
   if (e.ctrlKey || e.metaKey) parts.push('Ctrl');
   if (e.shiftKey) parts.push('Shift');
   if (e.altKey) parts.push('Alt');
-  parts.push(e.code);
+  parts.push(/^[a-z]$/i.test(e.key) ? 'Key' + e.key.toUpperCase() : e.code);
   return parts.join('+');
 }
 

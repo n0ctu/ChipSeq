@@ -1362,6 +1362,65 @@ await check('a click under the drag threshold still selects the track', `(async 
   return (selected && unmoved) || 'selected=' + selected + ' unmoved=' + unmoved;
 })()`);
 
+await check('the drop indicator marks the gap the row will actually land in', `(async () => {
+  const store = window.__chipseq.store;
+  const rows = () => [...document.querySelectorAll('#track-list .track-row')];
+  if (rows().length < 2) return 'need two tracks';
+  const order = store.getDoc().tracks.map((t) => t.id).join();
+  // Drag the SECOND row upward, past the first row's midpoint: it will land
+  // at the top, so the line belongs ABOVE the first row. It used to be
+  // painted below it - one entry lower than the real landing spot - because
+  // the marker reused the post-removal index, which only exists once the
+  // dragged row has left the list.
+  const second = rows()[1];
+  const firstRect = rows()[0].getBoundingClientRect();
+  const y0 = second.getBoundingClientRect().top + 5;
+  second.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 40, clientY: y0, button: 0 }));
+  window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 40, clientY: firstRect.top + 2 }));
+  const above = rows()[0].classList.contains('drop-target-top');
+  const nothingBelow = !rows().some((r) => r.classList.contains('drop-target'));
+  // Slide back into the no-op gap and release: no indicator may linger, and
+  // nothing must move.
+  window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 40, clientY: y0 }));
+  window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 40, clientY: y0 }));
+  second.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 150));
+  const cleared = !rows().some((r) => r.classList.contains('drop-target') || r.classList.contains('drop-target-top'));
+  const unmoved = store.getDoc().tracks.map((t) => t.id).join() === order;
+  return (above && nothingBelow && cleared && unmoved)
+    || JSON.stringify({ above, nothingBelow, cleared, unmoved });
+})()`);
+
+// Undo/redo arrive as the letters the keycaps SAY. On QWERTZ - the Swiss and
+// German layouts - the key labeled Z sits where a US board has Y, so its
+// events carry code KeyY with key "z". Code-based matching read that as
+// Ctrl+Y and ran redo on an empty stack: "Ctrl+Z does nothing", reported
+// from a Swiss keyboard. These events are byte-for-byte what QWERTZ sends.
+await check('Ctrl+Z undoes and Ctrl+Y redoes on a QWERTZ keyboard', `(async () => {
+  const store = window.__chipseq.store;
+  const before = store.getDoc().tracks[0].name;
+  store.commit('rename for undo', ['tracks'], (d) => { d.tracks[0].name = 'Renamed by test'; });
+  window.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, ctrlKey: true, key: 'z', code: 'KeyY' }));
+  const undone = store.getDoc().tracks[0].name === before;
+  window.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, ctrlKey: true, key: 'y', code: 'KeyZ' }));
+  const redone = store.getDoc().tracks[0].name === 'Renamed by test';
+  store.undo(); // leave the track as we found it
+  return (undone && redone) || 'undone=' + undone + ' redone=' + redone;
+})()`);
+
+await check('a focused slider or select does not swallow Ctrl+Z', `(async () => {
+  const store = window.__chipseq.store;
+  const before = store.getDoc().tracks[0].name;
+  store.commit('rename for undo', ['tracks'], (d) => { d.tracks[0].name = 'Renamed again'; });
+  const sel = document.getElementById('sel-snap');
+  sel.focus();
+  window.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, ctrlKey: true, key: 'z', code: 'KeyZ' }));
+  const undone = store.getDoc().tracks[0].name === before;
+  const kept = document.activeElement === sel;
+  sel.blur();
+  return (undone && kept) || 'undone=' + undone + ' focusKept=' + kept;
+})()`);
+
 // The tracks panel and the Mixer resolve colour independently, and drifted
 // once already (the Mixer coloured by row index). Assert they agree on the
 // rendered pixels, not on the code path.

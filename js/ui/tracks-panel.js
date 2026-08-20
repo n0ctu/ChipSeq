@@ -59,15 +59,24 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker, onImportTr
       drag.rows = rowsGeometry();
       list.classList.add('reordering');
     }
-    // Land after every row whose midpoint is above the pointer.
-    let to = 0;
+    // Land after every row whose midpoint is above the pointer. `gap` counts
+    // in the CURRENT list, dragged row still in place; the move itself needs
+    // the post-removal index.
+    let gap = 0;
     for (const r of drag.rows) {
-      if (e.clientY > r.mid) to++;
+      if (e.clientY > r.mid) gap++;
     }
     const from = drag.rows.findIndex((r) => r.id === drag.trackId);
-    drag.to = to > from ? to - 1 : to;
+    drag.to = gap > from ? gap - 1 : gap;
+    // The indicator line sits IN the gap: below the row above it (or above
+    // the first row for gap 0). It used to mark the row at the post-removal
+    // index instead - correct by coincidence when dragging down, one row too
+    // low when dragging up, because that index only exists after the dragged
+    // row has left the list the user is looking at.
+    const noop = gap === from || gap === from + 1; // dropping around itself
     for (const [i, li] of [...list.children].entries()) {
-      li.classList.toggle('drop-target', i === drag.to && drag.to !== from);
+      li.classList.toggle('drop-target', !noop && i === gap - 1);
+      li.classList.toggle('drop-target-top', !noop && gap === 0 && i === 0);
     }
   }
 
@@ -75,6 +84,8 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker, onImportTr
     window.removeEventListener('mousemove', onReorderMove);
     window.removeEventListener('mouseup', endReorder);
     list.classList.remove('reordering');
+    // A no-op drop never commits, so no re-render clears the indicator.
+    for (const li of list.children) li.classList.remove('drop-target', 'drop-target-top');
     const d = drag;
     drag = null;
     if (!d || !d.moved || d.to == null) return; // a plain click - leave it alone

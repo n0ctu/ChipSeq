@@ -228,9 +228,26 @@ export function initKeymap({ store, uiStore, engine, roll, conflicts, actions })
     if (document.querySelector('dialog[open]')) return;
 
     const el = document.activeElement;
-    const inText = el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA');
-    if (inText) {
-      if (e.key === 'Escape') el.blur();
+    const inWidget = el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA');
+    if (inWidget) {
+      if (e.key === 'Escape') {
+        el.blur();
+        return;
+      }
+      // Editing text owns every key - the browser's own Ctrl+Z (revert
+      // typing) must win there. But a slider, select or checkbox keeps focus
+      // after a click, and it only needs its arrows and typing: a Ctrl-chord
+      // is an app command wherever it is pressed, or undo would go dead the
+      // moment a mixer slider was touched.
+      const textual = el.tagName === 'TEXTAREA'
+        || (el.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button', 'color'].includes(el.type));
+      if (!textual && (e.ctrlKey || e.metaKey)) {
+        const cmd = commandForChord(chordOf(e));
+        if (cmd) {
+          e.preventDefault();
+          runCommand(cmd, commandCtx());
+        }
+      }
       return;
     }
 
