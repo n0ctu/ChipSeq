@@ -1,7 +1,7 @@
 // Tracks panel: list, active selection, roles, instruments, add/remove.
 
-import { createTrack, moveTrack, pickTrackColor, TRACK_COLORS } from '../core/doc.js';
-import { confirmDialog, trackDialog } from './dialogs.js';
+import { createTrack, duplicateTrack, moveTrack, pickTrackColor, TRACK_COLORS } from '../core/doc.js';
+import { confirmDialog, contextMenu, trackDialog } from './dialogs.js';
 import { icon } from './icons.js';
 import { readTheme, trackColor } from './piano-roll/render.js';
 
@@ -80,6 +80,45 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker, onImportTr
     if (!d || !d.moved || d.to == null) return; // a plain click - leave it alone
     suppressClick = true;
     store.commit('reorder tracks', ['tracks'], (doc) => moveTrack(doc, d.trackId, d.to));
+  }
+
+  async function renameTrack(track) {
+    const result = await trackDialog(track, TRACK_COLORS);
+    if (!result) return;
+    store.commit('edit track', ['tracks'], (d) => {
+      const t = d.tracks.find((x) => x.id === track.id);
+      if (!t) return;
+      t.name = result.name;
+      // null = follow the row's position, which is how it worked before
+      // colours could be set - so it is stored by REMOVING the field.
+      if (result.color === null) delete t.color;
+      else t.color = result.color;
+    });
+  }
+
+  async function deleteTrack(track) {
+    const doc = store.getDoc();
+    if (doc.tracks.length <= 1) return;
+    if (track.notes.length && !(await confirmDialog('Delete track', `Delete track “${track.name}” and its ${track.notes.length} notes?`, 'Delete'))) return;
+    store.commit('delete track', ['tracks', 'notes'], (d) => {
+      // The active/melody/chord markers are re-pointed by the store's
+      // invariant pass - no call site has to remember to do it.
+      d.tracks = d.tracks.filter((t) => t.id !== track.id);
+    });
+    uiStore.update('selection', (s) => s.selection.clear());
+  }
+
+  function duplicate(track) {
+    let copy = null;
+    store.commit('duplicate track', ['tracks', 'notes'], (d) => {
+      copy = duplicateTrack(d, track.id);
+    });
+    // The copy is now the active track; the selection still names notes of
+    // the original, so it follows the switch the same way setActive's does.
+    if (copy) uiStore.update('selection', (s) => {
+      s.selection.clear();
+      s.selectionTrackId = copy.id;
+    });
   }
 
   function render() {
@@ -190,17 +229,9 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker, onImportTr
       del.className = 'btn-icon';
       del.innerHTML = icon('trash');
       del.title = 'Delete track';
-      del.addEventListener('click', async (e) => {
+      del.addEventListener('click', (e) => {
         e.stopPropagation();
-        const doc2 = store.getDoc();
-        if (doc2.tracks.length <= 1) return;
-        if (track.notes.length && !(await confirmDialog('Delete track', `Delete track “${track.name}” and its ${track.notes.length} notes?`, 'Delete'))) return;
-        store.commit('delete track', ['tracks', 'notes'], (d) => {
-          // The active/melody/chord markers are re-pointed by the store's
-          // invariant pass - no call site has to remember to do it.
-          d.tracks = d.tracks.filter((t) => t.id !== track.id);
-        });
-        uiStore.update('selection', (s) => s.selection.clear());
+        deleteTrack(track);
       });
       li.appendChild(del);
 
@@ -214,26 +245,24 @@ export function initTracksPanel({ store, uiStore, onInstrumentPicker, onImportTr
         setActive(track.id);
       });
 
-      name.addEventListener('dblclick', async () => {
-        const result = await trackDialog(track, TRACK_COLORS);
-        if (!result) return;
-        store.commit('edit track', ['tracks'], (d) => {
-          const t = d.tracks.find((x) => x.id === track.id);
-          if (!t) return;
-          t.name = result.name;
-          // null = follow the row's position, which is how it worked before
-          // colours could be set - so it is stored by REMOVING the field.
-          if (result.color === null) delete t.color;
-          else t.color = result.color;
-        });
-      });
+      name.addEventListener('dblclick', () => renameTrack(track));
 
-      // right-click: set/unset as chord source
+      // Right-click opens a menu. It used to TOGGLE the chord source
+      // directly, which meant a stray right-click silently re-tuned every
+      // "Auto (song chords)" arpeggio - an action nobody meant, with a
+      // symptom (arps sound off) far from its cause. The C button remains
+      // the way to set the chord source, visibly.
       li.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        store.commit('set chord track', ['tracks', 'notes'], (d) => {
-          d.chordTrackId = d.chordTrackId === track.id ? null : track.id;
-        });
+        contextMenu(e.clientX, e.clientY, [
+          { label: 'Duplicate track', action: () => duplicate(track) },
+          { label: 'Rename…', action: () => renameTrack(track) },
+          {
+            label: 'Delete track',
+            disabled: store.getDoc().tracks.length <= 1,
+            action: () => deleteTrack(track),
+          },
+        ]);
       });
 
       list.appendChild(li);

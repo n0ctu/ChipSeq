@@ -672,6 +672,29 @@ export function pickTrackColor(doc) {
 // reads whichever tracks are playable and sorts events by tick - but it also
 // decides the palette position of any track that has not picked a colour,
 // which is why setting one explicitly matters once rows can be shuffled.
+// A duplicate is a full deep copy - notes, automation, custom instrument,
+// mute/solo state - inserted right after its original and made active. Fresh
+// ids throughout: track ids must be unique (see the migrate invariant), and
+// note ids follow suit so nothing downstream ever sees two notes answering to
+// one id. A custom instrument is addressed as "track:<id>", so that reference
+// has to follow the new id or the copy would play its sibling's instrument -
+// and edits to one would change both.
+export function duplicateTrack(doc, trackId) {
+  const at = doc.tracks.findIndex((t) => t.id === trackId);
+  if (at < 0) return null;
+  const copy = structuredClone(doc.tracks[at]);
+  copy.id = uid();
+  copy.name = doc.tracks[at].name + ' copy';
+  if (copy.instrumentId === 'track:' + trackId) copy.instrumentId = 'track:' + copy.id;
+  // The embedded object names itself the same way; lookups go via the track,
+  // but a stale self-id would surface the first time anything trusts it.
+  if (copy.instrument && copy.instrument.id === 'track:' + trackId) copy.instrument.id = 'track:' + copy.id;
+  for (const note of copy.notes) note.id = uid();
+  doc.tracks.splice(at + 1, 0, copy);
+  doc.activeTrackId = copy.id;
+  return copy;
+}
+
 export function moveTrack(doc, trackId, toIndex) {
   const from = doc.tracks.findIndex((t) => t.id === trackId);
   if (from < 0) return false;

@@ -366,6 +366,10 @@
 
 /* status bar bits */
 .st-item:empty { display: none; }
+/* the brand links to the repository - dressed as the label it always was,
+   revealing itself as a link on hover rather than shouting in default blue */
+a#st-brand { color: inherit; text-decoration: none; }
+a#st-brand:hover { color: var(--text); text-decoration: underline; }
 #st-save.warn { color: var(--warn); font-weight: 600; }
 /* the clip indicator only exists while the mix is actually over - it must
    catch the eye without becoming permanent furniture in the status bar */

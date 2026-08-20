@@ -19,7 +19,7 @@ export function createUiStore() {
     triplet: false,
     lastNoteLen: PPQ / 2,
     panels: { tracks: true, harmonics: true },
-    autoDrag: null, // transient lane drag preview {param, points, label} | null
+    autoDrag: null, // transient lane drag preview {param, points, point, label} | null
   };
 
   return {

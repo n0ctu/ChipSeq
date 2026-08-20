@@ -201,6 +201,21 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
 
   // ---- rAF loop ----
   function frame() {
+    // The finally is load-bearing: everything the user sees is painted from
+    // this loop, and requestAnimationFrame does not reschedule by itself. A
+    // draw that throws would otherwise end painting for the rest of the
+    // session - which is exactly how a missing field in the gain lane's drag
+    // preview froze the whole editor until reload. The exception still
+    // reaches the console (and fails the smoke suite); the app just keeps
+    // painting everything else while it does.
+    try {
+      frameBody();
+    } finally {
+      requestAnimationFrame(frame);
+    }
+  }
+
+  function frameBody() {
     applyPendingCenter();
     // Capped: coming back to a backgrounded tab must not hand the glide a
     // multi-second step, which would finish it instantly and defeat the point.
@@ -301,7 +316,6 @@ export function initPianoRoll(store, uiStore, engine, conflicts) {
       dirty.auto = false;
     }
     updateScrollbars();
-    requestAnimationFrame(frame);
   }
 
   // ---- scrollbars ----

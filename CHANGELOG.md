@@ -9,6 +9,36 @@ tagged.
 
 ## [Unreleased]
 
+### Added
+
+- **The footer brand links to the repository.** "ChipSeq by n0ctu - vX.Y.Z"
+  opens https://github.com/n0ctu/ChipSeq/ in a new tab. Dressed as the label
+  it always was; it reveals itself as a link on hover.
+
+### Changed
+
+- **Right-clicking a track opens a menu instead of silently retuning arps.**
+  It used to toggle that track as the chord source - so a stray right-click
+  changed what every "Auto (song chords)" arpeggio plays, with a symptom
+  (arps sound off) far from its cause. It now opens a context menu:
+  Duplicate track, Rename…, Delete track. The C button remains the visible
+  way to set the chord source. Duplicate is new: a full deep copy - notes,
+  automation, custom instrument, mute/solo - under fresh ids, inserted right
+  below its original and made active.
+
+### Fixed
+
+- **Creating or moving a gain keyframe no longer freezes the editor.** The
+  drag preview never carried the field the hot-value label reads, so the
+  first painted frame of a held gain drag threw inside the rAF loop - and
+  since that loop reschedules itself, painting stopped entirely until reload.
+  The point WAS committed on release, which is why it appeared after saving
+  and reloading. Gain is the only lane marked hot (it can boost past unity),
+  which is why pan and the ADSR lanes never failed. The missing field is now
+  supplied, and the frame loop reschedules in a finally, so no future bad
+  draw can end painting for the session again - it shows up as a console
+  error (and a failed smoke suite) instead.
+
 ## [0.7.6] - 2026-08-19
 
 ### Added

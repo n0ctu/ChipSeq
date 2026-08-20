@@ -402,6 +402,13 @@ export function initAutomationLane({ store, uiStore, canvas }) {
       s.autoDrag = {
         param: drag.param,
         points: preview,
+        // The draw pass colours the label by this value (hot lanes turn the
+        // warn colour above unity). It read autoDrag.point from the day the
+        // hot colouring shipped, and nothing ever put it here - so the first
+        // gain drag threw inside the rAF loop and painting stopped for good.
+        // Pan and the ADSR lanes never noticed: gain is the only hot lane,
+        // and the && short-circuited before the missing field.
+        point: { ...drag.point },
         label: { text: AUTOMATION_PARAMS[drag.param].fmt(drag.point.value), x: p.x, y: p.y },
       };
     });

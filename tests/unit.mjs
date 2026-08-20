@@ -1816,6 +1816,42 @@ const { clampScroll, PITCH_MIN: PMIN, PITCH_MAX: PMAX } = await import('../js/ui
     'the calibrated levels are the built-in ones');
 }
 
+// ---- duplicateTrack: a full copy under a fresh identity ----
+{
+  const { duplicateTrack } = await import('../js/core/doc.js');
+  const doc = createProject({ name: 'dup', mode: 'poly' });
+  const orig = doc.tracks[0];
+  orig.name = 'Lead';
+  addNote(doc, orig.id, createNote({ pitch: 60, startTick: 0, durationTicks: 96 }));
+  addNote(doc, orig.id, createNote({ pitch: 64, startTick: 96, durationTicks: 96 }));
+  orig.automation = { gain: [{ tick: 0, value: 1.2, curve: 'linear' }] };
+  orig.pan = -0.4;
+  orig.solo = true;
+
+  const copy = duplicateTrack(doc, orig.id);
+  assert(copy && doc.tracks.length === 2 && doc.tracks[1] === copy, 'the copy lands right after its original');
+  assert(copy.id !== orig.id, 'a fresh track id');
+  assert(copy.name === 'Lead copy', 'named after its original: ' + copy.name);
+  assert(doc.activeTrackId === copy.id, 'the copy becomes the active track');
+  eq(copy.notes.map((n) => n.pitch), [60, 64], 'notes ride along');
+  assert(copy.notes.every((n, i) => n.id !== orig.notes[i].id), 'with fresh note ids');
+  assert(copy.pan === -0.4 && copy.solo === true, 'mix state rides along');
+  copy.automation.gain[0].value = 0.5;
+  copy.notes[0].pitch = 72;
+  assert(orig.automation.gain[0].value === 1.2 && orig.notes[0].pitch === 60, 'a DEEP copy - editing it leaves the original alone');
+
+  // A custom instrument is addressed as "track:<id>" - the reference must
+  // follow the copy's id, or the copy would play (and edit!) its sibling's
+  // instrument.
+  orig.instrument = { id: 'track:' + orig.id, name: 'Custom', wave: 'square', adsr: { a: 0, d: 0, s: 1, r: 0 }, gain: 0.3 };
+  orig.instrumentId = 'track:' + orig.id;
+  const copy2 = duplicateTrack(doc, orig.id);
+  assert(copy2.instrumentId === 'track:' + copy2.id, 'a custom instrument reference follows the new id');
+  assert(copy2.instrument.id === 'track:' + copy2.id && copy2.instrument !== orig.instrument, 'and the embedded object is its own, coherently named');
+
+  assert(duplicateTrack(doc, 'nope') === null && doc.tracks.length === 3, 'an unknown id is a no-op');
+}
+
 // ---- track colour and order ----
 {
   const {

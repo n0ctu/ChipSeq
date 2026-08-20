@@ -315,9 +315,13 @@ await check('demos listed in their own section, not in recents', `(() => {
     && recents.includes('No projects yet')
     || 'demos=' + demoItems.length + ' recents=' + recents.slice(0, 60);
 })()`);
-await check('footer shows brand + version', `(() => {
-  const t = document.getElementById('st-brand').textContent;
-  return /^ChipSeq by n0ctu - v\\d+\\.\\d+\\.\\d+$/.test(t) || t;
+await check('footer brand shows the version and links to the repository', `(() => {
+  const el = document.getElementById('st-brand');
+  const t = el.textContent;
+  return (/^ChipSeq by n0ctu - v\\d+\\.\\d+\\.\\d+$/.test(t)
+    && el.tagName === 'A' && el.href === 'https://github.com/n0ctu/ChipSeq/'
+    && el.target === '_blank' && el.rel.includes('noopener'))
+    || t + ' <' + el.tagName + '> ' + el.href;
 })()`);
 await check('demos are not copied into storage', `(() => {
   const index = JSON.parse(localStorage.getItem('chipseq.v1.index') || '[]');
@@ -1165,6 +1169,56 @@ await check('row click changes editing focus but NOT the melody marker', `(() =>
   const melodyStayed = d().melodyTrackId === melodyBefore;
   document.querySelectorAll('#track-list .track-row')[0].click();
   return focusMoved && melodyStayed || 'focus=' + focusMoved + ' melody=' + melodyStayed;
+})()`);
+await check('right-click opens a menu and leaves the chord track ALONE', `(async () => {
+  const d = () => window.__chipseq.store.getDoc();
+  const before = d().chordTrackId;
+  const row = document.querySelectorAll('#track-list .track-row')[0];
+  const r = row.getBoundingClientRect();
+  row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 20, clientY: r.top + 8 }));
+  await new Promise((res) => setTimeout(res, 100));
+  const menu = document.querySelector('.ctx-menu');
+  const labels = menu ? [...menu.querySelectorAll('button')].map((b) => b.textContent) : [];
+  const untouched = d().chordTrackId === before;
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  await new Promise((res) => setTimeout(res, 100));
+  const closed = !document.querySelector('.ctx-menu');
+  return (untouched && closed && labels.length === 3 && labels[0] === 'Duplicate track')
+    || JSON.stringify({ untouched, closed, labels });
+})()`);
+await check('the menu duplicates a track: deep copy, fresh ids, right below', `(async () => {
+  const d = () => window.__chipseq.store.getDoc();
+  const orig = d().tracks[0];
+  const row = document.querySelectorAll('#track-list .track-row')[0];
+  const r = row.getBoundingClientRect();
+  row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 20, clientY: r.top + 8 }));
+  await new Promise((res) => setTimeout(res, 100));
+  [...document.querySelectorAll('.ctx-menu button')].find((b) => b.textContent === 'Duplicate track').click();
+  await new Promise((res) => setTimeout(res, 100));
+  const copy = d().tracks[1];
+  const ok = d().tracks.length === 3
+    && copy.name === orig.name + ' copy'
+    && copy.id !== orig.id
+    && copy.notes.length === orig.notes.length
+    && copy.notes.every((n, i) => n.id !== orig.notes[i].id)
+    && d().activeTrackId === copy.id;
+  return ok || JSON.stringify({ n: d().tracks.length, name: copy && copy.name, active: d().activeTrackId === (copy && copy.id) });
+})()`);
+await check('the menu deletes the copy again (asking first when it has notes)', `(async () => {
+  const d = () => window.__chipseq.store.getDoc();
+  const copy = d().tracks[1];
+  const row = document.querySelectorAll('#track-list .track-row')[1];
+  const r = row.getBoundingClientRect();
+  row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 20, clientY: r.top + 8 }));
+  await new Promise((res) => setTimeout(res, 100));
+  [...document.querySelectorAll('.ctx-menu button')].find((b) => b.textContent === 'Delete track').click();
+  await new Promise((res) => setTimeout(res, 150));
+  const dlg = document.getElementById('dlg-confirm');
+  const asked = copy.notes.length ? dlg.open : true;
+  if (dlg.open) document.getElementById('btn-confirm-ok').click();
+  await new Promise((res) => setTimeout(res, 150));
+  return (asked && d().tracks.length === 2 && !d().tracks.some((t) => t.id === copy.id))
+    || JSON.stringify({ asked, n: d().tracks.length });
 })()`);
 
 // ---- track dialog: name + colour, Enter saves ----
@@ -2687,6 +2741,41 @@ await check('right-click deletes a keyframe', `(async () => {
   const lane = window.__chipseq.store.getDoc().tracks[0].automation.gain;
   return lane.length === 0 || JSON.stringify(lane);
 })()`);
+// A drag that spans real frames. The tests above complete the whole gesture
+// inside one task, so no animation frame ever draws while the drag preview is
+// live - which is exactly where the gain lane crashed: the preview lacked the
+// point field the hot-value label reads, the first painted frame of a HELD
+// gain drag threw, and the rAF loop died until reload (the commit on mouseup
+// still ran, so the point appeared after saving and reloading - the reported
+// symptom). Gain is the only hot lane, which is why pan and ADSR never failed.
+{
+  const errsBefore = consoleErrors.length;
+  const result = await evaluate(`(async () => {
+    const c = document.getElementById('auto-canvas');
+    const r = c.getBoundingClientRect();
+    const ui = window.__chipseq.uiStore.state;
+    const before = (window.__chipseq.store.getDoc().tracks[0].automation.gain || []).length;
+    const x = r.left + 96 * ui.pxPerTick;
+    const y = r.top + 18 + 30; // vertical middle of the expanded gain lane
+    c.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: x, clientY: y, button: 0 }));
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+    window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: x + 24, clientY: y - 8 }));
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: x + 24, clientY: y - 8 }));
+    const lane = window.__chipseq.store.getDoc().tracks[0].automation.gain;
+    return lane.length === before + 1 || JSON.stringify(lane);
+  })()`);
+  const errs = consoleErrors.slice(errsBefore);
+  if (result === true && errs.length === 0) {
+    pass++;
+    console.log('OK   a HELD gain drag paints its preview without crashing the frame loop');
+  } else {
+    fail++;
+    console.log('FAIL a HELD gain drag paints its preview without crashing the frame loop -> '
+      + JSON.stringify({ result, errs: errs.slice(0, 2) }));
+  }
+  await evaluate(`window.__chipseq.store.undo()`);
+}
 await check('duty lane appears only for PWM instruments', `(() => {
   const s = window.__chipseq.store;
   const before = [...document.querySelectorAll('.auto-lane-btn')].some((b) => b.textContent.includes('Duty'));
