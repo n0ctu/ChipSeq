@@ -51,21 +51,25 @@ tagged.
   exists once the dragged row has left the list being looked at. It now
   marks the gap the pointer is in, with a top-edge line for the first slot,
   and clears itself when a drag ends where it started.
-- **The service worker can no longer hold a page hostage.** A navigation was
-  observed pending for 397 seconds while the renderer answered instantly -
-  the page had not been slow to arrive, it had never been *answered*. Once
-  the worker calls `respondWith`, the browser waits on its promise, and the
-  only thing ending that wait was Chromium giving up on the event about five
-  minutes later. For a visitor that is a blank page for five minutes, which
-  is indistinguishable from the site being down. Every path in the worker is
-  now bounded and each bound falls back to whatever is most likely to work:
-  cache lookups get 3 s, the network 10 s, and a navigation that loses both
-  tries the cache once more before letting the browser report an ordinary
-  network error. Installing is bounded the same way, since a worker stuck
-  installing can never be updated either - failing is recoverable, hanging is
-  not. This bounds the symptom; the underlying cause is still unproven, so
-  the test suite now reports what the browser knows about the worker whenever
-  a boot fails.
+- **The service worker can no longer hold a page hostage.** Once the worker
+  calls `respondWith`, the browser waits on its promise - so a handler that
+  never settles is a blank page until Chromium abandons the event minutes
+  later, which is indistinguishable from the site being down. Every path is
+  now bounded, each falling back to whatever is most likely to work: cache
+  lookups get 3 s, the network 10 s, and a navigation that loses both tries
+  the cache once more before letting the browser report an ordinary network
+  error. Installing is bounded the same way, since a worker stuck installing
+  can never be updated either - failing is recoverable, hanging is not.
+
+  Scope, stated honestly: this closes a real hole, but it is **not** the
+  cause of the long boot stall seen on one development machine. New
+  instrumentation settled that question - at the moment a navigation had been
+  pending for 44 s, the browser reported our worker as `activated/stopped`,
+  meaning it had been shut down for idleness and the wait was for it to
+  *start*. None of the code above had run yet, so none of the bounds above
+  could have helped. Worker startup is the browser's business, not the app's.
+  The test suite now prints the worker's state on any boot failure rather
+  than leaving that to be guessed at.
 - **Ctrl+Z and Ctrl+Y work on QWERTZ keyboards.** Undo and redo were bound
   to key POSITIONS on a US layout; on Swiss and German boards Z and Y trade
   places, so the key labelled Z arrived as `KeyY` and Ctrl+Z faithfully ran
