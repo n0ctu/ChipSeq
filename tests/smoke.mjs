@@ -168,12 +168,48 @@ ws.onmessage = (ev) => {
     consoleErrors.push('CONSOLE.ERROR: ' + msg.params.args.map((a) => a.value ?? a.description ?? '').join(' '));
   }
 };
-function send(method, params = {}) {
+// Every CDP call is capped. Runtime.evaluate has no timeout of its own: a
+// wedged renderer simply never replies, and an uncapped call then holds
+// whatever awaited it for as long as the wedge lasts. That is how a run once
+// spent SEVEN MINUTES between two printed lines - the boot check failed fast
+// and every check after it queued behind the same dead renderer, one at a
+// time. A rejection here becomes a FAIL for that one check and the suite
+// keeps moving.
+// 30s: no healthy check comes close (the whole suite is a few minutes), and
+// this machine has been seen holding a single asset for 44s while wedged, so
+// the cap must not turn a slow-but-alive renderer into a false failure.
+const SEND_TIMEOUT_MS = 30000;
+function send(method, params = {}, { timeout = SEND_TIMEOUT_MS } = {}) {
   return new Promise((resolve, reject) => {
     const id = ++msgId;
-    pending.set(id, (msg) => (msg.error ? reject(new Error(method + ': ' + msg.error.message)) : resolve(msg.result)));
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      reject(new Error(method + ': no reply within ' + (timeout / 1000) + 's (renderer wedged?)'));
+    }, timeout);
+    pending.set(id, (msg) => {
+      clearTimeout(timer);
+      if (msg.error) reject(new Error(method + ': ' + msg.error.message));
+      else resolve(msg.result);
+    });
     ws.send(JSON.stringify({ id, method, params }));
   });
+}
+
+// Wait for the renderer to answer anything at all. Used after a boot failure
+// so the wedge is waited out ONCE, rather than being re-hit by every
+// remaining check at twenty seconds apiece.
+async function waitForRenderer(budgetMs) {
+  const startedAt = Date.now();
+  const deadline = startedAt + budgetMs;
+  do {
+    try {
+      if ((await send('Runtime.evaluate', { expression: '1+1', returnByValue: true }, { timeout: 5000 })).result.value === 2) {
+        return { ok: true, ms: Date.now() - startedAt };
+      }
+    } catch {}
+    await sleep(2000);
+  } while (Date.now() < deadline);
+  return { ok: false, ms: Date.now() - startedAt };
 }
 async function evaluate(expr) {
   const res = await send('Runtime.evaluate', {
@@ -269,6 +305,16 @@ async function navigateAndBoot(why = '') {
     const net = stuck.length ? ` pendingRequests=[${stuck.join(', ')}]` : ' pendingRequests=none';
     console.log(`FAIL the app did not finish booting within 20s [boot #${bootCount}${why ? ' ' + why : ''}, ${Date.now() - t0} ms] ${state}${errs}${net}`);
     fail++;
+    // Wait the wedge out here, once. Every check after this one would
+    // otherwise take its own twenty-second timeout to discover the same
+    // thing, turning one machine-level stall into a suite that appears to
+    // hang for minutes with nothing printed.
+    const back = await waitForRenderer(10 * 60 * 1000);
+    if (!back.ok) {
+      console.log(`     (renderer still unresponsive after ${(back.ms / 1000).toFixed(0)}s - every check below will fail fast)`);
+    } else if (back.ms > 2000) {
+      console.log(`     (renderer answered again after ${(back.ms / 1000).toFixed(0)}s - the rest of the suite runs against it)`);
+    }
   }
 }
 
@@ -2736,6 +2782,20 @@ await check('default instrument renamed to plain Square', `(() => {
 
 // ---- automation lanes (poly): per-control keyframes ----
 
+// These tests convert a pixel to a tick, so they need to know where the view
+// is scrolled. They used to assume tick zero and got away with it by
+// accident; undo now restores the viewport of the edit it undid, so an
+// earlier test's Ctrl+Z can leave the roll parked mid-song. Park it here on
+// purpose instead - stated setup rather than a leftover.
+await evaluate(`(() => {
+  const ui = window.__chipseq.uiStore.state;
+  window.__chipseq.roll.restoreView({
+    scrollTick: 0, scrollPitch: ui.scrollPitch, pxPerTick: ui.pxPerTick,
+    cursorTick: 0, cursorPitch: ui.gridCursor.pitch,
+  });
+})()`);
+await sleep(400);
+
 // Lane geometry is derived from the corner buttons' own heights, never
 // hard-coded: the stack grows whenever a parameter is added (Pan did exactly
 // that), and a literal y would then silently point at the wrong lane.
@@ -2815,7 +2875,7 @@ await check('dragging moves a gain keyframe', `(() => {
   const c = document.getElementById('auto-canvas');
   const r = c.getBoundingClientRect();
   const ui = window.__chipseq.uiStore.state;
-  const x = r.left + 192 * ui.pxPerTick;
+  const x = r.left + (192 - ui.scrollTick) * ui.pxPerTick;
   const y = r.top + 48;
   c.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: x, clientY: y, button: 0 }));
   window.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: x + 48, clientY: y - 10 }));
@@ -2830,7 +2890,7 @@ await check('double-click cycles curve, undo reverts', `(async () => {
   const r = c.getBoundingClientRect();
   const ui = window.__chipseq.uiStore.state;
   const lane0 = window.__chipseq.store.getDoc().tracks[0].automation.gain[0];
-  const x = r.left + lane0.tick * ui.pxPerTick;
+  const x = r.left + (lane0.tick - ui.scrollTick) * ui.pxPerTick;
   // recompute point y from its value in the gain lane (y 18..78, pad 6)
   const y = r.top + 18 + 6 + (1 - (lane0.value - min) / (max - min)) * 48;
   c.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: x, clientY: y }));
@@ -2846,7 +2906,7 @@ await check('right-click deletes a keyframe', `(async () => {
   const r = c.getBoundingClientRect();
   const ui = window.__chipseq.uiStore.state;
   const lane0 = window.__chipseq.store.getDoc().tracks[0].automation.gain[0];
-  const x = r.left + lane0.tick * ui.pxPerTick;
+  const x = r.left + (lane0.tick - ui.scrollTick) * ui.pxPerTick;
   const y = r.top + 18 + 6 + (1 - (lane0.value - min) / (max - min)) * 48;
   c.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: x, clientY: y, button: 2 }));
   const lane = window.__chipseq.store.getDoc().tracks[0].automation.gain;
@@ -2866,7 +2926,7 @@ await check('right-click deletes a keyframe', `(async () => {
     const r = c.getBoundingClientRect();
     const ui = window.__chipseq.uiStore.state;
     const before = (window.__chipseq.store.getDoc().tracks[0].automation.gain || []).length;
-    const x = r.left + 96 * ui.pxPerTick;
+    const x = r.left + (96 - ui.scrollTick) * ui.pxPerTick;
     const y = r.top + 18 + 30; // vertical middle of the expanded gain lane
     c.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: x, clientY: y, button: 0 }));
     await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
