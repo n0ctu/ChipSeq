@@ -9,6 +9,8 @@ tagged.
 
 ## [Unreleased]
 
+## [0.7.7] - 2026-08-20
+
 ### Added
 
 - **The footer brand links to the repository.** "ChipSeq by n0ctu - vX.Y.Z"
